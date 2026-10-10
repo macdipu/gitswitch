@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitSwitch</title>
+<style>
+:root{
+  --paper:#F7F8FA; --panel:#FFFFFF; --ink:#18202B; --muted:#5B6675; --rule:#E2E6EC; --hover:#EEF1F5;
+  --focus:#2F6FEB; --bad:#C92A37; --bad-soft:#FBE9EB; --ok:#1F8A4C;
+  --a0:#2F6FEB; --a1:#0E9F8E; --a2:#8A5CF6; --a3:#D9822B; --a4:#D6457A; --a5:#4F8A2F;
+  --radius:6px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Noto Sans", sans-serif;
+  font-size:15px; line-height:1.5; color:var(--ink); background:var(--paper);
+}
+@media (prefers-color-scheme:dark){
+  :root{ --paper:#12161C; --panel:#1A2029; --ink:#E7EBF0; --muted:#9AA5B4; --rule:#2B3440; --hover:#222A35;
+    --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59; }
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;min-height:100vh;display:grid;grid-template-columns:232px 1fr}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em}
+
+/* sidebar: each account is a lane, the same colour it has in the history graph */
+aside{background:var(--panel);border-right:1px solid var(--rule);padding:20px 14px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:17px;padding:0 6px}
+.brand svg{flex:none}
+nav{display:flex;flex-direction:column;gap:2px}
+nav button{all:unset;cursor:pointer;padding:7px 10px;border-radius:var(--radius);color:var(--muted)}
+nav button:hover{background:var(--hover);color:var(--ink)}
+nav button[aria-current=page]{background:var(--hover);color:var(--ink);font-weight:600}
+nav button:focus-visible{outline:2px solid var(--focus)}
+.lanes{display:flex;flex-direction:column;gap:6px;padding:0 6px}
+.lanes h2{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 4px}
+.lane{display:grid;grid-template-columns:4px 1fr;gap:10px;align-items:stretch;font-size:14px}
+.lane i{border-radius:2px}
+.lane small{display:block;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-foot{margin-top:auto;font-size:12px;color:var(--muted);padding:0 6px}
+
+main{padding:28px 36px 60px;max-width:1080px;width:100%}
+h1{font-size:24px;font-weight:650;margin:0 0 4px;letter-spacing:-.01em}
+.lead{color:var(--muted);margin:0 0 22px;max-width:68ch}
+section[hidden]{display:none}
+
+.banner{display:flex;gap:16px;align-items:center;justify-content:space-between;border:1px solid var(--bad);background:var(--bad-soft);padding:12px 16px;border-radius:var(--radius);margin-bottom:20px}
+.btn{cursor:pointer;border:1px solid var(--rule);background:var(--panel);padding:6px 12px;border-radius:var(--radius);font-size:14px}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn.primary:hover{opacity:.88}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:default}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+/* account rows */
+.accounts{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.acct{display:grid;grid-template-columns:6px 1fr auto;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule);align-items:start}
+.acct .stripe{align-self:stretch;border-radius:3px}
+.acct-name{font-weight:650;font-size:16px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule);color:var(--muted);margin-left:8px;vertical-align:2px}
+.meta{color:var(--muted);font-size:14px}
+.status-ok{color:var(--ok)} .status-bad{color:var(--bad)}
+.detail{grid-column:2 / 4;background:var(--paper);border:1px solid var(--rule);border-radius:var(--radius);padding:12px;font-size:14px}
+.detail textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--panel);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+
+form.card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:18px;margin:0 0 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
+form.card .full{grid-column:1/-1}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+label input,label select{padding:7px 9px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);font-size:14px}
+fieldset{border:0;padding:0;margin:0;display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
+fieldset label{flex-direction:row;align-items:center;color:var(--ink);font-size:14px}
+.hint{font-size:13px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px;border-bottom:1px solid var(--rule)}
+td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
+td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
+.path{font-weight:600}
+.empty{padding:28px;border:1px dashed var(--rule);border-radius:var(--radius);color:var(--muted)}
+
+/* history */
+.hist-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.hist-bar select{padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);max-width:420px}
+.summary{display:flex;gap:18px;align-items:center;margin:0 0 12px;font-size:14px}
+.history{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);overflow:auto}
+.hrow{display:grid;grid-template-columns:var(--gw) 104px minmax(0,1fr) 210px 92px;align-items:center;height:32px;font-size:13.5px;border-bottom:1px solid var(--rule)}
+.hrow:last-child{border-bottom:0}
+.hrow.flag{background:var(--bad-soft)}
+.hrow svg{display:block}
+.chip{font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid;justify-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+.subj{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
+.refs{font-size:12px;color:var(--muted);margin-right:6px}
+.em{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+.flag .em{color:var(--bad);font-weight:600}
+.when{color:var(--muted);text-align:right;padding-right:12px;font-size:12.5px;white-space:nowrap}
+
+.toast{position:fixed;bottom:18px;right:18px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:var(--radius);font-size:14px;max-width:420px;opacity:0;transform:translateY(6px);transition:.18s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.toast.err{background:var(--bad);color:#fff}
+.checks{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.check{display:grid;grid-template-columns:18px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:start}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
+h3{font-size:16px;margin:28px 0 10px}
+@media (max-width:820px){body{grid-template-columns:1fr} aside{position:static;height:auto} main{padding:20px} form.card{grid-template-columns:1fr} .hrow{grid-template-columns:var(--gw) 90px minmax(0,1fr) 70px}.hrow .em{display:none}}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 4v18M19 4v6c0 4-12 4-12 9" fill="none" stroke="var(--a0)" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="4.5" r="2.6" fill="var(--a1)"/><circle cx="7" cy="21.5" r="2.6" fill="var(--a0)"/></svg>
+    GitSwitch
+  </div>
+  <nav aria-label="Main">
+    <button data-tab="accounts" aria-current="page">Accounts</button>
+    <button data-tab="repos">Repos</button>
+    <button data-tab="history">History</button>
+    <button data-tab="rules">Rules</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <div class="lanes" id="lanes"></div>
+  <div class="side-foot" id="foot"></div>
+</aside>
+
+<main>
+  <div id="installBanner" class="banner" hidden>
+    <div><strong>Git is not using GitSwitch yet.</strong><br><span class="hint">Install once and every terminal and IDE on this computer picks the right account.</span></div>
+    <button class="btn primary" id="installBtn">Install</button>
+  </div>
+
+  <section id="tab-accounts">
+    <h1>Accounts</h1>
+    <p class="lead">Each account has its own SSH key and commit email. GitSwitch picks one for every clone, pull and push.</p>
+    <div class="row-actions" style="margin-bottom:16px"><button class="btn primary" id="addAcctBtn">Add account</button></div>
+    <form class="card" id="acctForm" hidden>
+      <label>Short name<input name="id" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,31}" placeholder="work, personal, client-acme"></label>
+      <label>Git host<input name="host" value="github.com"></label>
+      <label>Commit name<input name="name" placeholder="Your Name"></label>
+      <label>Commit email<input name="email" type="email" required placeholder="you@company.com"></label>
+      <fieldset class="full" id="keyChoice">
+        <label><input type="radio" name="keymode" value="new" checked> Create a new key</label>
+        <label><input type="radio" name="keymode" value="existing"> Use a key I already have</label>
+      </fieldset>
+      <label class="full" id="passLabel">Key passphrase (optional, never saved by GitSwitch)<input name="passphrase" type="password" autocomplete="new-password"></label>
+      <label class="full" id="keyPathLabel" hidden>Private key path<input name="key" list="keyList" placeholder="~/.ssh/id_ed25519"><datalist id="keyList"></datalist></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="makeDefault"> Make this the default account</label>
+      <div class="full row-actions"><button class="btn primary" type="submit" id="acctSave">Save account</button><button class="btn" type="button" id="acctCancel">Cancel</button></div>
+    </form>
+    <div class="accounts" id="accounts"></div>
+  </section>
+
+  <section id="tab-repos" hidden>
+    <h1>Repos</h1>
+    <p class="lead">Choose an account for each repo. Repos set to "Ask" follow your rules, then ask on the next pull or push.</p>
+    <form class="card" id="folderForm" style="grid-template-columns:1fr auto;align-items:end">
+      <label>Folder with your projects<input name="path" placeholder="~/work or D:\Projects" required></label>
+      <button class="btn primary" type="submit">Add folder</button>
+      <div class="full hint" id="folders"></div>
+    </form>
+    <div id="repos"></div>
+  </section>
+
+  <section id="tab-history" hidden>
+    <h1>History</h1>
+    <p class="lead">The commit graph with the account behind every commit. Commits made with another account's email are marked before you push them.</p>
+    <div class="hist-bar">
+      <select id="histRepo" aria-label="Repo"></select>
+      <label style="flex-direction:row;align-items:center;gap:6px;color:var(--ink)"><input type="checkbox" id="onlyFlagged"> Only wrong-account commits</label>
+      <button class="btn" id="histReload">Reload</button>
+    </div>
+    <div class="summary" id="histSummary"></div>
+    <div id="history"></div>
+  </section>
+
+  <section id="tab-rules" hidden>
+    <h1>Rules</h1>
+    <p class="lead">Rules pick the account automatically, so most repos never ask. A repo's own saved account always wins over rules.</p>
+    <form class="card" id="ruleForm">
+      <label>When<select name="kind"><option value="owner">the GitHub owner or org is</option><option value="folder">the repo is inside the folder</option></select></label>
+      <label id="patLabel">Owner or org<input name="pattern" required placeholder="acme-corp"></label>
+      <label>use account<select name="account" id="ruleAcct"></select></label>
+      <div style="align-self:end"><button class="btn primary" type="submit">Add rule</button></div>
+    </form>
+    <div id="rules"></div>
+  </section>
+
+  <section id="tab-settings" hidden>
+    <h1>Settings</h1>
+    <p class="lead">GitSwitch has no background process. Git starts it for a moment on each network command, and this window runs only while it is open.</p>
+    <form class="card" id="setForm">
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
+      <label>Seconds to wait for an answer before using the default<input name="promptTimeout" type="number" min="5" max="600"></label>
+      <div style="align-self:end"><button class="btn primary" type="submit">Save settings</button></div>
+    </form>
+    <h3>Health check</h3>
+    <div class="checks" id="checks"></div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const token = location.hash.slice(1);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S = null, repos = [], openDetail = {};
+
+async function api(method, path, data){
+  const r = await fetch(path, {method, headers:{'X-Token':token,'Content-Type':'application/json'}, body: data ? JSON.stringify(data) : undefined});
+  const j = await r.json().catch(() => ({error:'No response from GitSwitch. Start it again with `gitswitch ui`.'}));
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j.data;
+}
+function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 6000 : 2600); }
+async function act(fn, ok){ try { const v = await fn(); if (ok) toast(ok); return v; } catch(e){ toast(e.message, true); } }
+
+const colorOf = id => { if (!S) return 'var(--muted)'; const i = S.config.accounts.findIndex(a => a.id === id); return i < 0 ? 'var(--muted)' : `var(--a${i % 6})`; };
+
+// navigation
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
+function show(tab){
+  document.querySelectorAll('nav button').forEach(b => b.dataset.tab === tab ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
+  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
+  if (tab === 'repos') loadRepos();
+  if (tab === 'history') fillRepoSelect();
+}
+
+async function refresh(){
+  S = await api('GET', '/api/state');
+  $('#installBanner').hidden = S.installed;
+  $('#foot').textContent = 'GitSwitch ' + S.version;
+  const c = S.config;
+  $('#lanes').innerHTML = c.accounts.length ? '<h2>Accounts</h2>' + c.accounts.map(a =>
+    `<div class="lane"><i style="background:${colorOf(a.id)}"></i><div>${esc(a.id)}${a.id === c.default ? ' <span class="hint">default</span>' : ''}<small>${esc(a.email)}</small></div></div>`).join('') : '';
+  renderAccounts(); renderRules(); renderSettings();
+}
+
+// ---- accounts ----
+function renderAccounts(){
+  const c = S.config, el = $('#accounts');
+  if (!S.accounts?.length){ el.innerHTML = '<div class="empty">No accounts yet. Add your work account first, then your personal one.</div>'; return; }
+  el.innerHTML = S.accounts.map(a => `
+    <div class="acct" data-id="${esc(a.id)}">
+      <div class="stripe" style="background:${colorOf(a.id)}"></div>
+      <div>
+        <div class="acct-name">${esc(a.id)}${a.id === c.default ? '<span class="tag">default</span>' : ''}</div>
+        <div class="meta">${esc(a.name)} &lt;${esc(a.email)}&gt; on ${esc(a.host)}</div>
+        <div class="meta">${a.keyOk ? `Key <code>${esc(a.key)}</code>` : `<span class="status-bad">No key file${a.key ? ' at ' + esc(a.key) : ''}</span>`}
+          ${a.user ? ` · <span class="status-ok">signed in as ${esc(a.user)}</span>` : ''}</div>
+      </div>
+      <div class="row-actions">
+        <button class="btn" data-act="test">Test</button>
+        <button class="btn" data-act="key">Public key</button>
+        <button class="btn" data-act="edit">Edit</button>
+        <button class="btn" data-act="rename">Rename</button>
+        ${a.id !== c.default ? '<button class="btn" data-act="default">Make default</button>' : ''}
+        <button class="btn danger" data-act="remove">Remove</button>
+      </div>
+      ${openDetail[a.id] ? `<div class="detail">${openDetail[a.id]}</div>` : ''}
+    </div>`).join('');
+}
+$('#accounts').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const id = b.closest('.acct')?.dataset.id, a = S.accounts.find(x => x.id === id);
+  if (b.dataset.act === 'test'){
+    b.disabled = true; b.textContent = 'Testing…';
+    const r = await act(() => api('POST', '/api/test', {id}));
+    openDetail[id] = r ? (r.ok ? `<span class="status-ok">Connected to ${esc(a.host)} as <strong>${esc(r.user)}</strong>.</span>` : `<span class="status-bad">Could not log in.</span><pre class="mono" style="white-space:pre-wrap;margin:6px 0 0">${esc(r.output)}</pre>Add the public key to this account on ${esc(a.host)}, then test again.`) : '';
+    await refresh();
+  } else if (b.dataset.act === 'key'){
+    const k = await act(() => api('GET', '/api/pubkey?id=' + encodeURIComponent(id))); if (!k) return;
+    openDetail[id] = `Add this public key to <strong>${esc(id)}</strong> on ${esc(a.host)} while signed in as that account.
+      <textarea readonly>${esc(k.key)}</textarea>
+      <div class="row-actions" style="margin-top:8px"><button class="btn" data-act="copy">Copy key</button>${k.page ? `<button class="btn" data-act="page" data-url="${esc(k.page)}">Open ${esc(a.host)} SSH keys page</button>` : ''}<button class="btn" data-act="close">Done</button></div>`;
+    renderAccounts();
+  } else if (b.dataset.act === 'copy'){
+    const ta = b.closest('.detail').querySelector('textarea');
+    try { await navigator.clipboard.writeText(ta.value); toast('Key copied'); } catch { await act(() => api('POST','/api/copy',{text:ta.value}), 'Key copied'); }
+  } else if (b.dataset.act === 'page'){
+    await act(() => api('POST', '/api/open', {url:b.dataset.url}));
+  } else if (b.dataset.act === 'close'){
+    delete openDetail[id]; renderAccounts();
+  } else if (b.dataset.act === 'edit'){
+    openForm(a);
+  } else if (b.dataset.act === 'default'){
+    await act(() => api('POST', '/api/default', {id}), id + ' is now the default'); refresh();
+  } else if (b.dataset.act === 'rename'){
+    const nid = prompt(`New short name for ${id}:`, id); if (!nid || nid === id) return;
+    const r = await act(() => api('POST', '/api/account/rename', {id, newId:nid.trim()}));
+    if (r){ toast(`Renamed ${id} to ${nid} (${r.repos} repo${r.repos === 1 ? '' : 's'} updated)`); delete openDetail[id]; refresh(); }
+  } else if (b.dataset.act === 'remove'){
+    if (!confirm(`Remove ${id}? Its rules are removed too.`)) return;
+    const del = a.key && confirm(`Also delete its key files from this computer?\n${a.key}\n\nOK = delete them, Cancel = keep them`);
+    const r = await act(() => api('POST', '/api/account/remove', {id, deleteKeys:!!del}));
+    if (r) toast(del ? `Removed ${id} and deleted its key files. Delete the public key on ${a.host} too.` : 'Removed ' + id + ' (key files kept)');
+    refresh();
+  }
+});
+
+let formMode = 'new';
+async function loadKeyList(){
+  const keys = await api('GET','/api/keys').catch(() => []);
+  $('#keyList').innerHTML = (keys || []).map(k => `<option value="${esc(k.path)}">${esc(k.comment)}${k.usedBy ? ' (used by ' + esc(k.usedBy) + ')' : ''}</option>`).join('');
+}
+function openForm(a){
+  loadKeyList();
+  const f = $('#acctForm'); f.reset(); f.hidden = false; formMode = a ? 'edit' : 'new';
+  f.id.value = a?.id || ''; f.id.readOnly = !!a; f.host.value = a?.host || 'github.com'; f.name.value = a?.name || ''; f.email.value = a?.email || '';
+  f.key.value = a?.key || '';
+  $('#keyChoice').hidden = !!a; $('#passLabel').hidden = !!a; $('#keyPathLabel').hidden = !a;
+  $('#acctSave').textContent = a ? 'Save changes' : 'Save account';
+  f.id.focus();
+}
+$('#addAcctBtn').onclick = () => openForm(null);
+$('#acctCancel').onclick = () => $('#acctForm').hidden = true;
+$('#acctForm').addEventListener('change', e => {
+  if (e.target.name === 'keymode'){ const ex = e.target.value === 'existing'; $('#keyPathLabel').hidden = !ex; $('#passLabel').hidden = ex; }
+});
+$('#acctForm').onsubmit = async e => {
+  e.preventDefault(); const f = e.target;
+  const gen = formMode === 'new' && f.keymode.value === 'new';
+  const data = {mode:formMode, id:f.id.value.trim(), host:f.host.value.trim(), name:f.name.value.trim(), email:f.email.value.trim(),
+    key: gen ? '' : f.key.value.trim(), generateKey:gen, passphrase:f.passphrase.value, makeDefault:f.makeDefault.checked};
+  const r = await act(() => api('POST', '/api/account', data), formMode === 'new' ? 'Account saved' : 'Changes saved');
+  if (!r) return;
+  f.hidden = true; await refresh();
+  if (gen) document.querySelector(`.acct[data-id="${CSS.escape(r.id)}"] [data-act=key]`)?.click();
+};
+$('#installBtn').onclick = async () => { await act(() => api('POST','/api/install'), 'Installed. Every terminal and IDE now uses GitSwitch.'); refresh(); };
+
+// ---- repos ----
+async function loadRepos(){
+  const c = S.config;
+  $('#folders').innerHTML = c.scanFolders.length ? 'Scanning: ' + c.scanFolders.map(p => `<code>${esc(p)}</code> <button class="btn" style="padding:0 6px" data-rmfolder="${esc(p)}" aria-label="Stop scanning ${esc(p)}">×</button>`).join(' ') : 'Add the folders where you keep your projects.';
+  if (!c.scanFolders.length){ $('#repos').innerHTML = ''; repos = []; return; }
+  $('#repos').innerHTML = '<p class="hint">Looking for repos…</p>';
+  repos = await act(() => api('GET', '/api/repos')) || [];
+  renderRepos();
+}
+function acctOptions(sel, askLabel){
+  return `<option value="">${askLabel}</option>` + S.config.accounts.map(a => `<option value="${esc(a.id)}"${a.id === sel ? ' selected' : ''}>${esc(a.id)}</option>`).join('');
+}
+function renderRepos(){
+  if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found in these folders.</div>'; return; }
+  const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', asks:'asks on next push', '':'no matching account'};
+  $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
+    repos.map((r, i) => `<tr>
+      <td><div class="path">${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.remote || 'no remote')}</div></td>
+      <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${acctOptions(r.saved, r.saved ? 'Ask (follow rules)' : 'Ask (follow rules)')}</select></td>
+      <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && !r.saved ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${why[r.reason] || r.reason}` : (why[r.reason] ?? esc(r.reason))}</td>
+      <td class="${r.emailBad ? 'status-bad' : 'hint'}">${esc(r.email || 'not set yet')}${r.emailBad ? ' (wrong account)' : ''}</td>
+      <td><button class="btn" data-hist="${i}">History</button></td></tr>`).join('') + '</tbody></table>';
+}
+$('#repos').addEventListener('change', async e => {
+  const i = e.target.dataset.repo; if (i === undefined) return;
+  const r = await act(() => api('POST', '/api/repo/use', {gitDir:repos[i].gitDir, account:e.target.value}), e.target.value ? 'Saved: this repo uses ' + e.target.value : 'This repo will follow rules or ask');
+  if (r){ repos[i] = r; renderRepos(); }
+});
+$('#repos').addEventListener('click', e => { const i = e.target.dataset.hist; if (i !== undefined){ show('history'); $('#histRepo').value = repos[i].gitDir; loadHistory(); } });
+$('#folderForm').onsubmit = async e => { e.preventDefault(); await act(() => api('POST','/api/folder',{path:e.target.path.value}), 'Folder added'); e.target.reset(); await refresh(); loadRepos(); };
+$('#folders').addEventListener('click', async e => { const p = e.target.dataset.rmfolder; if (!p) return; await act(() => api('POST','/api/folder/remove',{path:p})); await refresh(); loadRepos(); });
+
+// ---- history ----
+async function fillRepoSelect(){
+  if (!repos.length && S.config.scanFolders.length) repos = await act(() => api('GET','/api/repos')) || [];
+  const cur = $('#histRepo').value;
+  $('#histRepo').innerHTML = repos.length ? repos.map(r => `<option value="${esc(r.gitDir)}">${esc(r.path)}</option>`).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
+  if (cur) $('#histRepo').value = cur;
+  if (repos.length && !$('#history').dataset.loaded) loadHistory();
+}
+$('#histRepo').onchange = () => loadHistory();
+$('#histReload').onclick = () => loadHistory();
+$('#onlyFlagged').onchange = () => H && renderHistory();
+let H = null;
+async function loadHistory(){
+  const gd = $('#histRepo').value; if (!gd) return;
+  $('#history').innerHTML = '<p class="hint">Reading history…</p>';
+  H = await act(() => api('GET', '/api/history?n=400&gitDir=' + encodeURIComponent(gd)));
+  $('#history').dataset.loaded = '1';
+  if (H) renderHistory();
+}
+const ago = t => { const s = Date.now()/1000 - t; const u = [[31536000,'year'],[2592000,'month'],[604800,'week'],[86400,'day'],[3600,'hour'],[60,'minute']];
+  for (const [n, w] of u) if (s >= n){ const v = Math.floor(s/n); return `${v} ${w}${v > 1 ? 's' : ''} ago`; } return 'just now'; };
+function renderHistory(){
+  const r = H.repo, only = $('#onlyFlagged').checked;
+  const unpushedBad = H.commits.filter(c => c.flagged && c.unpushed).length;
+  $('#histSummary').innerHTML = `<span>Repo account: <strong style="color:${colorOf(r.account)}">${esc(r.account || 'not set')}</strong></span>
+    <span class="${H.flagged ? 'status-bad' : 'status-ok'}">${H.flagged ? H.flagged + ' wrong-account commit' + (H.flagged > 1 ? 's' : '') : 'No wrong-account commits'}</span>
+    <span class="hint">${H.unpushed} not pushed</span>
+    ${unpushedBad ? `<button class="btn primary" id="fixBtn">Fix ${unpushedBad} not-pushed commit${unpushedBad > 1 ? 's' : ''}</button>` : ''}`;
+  $('#fixBtn')?.addEventListener('click', async () => {
+    if (!confirm('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.')) return;
+    const res = await act(() => api('POST','/api/repo/fix',{gitDir:r.gitDir}));
+    if (res) { toast(`Fixed ${res.fixed} commit${res.fixed === 1 ? '' : 's'}`); loadHistory(); }
+  });
+  if (!H.commits.length){ $('#history').innerHTML = '<div class="empty">This repo has no commits yet.</div>'; return; }
+  const L = 18, W = Math.max(2, H.lanes) * L + 14, RH = 32;
+  const x = c => 12 + c * L;
+  const rows = H.commits.map((c, i) => ({c, i})).filter(o => !only || o.c.flagged);
+  $('#history').innerHTML = `<div class="history" style="--gw:${W}px">` + rows.map(({c, i}) => {
+    const col = c.account ? colorOf(c.account) : 'var(--muted)';
+    let lines = '';
+    if (!only) for (const [f, t] of c.edges || []){
+      const x1 = x(f), x2 = x(t);
+      lines += x1 === x2 ? `<line x1="${x1}" y1="${RH/2}" x2="${x2}" y2="${RH + 1}" />`
+        : `<path d="M${x1} ${RH/2} C${x1} ${RH*0.85} ${x2} ${RH*0.75} ${x2} ${RH + 1}" fill="none"/>`;
+    }
+    // top half of every lane arriving from the row above
+    if (!only && i > 0) for (const t of new Set((H.commits[i-1].edges || []).map(e => e[1])))
+      lines += `<line x1="${x(t)}" y1="-1" x2="${x(t)}" y2="${RH/2}" />`;
+    const svg = `<svg width="${W}" height="${RH}" aria-hidden="true"><g stroke="var(--muted)" stroke-opacity=".55" stroke-width="2" fill="none">${lines}</g>
+      <circle cx="${x(c.col)}" cy="${RH/2}" r="5.5" fill="${c.flagged ? 'var(--bad)' : col}" ${c.unpushed ? 'stroke="var(--panel)" stroke-width="2"' : ''}/>
+      ${c.unpushed ? `<circle cx="${x(c.col)}" cy="${RH/2}" r="8" fill="none" stroke="${c.flagged ? 'var(--bad)' : col}" stroke-width="1.2" stroke-dasharray="2 2"/>` : ''}</svg>`;
+    const chip = `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>`;
+    const refs = c.refs ? `<span class="refs">${esc(c.refs)}</span>` : '';
+    return `<div class="hrow${c.flagged ? ' flag' : ''}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
+      <div class="subj">${refs}${esc(c.subject)}</div><div class="em">${esc(c.email)}</div>
+      <div class="when">${c.unpushed ? 'not pushed' : ago(c.time)}</div></div>`;
+  }).join('') + '</div>' + (H.commits.length >= 400 ? '<p class="hint">Showing the latest 400 commits.</p>' : '');
+}
+
+// ---- rules ----
+function renderRules(){
+  const c = S.config;
+  $('#ruleAcct').innerHTML = c.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
+  $('#rules').innerHTML = c.rules.length ? `<table><thead><tr><th>When</th><th>Use account</th><th></th></tr></thead><tbody>` +
+    c.rules.map((r, i) => `<tr><td>${r.kind === 'owner' ? 'Owner or org is' : 'Repo is inside'} <code>${esc(r.pattern)}</code></td>
+      <td><span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)}</td><td><button class="btn danger" data-rule="${i}">Remove</button></td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">No rules yet. Example: when the owner is your company org, use your work account.</div>';
+}
+$('#ruleForm').kind.onchange = e => { const f = e.target.value === 'folder'; $('#patLabel').firstChild.textContent = f ? 'Folder' : 'Owner or org'; $('#ruleForm').pattern.placeholder = f ? '~/work' : 'acme-corp'; };
+$('#ruleForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
+  if (await act(() => api('POST','/api/rule',{kind:f.kind.value, pattern:f.pattern.value, account:f.account.value}), 'Rule added') !== undefined){ f.pattern.value=''; } refresh(); };
+$('#rules').addEventListener('click', async e => { const i = e.target.dataset.rule; if (i === undefined) return; await act(() => api('POST','/api/rule/remove',{index:+i}), 'Rule removed'); refresh(); });
+
+// ---- settings ----
+function renderSettings(){
+  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout;
+  $('#checks').innerHTML = S.doctor.map(c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
+    <div><div>${esc(c.title)}</div><div class="hint">${esc(c.detail)}</div></div>${c.canFix ? `<button class="btn" data-fix="${esc(c.id)}">Fix</button>` : ''}</div>`).join('');
+}
+$('#setForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
+  await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:+f.promptTimeout.value}), 'Settings saved'); refresh(); };
+$('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); });
+
+// keep-alive: the app process stops ~30 s after this page closes
+setInterval(() => api('POST','/api/ping').catch(() => {}), 10000);
+refresh().catch(e => toast(e.message, true));
+</script>
+</body>
+</html>
