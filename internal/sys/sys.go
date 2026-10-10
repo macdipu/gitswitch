@@ -70,7 +70,8 @@ func SamePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
-// NoSystemChanges is set by tests: skip PATH, shortcuts, browser, clipboard.
+// NoSystemChanges is set by tests: skip PATH, shortcuts, browser, clipboard
+// and popup dialogs.
 func NoSystemChanges() bool { return os.Getenv("GITSWITCH_TEST_NO_SYSTEM") != "" }
 
 // NoTerminalPrompt reports git runs started by an IDE's source-control

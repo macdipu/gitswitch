@@ -643,15 +643,40 @@ func TestTerminalPromptSavesAnswer(t *testing.T) {
 		cmd = exec.Command(scriptBin, "-qec", gitCmd, "/dev/null")
 	}
 	cmd.Dir, cmd.Env = e.root, vars
-	cmd.Stdin = strings.NewReader("3!\n") // 3 = "me" (accounts in the order added)
+	// Answer only once the question is on screen, like a person would, and
+	// keep stdin open: macOS `script` sends ^D to the terminal when its stdin
+	// ends, which would reach the prompt before the answer.
+	stdin, err := cmd.StdinPipe()
+	must(t, err)
+	out, err := cmd.StdoutPipe()
+	must(t, err)
+	cmd.Stderr = cmd.Stdout
+	must(t, cmd.Start())
+	go func() {
+		var seen strings.Builder
+		buf := make([]byte, 4096)
+		for {
+			n, err := out.Read(buf)
+			seen.Write(buf[:n])
+			if strings.Contains(seen.String(), "Type a number") {
+				io.WriteString(stdin, "3!\n") // 3 = "me" (accounts in the order added)
+				io.Copy(io.Discard, out)
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	done := make(chan error, 1)
-	go func() { _, err := cmd.CombinedOutput(); done <- err }()
+	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(60 * time.Second):
 		_ = cmd.Process.Kill()
 		t.Fatal("prompt hung")
 	}
+	stdin.Close()
 	notes := filepath.Join(e.root, "notes")
 	if got := e.cfg(notes, "gitswitch.account"); got != "me" {
 		t.Fatalf("saved account %q, want me", got)

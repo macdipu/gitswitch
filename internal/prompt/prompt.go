@@ -65,6 +65,9 @@ func Terminal(t *sys.Terminal, label string, cands []account.Account, def *accou
 // (IDE source-control panels, auto-fetch). It starts a short-lived process
 // only for the question, so nothing runs in the background.
 func Dialog(label string, cands []account.Account, def *account.Account, timeout int) *resolve.Decision {
+	if sys.NoSystemChanges() {
+		return nil // tests: never open a window
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 	var choice string
