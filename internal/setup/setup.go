@@ -11,9 +11,9 @@ import (
 	"runtime"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Installer performs install and uninstall. Report receives progress

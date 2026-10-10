@@ -3,7 +3,7 @@ package resolve
 import (
 	"testing"
 
-	"gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/account"
 )
 
 func TestMatchesOwner(t *testing.T) {

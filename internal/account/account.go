@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Account is one git identity: a host login, a key and a commit identity.

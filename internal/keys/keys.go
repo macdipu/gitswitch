@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Generate creates an ed25519 key at the account's default path. With

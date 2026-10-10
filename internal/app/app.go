@@ -12,14 +12,14 @@ import (
 	"os"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/doctor"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/history"
-	"gitswitch/internal/keys"
-	"gitswitch/internal/repo"
-	"gitswitch/internal/setup"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/doctor"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/history"
+	"github.com/macdipu/gitswitch/internal/keys"
+	"github.com/macdipu/gitswitch/internal/repo"
+	"github.com/macdipu/gitswitch/internal/setup"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Version is set at build time with -ldflags "-X gitswitch/internal/app.Version=v1.2.0".

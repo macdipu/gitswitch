@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/prompt"
-	"gitswitch/internal/resolve"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/prompt"
+	"github.com/macdipu/gitswitch/internal/resolve"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Invocation is what git asked ssh to do.

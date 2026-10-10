@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Reasons an account was chosen.

@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const module = "gitswitch/"
+const module = "github.com/macdipu/gitswitch/"
 
 // layer of each internal package: a package may import only packages in
 // strictly lower layers (or the allowed same-layer pairs below).

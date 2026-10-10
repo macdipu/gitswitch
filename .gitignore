@@ -1,0 +1,19 @@
+# Build output (published by the release workflow, not committed)
+/dist/
+/gitswitch
+/gitswitch.exe
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/app"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/app"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 func (x *CLI) cmdAccount(args []string) error {

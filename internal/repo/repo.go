@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/resolve"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/resolve"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Info describes one repo for the apps.

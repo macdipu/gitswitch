@@ -4,6 +4,7 @@
 [![release](https://img.shields.io/github/v/release/macdipu/gitswitch?sort=semver)](https://github.com/macdipu/gitswitch/releases/latest)
 [![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go)](go.mod)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **Use several git accounts (work, personal, clients) on one computer with normal clone URLs.**
 GitSwitch picks the right SSH key and commit email for every clone, pull and push, in every terminal and IDE.
@@ -36,6 +37,7 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - [How it works](#how-it-works)
 - [Uninstall](#uninstall)
 - [Development](#development)
+- [License](#license)
 
 ## Install
 
@@ -59,6 +61,16 @@ Run the same line again to update. To pin a version, set `GITSWITCH_VERSION=v1.2
 <summary>Manual install</summary>
 
 Download `gitswitch-<os>-<cpu>` for your computer from the [Releases page](https://github.com/macdipu/gitswitch/releases) and run it with `install`. On Windows you can simply double-click it.
+
+</details>
+
+<details>
+<summary>With Go</summary>
+
+```sh
+go install github.com/macdipu/gitswitch/cmd/gitswitch@latest
+gitswitch install
+```
 
 </details>
 
@@ -229,3 +241,7 @@ go test ./...
 The tests build the real binary and run real `git clone`, `pull` and `push` through it against local repos (no network). They cover install and uninstall, every way an account is chosen, clones inside other repos, submodules, port-443 hosts, renames, duplicate keys, dry runs, health checks, history and author fixes, the browser app's security, and the terminal prompt. [GitHub Actions](https://github.com/macdipu/gitswitch/actions) runs them on Linux, macOS and Windows for every push.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)

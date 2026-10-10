@@ -10,11 +10,11 @@ import (
 	"os"
 	"strings"
 
-	"gitswitch/internal/app"
-	"gitswitch/internal/sshhook"
-	"gitswitch/internal/sys"
-	"gitswitch/internal/ui/tui"
-	"gitswitch/internal/ui/web"
+	"github.com/macdipu/gitswitch/internal/app"
+	"github.com/macdipu/gitswitch/internal/sshhook"
+	"github.com/macdipu/gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/ui/tui"
+	"github.com/macdipu/gitswitch/internal/ui/web"
 )
 
 const usage = `gitswitch - use several git accounts on one computer

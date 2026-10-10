@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Store reads and writes accounts, rules and settings in git config.

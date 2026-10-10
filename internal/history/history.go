@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/repo"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/repo"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 type Commit struct {

@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Runner runs git. With DryRun set, commands that would change git config

@@ -10,12 +10,12 @@ import (
 	"runtime"
 	"strings"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/gitcli"
-	"gitswitch/internal/keys"
-	"gitswitch/internal/repo"
-	"gitswitch/internal/setup"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/gitcli"
+	"github.com/macdipu/gitswitch/internal/keys"
+	"github.com/macdipu/gitswitch/internal/repo"
+	"github.com/macdipu/gitswitch/internal/setup"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Doctor runs health checks.

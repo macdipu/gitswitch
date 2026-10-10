@@ -12,13 +12,13 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/app"
-	"gitswitch/internal/doctor"
-	"gitswitch/internal/history"
-	"gitswitch/internal/keys"
-	"gitswitch/internal/repo"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/app"
+	"github.com/macdipu/gitswitch/internal/doctor"
+	"github.com/macdipu/gitswitch/internal/history"
+	"github.com/macdipu/gitswitch/internal/keys"
+	"github.com/macdipu/gitswitch/internal/repo"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // The TUI runs only while it is open, in the terminal it was started from

@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	gsBin = filepath.Join(dir, "gitswitch"+exeSuffix())
-	build := exec.Command("go", "build", "-o", gsBin, "gitswitch/cmd/gitswitch")
+	build := exec.Command("go", "build", "-o", gsBin, "github.com/macdipu/gitswitch/cmd/gitswitch")
 	build.Dir = filepath.Join("..", "..")
 	out, err := build.CombinedOutput()
 	if err != nil {

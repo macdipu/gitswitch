@@ -3,7 +3,7 @@ package history
 import (
 	"testing"
 
-	"gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/account"
 )
 
 func TestLayoutLanes(t *testing.T) {

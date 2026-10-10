@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/app"
-	"gitswitch/internal/keys"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/app"
+	"github.com/macdipu/gitswitch/internal/keys"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 //go:embed assets/index.html

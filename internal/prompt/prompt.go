@@ -15,9 +15,9 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"gitswitch/internal/account"
-	"gitswitch/internal/resolve"
-	"gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/resolve"
+	"github.com/macdipu/gitswitch/internal/sys"
 )
 
 // Terminal asks on the user's terminal. git owns stdin/stdout (the SSH
