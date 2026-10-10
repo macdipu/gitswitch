@@ -1,12 +1,12 @@
 #!/bin/sh
 # GitSwitch one-line installer for macOS, Linux, WSL and Git Bash on Windows.
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/macdipu/gitswitch/main/install.sh | sh
 # Options (environment variables):
 #   GITSWITCH_VERSION=v1.2.0   install a specific release instead of the latest
 #   GITSWITCH_REPO=owner/repo  install from a fork
 set -eu
 
-REPO="${GITSWITCH_REPO:-OWNER/gitswitch}"   # <-- set to your GitHub repo before publishing
+REPO="${GITSWITCH_REPO:-macdipu/gitswitch}"
 VERSION="${GITSWITCH_VERSION:-latest}"
 
 say()  { printf '%s\n' "$*"; }

@@ -1,10 +1,10 @@
 # GitSwitch one-line installer for Windows (PowerShell 5.1 or 7+):
-#   irm https://raw.githubusercontent.com/OWNER/REPO/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/macdipu/gitswitch/main/install.ps1 | iex
 # Options: $env:GITSWITCH_VERSION = 'v1.2.0'   $env:GITSWITCH_REPO = 'owner/repo'
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$repo    = if ($env:GITSWITCH_REPO)    { $env:GITSWITCH_REPO }    else { 'OWNER/gitswitch' }   # <-- set before publishing
+$repo    = if ($env:GITSWITCH_REPO)    { $env:GITSWITCH_REPO }    else { 'macdipu/gitswitch' }
 $version = if ($env:GITSWITCH_VERSION) { $env:GITSWITCH_VERSION } else { 'latest' }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {

@@ -28,3 +28,10 @@ go run ./cmd/gitswitch install
   `ARCHITECTURE.md`.
 - Keep messages plain and specific: say what happened and how to fix it.
 - CI must pass on Linux, macOS and Windows.
+
+## Publishing a release (maintainers)
+
+1. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
+2. The `release` workflow runs the tests, builds all six binaries plus
+   `SHA256SUMS`, and attaches them to the GitHub release.
+3. The one-line installers always fetch the latest release.
