@@ -29,7 +29,7 @@ if [ -z "$TARGETS" ]; then
   fi
 fi
 
-LDFLAGS="-s -w -X github.com/macdipu/gitswitch/internal/app.Version=$VERSION"
+LDFLAGS="-s -w -X github.com/macdipu/gitswitch/internal/bootstrap.Version=$VERSION"
 build() { # build <os> <arch> <cgo> <tags> <output>
   CGO_ENABLED=$3 GOOS=$1 GOARCH=$2 go build -trimpath -tags "$4" -ldflags="$LDFLAGS" -o "$5" ./cmd/gitswitch
   echo "built $5"

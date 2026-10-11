@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/macdipu/gitswitch/internal/ui/cli"
+	"github.com/macdipu/gitswitch/internal/interfaces/cli"
 )
 
 func main() { os.Exit(cli.Run(os.Args[1:])) }

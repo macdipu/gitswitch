@@ -314,6 +314,20 @@ go test ./...
 
 Releases build macOS and Linux on their own runners, since the window needs cgo there (see `.github/workflows/release.yml`).
 
+### Architecture
+
+The code is organised by feature (`internal/features/<feature>/{domain,application,infrastructure}`). All three front ends call the same application use cases. The use cases depend only on interfaces declared in the domain, and infrastructure (git, ssh, the file system) implements those interfaces:
+
+```text
+CLI ─────┐
+TUI ─────┼──> Application Use Cases ──> Domain Interfaces
+Desktop ─┘                                  ▲
+                                            │
+                              Infrastructure Implementations
+```
+
+`internal/bootstrap` connects the implementations to the use cases. `test/architecture` fails the build when an import breaks these rules. See [ARCHITECTURE.md](ARCHITECTURE.md) for the details.
+
 The tests build the real binary and run real `git clone`, `pull` and `push` through it against local repos (no network). They cover install and uninstall, every way an account is chosen, clones inside other repos, submodules, port-443 hosts, renames, duplicate keys, dry runs, health checks, history and author fixes, the desktop app's API, and the terminal prompt. [GitHub Actions](https://github.com/macdipu/gitswitch/actions) runs them on Linux, macOS and Windows for every push.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and [ROADMAP.md](ROADMAP.md) for planned features you can pick up.

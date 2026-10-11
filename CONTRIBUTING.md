@@ -114,19 +114,23 @@ If you want to build one:
 
 1. Open an issue named after the item (for example "Roadmap #5: Clone via
    URL") and say you are working on it, so nobody else builds it too.
-2. Check [ARCHITECTURE.md](ARCHITECTURE.md) for which layer it goes in.
-   Repo features go through `internal/repo` and `internal/app`; GitHub API
-   work goes in a new `hosting` package.
+2. Check [ARCHITECTURE.md](ARCHITECTURE.md) for where it goes. Repo
+   features are use cases in `internal/features/repository/application`;
+   GitHub API work goes in a new `internal/features/hosting` feature.
+   Front ends reach new use cases through `bootstrap.App`.
 3. Build it for every front end that the item names (desktop app, terminal
    app, CLI), and update its row in ROADMAP.md in the same pull request.
 
 ## Pull requests
 
-- Put new behavior in the right layer; front ends only call `internal/app`.
+- Put new behavior in the right feature and layer: rules in `domain`, use
+  cases in `application`, git/ssh/file code in `infrastructure`. Front ends
+  only call use cases (through `bootstrap.App`).
 - Add tests: a unit test next to the code, and an integration test in
   `test/integration` for anything git or the terminal can observe.
-- New packages need a layer in `test/architecture/layers_test.go` and in
-  `ARCHITECTURE.md`.
+- New packages must fit the layout in `ARCHITECTURE.md`;
+  `test/architecture` fails for a package without a role or with an import
+  the rules don't allow.
 - Keep messages plain and specific: say what happened and how to fix it.
 - CI must pass on Linux, macOS and Windows.
 

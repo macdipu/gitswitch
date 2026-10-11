@@ -1,0 +1,292 @@
+// Package api serves the desktop app's page and the JSON API it calls.
+// The window (package window) serves it in-process through Wails: there is
+// no network port. It builds without cgo, so its tests run everywhere.
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/macdipu/gitswitch/internal/bootstrap"
+	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
+	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
+	"github.com/macdipu/gitswitch/internal/interfaces/desktop/assets"
+	"github.com/macdipu/gitswitch/internal/platform/filesystem"
+	"github.com/macdipu/gitswitch/internal/platform/process"
+)
+
+type server struct {
+	app        *bootstrap.App
+	pickFolder func(title string) (string, error)
+
+	mu    sync.Mutex
+	clone *cloneJob // the latest clone; one runs at a time
+}
+
+// cloneJob is a clone running in the background; the page polls it.
+type cloneJob struct {
+	Running bool       `json:"running"`
+	Line    string     `json:"line"` // git's latest progress line
+	Error   string     `json:"error"`
+	Repo    *repo.Info `json:"repo"`
+}
+
+// Handler serves the page at / and its JSON API under /api/. pickFolder
+// shows the native folder picker ("" when cancelled); nil means there is
+// none, and the page asks for a typed path instead.
+func Handler(a *bootstrap.App, pickFolder func(title string) (string, error)) http.Handler {
+	s := &server{app: a, pickFolder: pickFolder}
+	routes := s.routes()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(assets.Index)
+			return
+		}
+		h, ok := routes[r.Method+" "+r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		defer func() {
+			if p := recover(); p != nil {
+				writeJSON(w, nil, fmt.Errorf("bad request: %v", p))
+			}
+		}()
+		v, err := h(r)
+		writeJSON(w, v, err)
+	})
+}
+
+type handler func(r *http.Request) (any, error)
+
+func (s *server) routes() map[string]handler {
+	a := s.app
+	return map[string]handler{
+		"GET /api/state":           s.state,
+		"POST /api/account":        s.saveAccount,
+		"POST /api/account/remove": s.removeAccount,
+		"POST /api/account/rename": func(r *http.Request) (any, error) {
+			b := body(r)
+			n, err := a.Accounts.Rename(str(b, "id"), str(b, "newId"))
+			return map[string]int{"repos": n}, err
+		},
+		"GET /api/keys":     func(r *http.Request) (any, error) { return a.Keys.Existing(), nil },
+		"POST /api/default": func(r *http.Request) (any, error) { return nil, a.Accounts.SetDefault(str(body(r), "id")) },
+		"POST /api/test":    func(r *http.Request) (any, error) { return a.Keys.Test(str(body(r), "id"), true) },
+		"GET /api/pubkey": func(r *http.Request) (any, error) {
+			k, help, err := a.Keys.PublicKey(r.URL.Query().Get("id"))
+			return map[string]any{"key": k, "page": help.Page, "steps": help.Steps}, err
+		},
+		"POST /api/open": func(r *http.Request) (any, error) {
+			u := str(body(r), "url")
+			if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+				return nil, errors.New("only web links can be opened")
+			}
+			return nil, process.OpenBrowser(u)
+		},
+		"POST /api/copy": func(r *http.Request) (any, error) {
+			return map[string]bool{"ok": process.CopyToClipboard(str(body(r), "text"))}, nil
+		},
+		"POST /api/rule": func(r *http.Request) (any, error) {
+			b := body(r)
+			return nil, a.Accounts.AddRule(account.Rule{Kind: str(b, "kind"), Pattern: str(b, "pattern"), Account: str(b, "account")})
+		},
+		"POST /api/rule/remove": func(r *http.Request) (any, error) {
+			i, _ := body(r)["index"].(float64)
+			return nil, a.Accounts.RemoveRuleAt(int(i))
+		},
+		"POST /api/settings":      s.settings,
+		"POST /api/folder":        func(r *http.Request) (any, error) { return nil, a.Accounts.AddScanFolder(str(body(r), "path")) },
+		"POST /api/folder/remove": func(r *http.Request) (any, error) { return nil, a.Accounts.RemoveScanFolder(str(body(r), "path")) },
+		"GET /api/repos":          func(r *http.Request) (any, error) { return a.Repos.List(), nil },
+		"POST /api/repo/add":      func(r *http.Request) (any, error) { return a.Repos.Add(str(body(r), "path")) },
+		"POST /api/repo/remove":   func(r *http.Request) (any, error) { return nil, a.Repos.Remove(str(body(r), "path")) },
+		"POST /api/repo/pin": func(r *http.Request) (any, error) {
+			b := body(r)
+			on, _ := b["on"].(bool)
+			return nil, a.Repos.Pin(str(b, "path"), on)
+		},
+		"POST /api/repo/open": func(r *http.Request) (any, error) {
+			b := body(r)
+			ed, _ := b["editor"].(bool)
+			return nil, a.Repos.Open(str(b, "path"), ed)
+		},
+		"POST /api/repo/clone": s.startClone,
+		"GET /api/repo/clone": func(r *http.Request) (any, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if s.clone == nil {
+				return cloneJob{}, nil
+			}
+			return *s.clone, nil
+		},
+		"POST /api/pick-folder": func(r *http.Request) (any, error) {
+			if s.pickFolder == nil {
+				return map[string]any{"supported": false}, nil
+			}
+			p, err := s.pickFolder(str(body(r), "title"))
+			return map[string]any{"supported": true, "path": p}, err
+		},
+		"POST /api/repo/use": func(r *http.Request) (any, error) {
+			b := body(r)
+			gd, err := s.gitDir(str(b, "gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			if _, err := a.Accounts.SetRepoAccount(gd, str(b, "account")); err != nil {
+				return nil, err
+			}
+			return a.Repos.Info(gd), nil
+		},
+		"GET /api/history": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			n := 300
+			fmt.Sscan(r.URL.Query().Get("n"), &n)
+			if n < 1 || n > 2000 {
+				n = 300
+			}
+			return a.History.Build(gd, n)
+		},
+		"POST /api/repo/fix": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(str(body(r), "gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			n, err := a.History.FixAuthor(gd)
+			return map[string]int{"fixed": n}, err
+		},
+		"POST /api/doctor/fix": func(r *http.Request) (any, error) { return nil, a.Doctor.Fix(str(body(r), "id")) },
+		"POST /api/install":    func(r *http.Request) (any, error) { return nil, a.Setup.Install(nil) },
+	}
+}
+
+type uiAccount struct {
+	account.Account
+	KeyOK   bool   `json:"keyOk"`
+	KeyPage string `json:"keyPage"`
+}
+
+func (s *server) state(r *http.Request) (any, error) {
+	c := s.app.Accounts.Config()
+	accts := []uiAccount{}
+	for _, acc := range c.Accounts {
+		acc := acc
+		accts = append(accts, uiAccount{acc, s.app.Keys.HasKey(&acc), ssh.AddKeyPage(acc.Host)})
+	}
+	return map[string]any{
+		"version":   bootstrap.Version,
+		"config":    c,
+		"accounts":  accts,
+		"installed": s.app.Setup.Installed(),
+		"doctor":    s.app.Doctor.Run(false),
+		"home":      filesystem.HomeDir(),
+	}, nil
+}
+
+func (s *server) saveAccount(r *http.Request) (any, error) {
+	b := body(r)
+	acc := account.Account{ID: str(b, "id"), Host: str(b, "host"), Name: str(b, "name"), Email: str(b, "email"), Key: str(b, "key")}
+	if str(b, "mode") != "new" {
+		return acc, s.app.Accounts.Update(acc)
+	}
+	gen, _ := b["generateKey"].(bool)
+	acc, err := s.app.Accounts.Add(acc, account.KeyChoice{New: gen, Passphrase: str(b, "passphrase")})
+	if err != nil {
+		return nil, err
+	}
+	if d, _ := b["makeDefault"].(bool); d {
+		_ = s.app.Accounts.SetDefault(acc.ID)
+	}
+	return acc, nil
+}
+
+// startClone starts cloning in the background and returns at once.
+func (s *server) startClone(r *http.Request) (any, error) {
+	b := body(r)
+	url, account := str(b, "url"), str(b, "account")
+	dir := str(b, "parent")
+	if name := str(b, "name"); dir != "" && name != "" {
+		dir = filepath.Join(filesystem.ExpandHome(dir), name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.clone != nil && s.clone.Running {
+		return nil, errors.New("a clone is already running; wait for it to finish")
+	}
+	job := &cloneJob{Running: true, Line: "Starting…"}
+	s.clone = job
+	go func() {
+		info, err := s.app.Repos.Clone(url, dir, account, func(l string) {
+			s.mu.Lock()
+			job.Line = l
+			s.mu.Unlock()
+		})
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		job.Running = false
+		if err != nil {
+			job.Error = err.Error()
+		} else {
+			job.Repo = &info
+		}
+	}()
+	return *job, nil
+}
+
+func (s *server) removeAccount(r *http.Request) (any, error) {
+	b := body(r)
+	del, _ := b["deleteKeys"].(bool)
+	deleted, err := s.app.Accounts.Remove(str(b, "id"), del)
+	return map[string]any{"deleted": deleted}, err
+}
+
+func (s *server) settings(r *http.Request) (any, error) {
+	b := body(r)
+	if v, ok := b["guiPrompt"].(bool); ok {
+		if err := s.app.Accounts.SetSetting("guiPrompt", fmt.Sprint(v)); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["promptTimeout"].(float64); ok && v >= 5 {
+		if err := s.app.Accounts.SetSetting("promptTimeout", fmt.Sprint(int(v))); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+// gitDir accepts only paths that really are git repos.
+func (s *server) gitDir(p string) (string, error) { return s.app.Repos.For(p) }
+
+func writeJSON(w http.ResponseWriter, v any, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": v})
+}
+
+func body(r *http.Request) map[string]any {
+	m := map[string]any{}
+	if r.Body != nil {
+		_ = json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&m)
+	}
+	return m
+}
+
+func str(m map[string]any, k string) string {
+	s, _ := m[k].(string)
+	return strings.TrimSpace(s)
+}

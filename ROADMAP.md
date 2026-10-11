@@ -30,7 +30,7 @@ desktop app, the terminal app and the CLI alike.
 
 ### Remote repositories (GitHub)
 
-These need a `hosting` package that talks to the GitHub API as the right
+These need a `hosting` feature (`internal/features/hosting`) that talks to the GitHub API as the right
 account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 
 | # | Feature | Status | Notes |

@@ -1,6 +1,8 @@
-// Package architecture enforces the layering described in ARCHITECTURE.md.
-// It fails when a package imports a package from a higher layer, so the
-// structure stays clean as the project grows.
+// Package architecture enforces the dependency rules described in
+// ARCHITECTURE.md. Every package is given a role from where it lives
+// (domain, application, infrastructure, ...), and each role may import only
+// the roles listed in allowed. The imports are read from the source, so
+// files for every OS and build tag are checked, not just this machine's.
 package architecture
 
 import (
@@ -8,45 +10,91 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 const module = "github.com/macdipu/gitswitch/"
 
-// layer of each internal package: a package may import only packages in
-// strictly lower layers (or the allowed same-layer pairs below).
-var layer = map[string]int{
-	"internal/sys":        0,
-	"internal/gitcli":     1,
-	"internal/account":    2,
-	"internal/resolve":    3,
-	"internal/keys":       3,
-	"internal/setup":      3,
-	"internal/repo":       4,
-	"internal/prompt":     4,
-	"internal/history":    5,
-	"internal/sshhook":    5,
-	"internal/doctor":     6,
-	"internal/app":        7,
-	"internal/ui/tui":     8,
-	"internal/ui/desktop": 8,
-	"internal/ui/cli":     9, // composes the other front ends
-	"cmd/gitswitch":       10,
+type role string
+
+const (
+	platform       role = "platform"       // internal/platform/*: OS details, no business rules
+	domain         role = "domain"         // internal/features/<f>/domain: pure rules and ports
+	application    role = "application"    // internal/features/<f>/application: use cases
+	infrastructure role = "infrastructure" // internal/features/<f>/infrastructure: implements ports
+	module_        role = "feature module" // internal/features/<f>: a single-package feature (setup, doctor)
+	interfaces     role = "interface"      // internal/interfaces/*: front ends (CLI, TUI, desktop, prompts)
+	bootstrap      role = "bootstrap"      // internal/bootstrap: builds and wires everything
+	command        role = "command"        // cmd/*: main
+)
+
+// allowed lists the roles each role may import. Same-role imports not
+// listed here are refused too (e.g. one application package importing
+// another): features talk through ports.
+var allowed = map[role][]role{
+	platform:       {platform},
+	domain:         {domain},
+	application:    {domain, platform},
+	infrastructure: {domain, infrastructure, platform},
+	module_:        {domain, infrastructure, module_, platform},
+	interfaces:     {domain, application, module_, interfaces, bootstrap, platform},
+	bootstrap:      {domain, application, infrastructure, module_, interfaces, platform},
+	command:        {interfaces},
 }
 
-// Front ends talk to git only through the app layer.
-var forbidden = map[string][]string{
-	"internal/ui/cli":     {"internal/gitcli"},
-	"internal/ui/tui":     {"internal/gitcli"},
-	"internal/ui/desktop": {"internal/gitcli"},
-	"cmd/gitswitch":       {"internal/gitcli", "internal/app"},
+// Standard-library packages a role must not use: domain code stays pure,
+// and use cases reach processes, the network and the OS through ports or
+// the platform packages.
+var forbiddenStd = map[role][]string{
+	domain:      {"os", "os/exec", "os/signal", "syscall", "unsafe", "runtime", "io/fs", "net/http", "database/sql"},
+	application: {"os/exec", "os/signal", "syscall", "unsafe", "net/http", "database/sql"},
 }
 
-func TestLayers(t *testing.T) {
+// roleOf classifies a package directory (relative to the module root).
+func roleOf(pkg string) (role, bool) {
+	parts := strings.Split(pkg, "/")
+	switch {
+	case len(parts) >= 2 && parts[0] == "cmd":
+		return command, true
+	case pkg == "internal/bootstrap":
+		return bootstrap, true
+	case len(parts) >= 3 && parts[0] == "internal" && parts[1] == "platform":
+		return platform, true
+	case len(parts) >= 3 && parts[0] == "internal" && parts[1] == "interfaces":
+		return interfaces, true
+	case len(parts) == 3 && parts[0] == "internal" && parts[1] == "features":
+		return module_, true
+	case len(parts) == 4 && parts[0] == "internal" && parts[1] == "features":
+		switch parts[3] {
+		case "domain":
+			return domain, true
+		case "application":
+			return application, true
+		case "infrastructure":
+			return infrastructure, true
+		}
+	}
+	return "", false
+}
+
+// feature is the feature a package belongs to ("" when none).
+func feature(pkg string) string {
+	if p := strings.Split(pkg, "/"); len(p) >= 3 && p[0] == "internal" && p[1] == "features" {
+		return p[2]
+	}
+	return ""
+}
+
+// imports maps each package (relative to the module root) to its imports,
+// from non-test files of every OS and build tag.
+func imports(t *testing.T) map[string]map[string]bool {
+	t.Helper()
 	root := filepath.Join("..", "..")
 	fset := token.NewFileSet()
-	seen := map[string]bool{}
+	out := map[string]map[string]bool{}
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		// Skip what `go build ./...` skips: hidden, _ and testdata folders,
 		// and nested modules (e.g. a clone inside sandbox/config).
@@ -66,56 +114,149 @@ func TestLayers(t *testing.T) {
 		if strings.HasPrefix(pkg, "test/") {
 			return nil
 		}
-		from, known := layer[pkg]
-		if !known {
-			t.Errorf("%s is not assigned a layer in layers_test.go (and ARCHITECTURE.md)", pkg)
-			return nil
-		}
-		seen[pkg] = true
 		f, err := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
 		}
+		if out[pkg] == nil {
+			out[pkg] = map[string]bool{}
+		}
 		for _, imp := range f.Imports {
-			path := strings.Trim(imp.Path.Value, `"`)
-			if !strings.HasPrefix(path, module) {
-				continue
-			}
-			dep := strings.TrimPrefix(path, module)
-			for _, bad := range forbidden[pkg] {
-				if dep == bad {
-					t.Errorf("%s imports %s: front ends must go through internal/app", p, dep)
-				}
-			}
-			if to, ok := layer[dep]; ok && to >= from {
-				t.Errorf("%s (layer %d) imports %s (layer %d): imports must point to lower layers", p, from, dep, to)
-			}
+			path, _ := strconv.Unquote(imp.Path.Value)
+			out[pkg][path] = true
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for pkg := range layer {
-		if !seen[pkg] {
-			t.Errorf("layer table lists %s, which no longer exists", pkg)
+	if len(out) == 0 {
+		t.Fatal("found no packages")
+	}
+	return out
+}
+
+func TestDependencyRules(t *testing.T) {
+	for pkg, imps := range imports(t) {
+		from, ok := roleOf(pkg)
+		if !ok {
+			t.Errorf("%s has no role: put it under internal/features/<feature>/{domain,application,infrastructure}, internal/features/<feature>, internal/interfaces, internal/platform or internal/bootstrap (see ARCHITECTURE.md)", pkg)
+			continue
+		}
+		for path := range imps {
+			if !strings.HasPrefix(path, module) {
+				for _, bad := range forbiddenStd[from] {
+					if path == bad {
+						t.Errorf("%s (%s) imports %s: %s code must not use it; go through a port or internal/platform", pkg, from, path, from)
+					}
+				}
+				continue
+			}
+			dep := strings.TrimPrefix(path, module)
+			to, ok := roleOf(dep)
+			if !ok {
+				t.Errorf("%s imports %s, which has no role", pkg, dep)
+				continue
+			}
+			if !contains(allowed[from], to) {
+				t.Errorf("%s (%s) imports %s (%s): %s code may import only %v", pkg, from, dep, to, from, allowed[from])
+			}
+			// Front ends reach features only through their use cases and
+			// domain types; bootstrap.App hands them the use cases.
+			if from == command && dep != "internal/interfaces/cli" {
+				t.Errorf("%s imports %s: main only starts the command line", pkg, dep)
+			}
+		}
+	}
+}
+
+// Domain packages may use other features' domain types (an account, a
+// repo), but those uses must not go round in a circle.
+func TestDomainFeaturesHaveNoCycles(t *testing.T) {
+	deps := map[string]map[string]bool{}
+	for pkg, imps := range imports(t) {
+		if r, _ := roleOf(pkg); r != domain {
+			continue
+		}
+		from := feature(pkg)
+		if deps[from] == nil {
+			deps[from] = map[string]bool{}
+		}
+		for path := range imps {
+			dep := strings.TrimPrefix(path, module)
+			if r, _ := roleOf(dep); r == domain && feature(dep) != from {
+				deps[from][feature(dep)] = true
+			}
+		}
+	}
+	const (
+		unseen = iota
+		active
+		done
+	)
+	state := map[string]int{}
+	var stack []string
+	var visit func(f string)
+	visit = func(f string) {
+		switch state[f] {
+		case active:
+			i := indexOf(stack, f)
+			t.Errorf("domain packages depend on each other in a circle: %s", strings.Join(append(stack[i:], f), " -> "))
+			return
+		case done:
+			return
+		}
+		state[f] = active
+		stack = append(stack, f)
+		next := make([]string, 0, len(deps[f]))
+		for d := range deps[f] {
+			next = append(next, d)
+		}
+		sort.Strings(next)
+		for _, d := range next {
+			visit(d)
+		}
+		stack = stack[:len(stack)-1]
+		state[f] = done
+	}
+	features := make([]string, 0, len(deps))
+	for f := range deps {
+		features = append(features, f)
+	}
+	sort.Strings(features)
+	for _, f := range features {
+		visit(f)
+	}
+}
+
+// The rules above must keep meaning something: guard against a refactor
+// that quietly empties a role.
+func TestEveryRoleIsUsed(t *testing.T) {
+	seen := map[role]bool{}
+	for pkg := range imports(t) {
+		if r, ok := roleOf(pkg); ok {
+			seen[r] = true
+		}
+	}
+	for r := range allowed {
+		if !seen[r] {
+			t.Errorf("no package has the role %q; update the rules in this file and ARCHITECTURE.md", r)
 		}
 	}
 }
 
 // Core packages must not print to standard output: they return values and
-// errors, and front ends decide how to show them. (sshhook in particular:
-// git reads its protocol from stdout.)
+// errors, and front ends decide how to show them. (The ssh hook in
+// particular: git reads its protocol from stdout.)
 func TestCoreDoesNotPrint(t *testing.T) {
 	root := filepath.Join("..", "..", "internal")
-	allowed := map[string]bool{"ui": true, "prompt": true, "sys": true}
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return err
 		}
 		rel, _ := filepath.Rel(root, p)
 		top := strings.Split(filepath.ToSlash(rel), "/")[0]
-		if allowed[top] {
+		if top == "interfaces" || top == "platform" {
 			return nil
 		}
 		b, _ := os.ReadFile(p)
@@ -130,4 +271,22 @@ func TestCoreDoesNotPrint(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func contains(list []role, r role) bool {
+	for _, v := range list {
+		if v == r {
+			return true
+		}
+	}
+	return false
+}
+
+func indexOf(list []string, s string) int {
+	for i, v := range list {
+		if v == s {
+			return i
+		}
+	}
+	return -1
 }

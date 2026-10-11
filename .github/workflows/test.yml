@@ -36,7 +36,7 @@ jobs:
           tags=desktop,production
           [ "$RUNNER_OS" = Linux ] && tags=$tags,webkit2_41
           go build -tags "$tags" -o /dev/null ./cmd/gitswitch
-          go vet -tags "$tags" ./internal/ui/desktop
+          go vet -tags "$tags" ./internal/interfaces/desktop/...
         shell: bash
       - run: go test -count=1 -v ./...
       - name: race detector
