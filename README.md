@@ -2,7 +2,7 @@
 
 [![test](https://github.com/macdipu/gitswitch/actions/workflows/test.yml/badge.svg)](https://github.com/macdipu/gitswitch/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/macdipu/gitswitch?sort=semver)](https://github.com/macdipu/gitswitch/releases/latest)
-[![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go)](go.mod)
+[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -22,11 +22,12 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - **One file, one-time install.** A single binary for Windows, macOS and Linux. Keeps working after restarts and updates.
 - **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (~15 ms, ~10 MB), then it exits.
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
+- **History you can act on:** the account behind every commit; revert, drop, roll back and cherry-pick with each step explained; switch branches and pull; search by message, author, account or date. Pushed history is never rewritten.
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-history-dark.png">
-  <img alt="GitSwitch desktop app: commit history with the account behind every commit, wrong-account commits highlighted" src="docs/images/web-history-light.png">
+  <img alt="GitSwitch desktop app: History page with branch and sync status, search, the commit graph with the account behind every commit, and a selected commit's explained actions" src="docs/images/web-history-light.png">
 </picture>
 
 ## Contents
@@ -36,7 +37,7 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - [How an account is chosen](#how-an-account-is-chosen)
 - [Terminal app and desktop app](#terminal-app-and-desktop-app)
 - [IDE notes](#ide-notes)
-- [Commit history](#commit-history)
+- [Commit history and branches](#commit-history-and-branches)
 - [Repo list](#repo-list)
 - [Health check](#health-check)
 - [Command reference](#command-reference)
@@ -175,7 +176,7 @@ Both edit the same settings. A change in one shows up in the other.
 | | Terminal app | Desktop app |
 | --- | --- | --- |
 | Open | `gitswitch` (or `gitswitch tui`) | `gitswitch ui`, or GitSwitch in the Start / app menu |
-| Best for | IDE terminals, SSH sessions, WSL, servers | Mouse users, the visual history graph |
+| Best for | IDE terminals, SSH sessions, WSL, servers | Mouse users, the visual history graph and commit actions |
 | Pages | Accounts, Repos, History, Rules, Settings | Accounts, Repos, History, Rules, Settings |
 | Runs in | the terminal | the system web view (WebView2, WebKit, WebKitGTK) |
 | Closes | press `q` | close the window |

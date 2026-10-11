@@ -151,6 +151,7 @@
     <nav>
       <a href="#features">Features</a>
       <a href="#install">Install</a>
+      <a href="#history">History</a>
       <a href="#apps">Apps</a>
       <a class="gh" href="https://github.com/macdipu/gitswitch">GitHub</a>
     </nav>
@@ -211,8 +212,8 @@ always use it for this repo (e.g. 2!): <span class="h">2!</span></pre>
         </div>
         <div class="card">
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M6 9v6M8.6 7.5 15.4 10.5"/></svg></div>
-          <h3>History with accounts</h3>
-          <p>See the account behind every commit, spot wrong-account commits and fix the ones not pushed yet.</p>
+          <h3>History you can act on</h3>
+          <p>The account behind every commit. Revert, drop, roll back and cherry-pick, switch branches and pull, with each step explained.</p>
         </div>
         <div class="card">
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
@@ -280,7 +281,46 @@ gitswitch rule add folder:~/personal personal</pre><button class="copy">Copy</bu
     </div>
   </section>
 
-  <section id="apps">
+  <section id="history">
+    <div class="wrap">
+      <h2>History and branches, without the fear</h2>
+      <p class="sub">The History page and <code>gitswitch</code> commands let you undo, copy and find commits. They always use the repo's account and never rewrite anything you have already pushed.</p>
+      <div class="features">
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <h3>Safe by default</h3>
+          <p>Every action says what it does to your work. Drop and roll back only touch commits that are not pushed, and roll back keeps the changes in your files. If something does not apply cleanly, nothing changes.</p>
+        </div>
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+          <h3>Find any commit</h3>
+          <p>Search the whole history by message, author, account or date. Type words, or tokens like <code>author:ana since:7d</code>; filters show as chips you can remove.</p>
+        </div>
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6M18 9c0 5-12 3-12 6"/></svg></div>
+          <h3>Branches in one click</h3>
+          <p>See what you have to push and pull, switch branch (remote ones too) and update. Pulls never create a surprise merge commit.</p>
+        </div>
+      </div>
+      <div class="steps">
+        <div>
+          <h3>For your first week of git</h3>
+          <p>Click a commit in the desktop app. It shows the safe actions first, explains each one, and puts the ones that rewrite history apart, with the reason when they are not allowed.</p>
+          <h3>For every day</h3>
+          <p>Keys for everything (<code>/</code> search, <code>j</code>/<code>k</code> move, <code>b</code> branch), Ctrl/⌘-click to cherry-pick several commits, and the same actions in the terminal app and the CLI.</p>
+        </div>
+        <div class="cmd"><pre>gitswitch log --author ana --since "2 weeks ago"
+gitswitch switch origin/feature-x
+gitswitch update
+gitswitch revert 1a2b3c4
+gitswitch cherry-pick 5d6e7f8 9a0b1c2
+gitswitch rollback 1a2b3c4
+gitswitch browse 1a2b3c4</pre><button class="copy">Copy</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="apps" class="alt">
     <div class="wrap">
       <h2>Terminal app and desktop app</h2>
       <p class="sub">Run <code>gitswitch</code> for the terminal app or <code>gitswitch ui</code> for the desktop app. Both show Accounts, Repos, History, Rules and Settings.</p>
@@ -294,8 +334,8 @@ gitswitch rule add folder:~/personal personal</pre><button class="copy">Copy</bu
         <button role="tab" aria-selected="false" data-tab="tui">Terminal app</button>
       </div>
       <div data-panel="history">
-        <picture class="shot"><source media="(prefers-color-scheme: dark)" srcset="images/web-history-dark.png"><img src="images/web-history-light.png" alt="Desktop app: commit history with the account behind every commit, wrong-account commits highlighted" loading="lazy"></picture>
-        <p class="shot-caption">Commit history with the account behind every commit. Wrong-account commits are highlighted.</p>
+        <picture class="shot"><source media="(prefers-color-scheme: dark)" srcset="images/web-history-dark.png"><img src="images/web-history-light.png" alt="Desktop app: History page with branch and sync status, search, the commit graph with the account behind every commit, and a selected commit's details with explained actions" loading="lazy"></picture>
+        <p class="shot-caption">The account behind every commit, the branch and what to push or pull, search, and a commit's actions explained in plain words.</p>
       </div>
       <div data-panel="accounts" hidden>
         <picture class="shot"><source media="(prefers-color-scheme: dark)" srcset="images/web-accounts-dark.png"><img src="images/web-accounts-light.png" alt="Desktop app: Accounts page with three accounts, each signed in" loading="lazy"></picture>
@@ -320,7 +360,7 @@ gitswitch rule add folder:~/personal personal</pre><button class="copy">Copy</bu
     </div>
   </section>
 
-  <section id="ide" class="alt">
+  <section id="ide">
     <div class="wrap">
       <h2>IDE notes</h2>
       <p class="sub">Most setups need nothing. A few tools have quirks worth knowing.</p>
