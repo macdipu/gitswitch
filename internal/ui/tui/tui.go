@@ -574,23 +574,24 @@ func (t *tui) showKey(a *account.Account) {
 	if a == nil {
 		return
 	}
-	pub, page, err := t.app.PublicKey(a.ID)
+	pub, help, err := t.app.PublicKey(a.ID)
 	if err != nil {
 		t.say(err, "")
 		return
 	}
-	lines := []string{
-		"Add this public key to " + a.ID + " on " + a.Host + ", signed in as that account:",
-		"",
-		pub,
-		"",
-		"c  copy to clipboard",
+	copied := "c  copy to clipboard"
+	if sys.CopyToClipboard(pub) {
+		copied = "Copied to clipboard (c to copy again)."
 	}
-	if page != "" {
-		lines = append(lines, "o  open "+page)
+	lines := []string{"Public key for " + a.ID + ":", "", pub, "", copied, "", "Add it on " + a.Host + ":"}
+	for i, s := range help.Steps {
+		lines = append(lines, fmt.Sprintf("  %d. %s", i+1, s))
+	}
+	if help.Page != "" {
+		lines = append(lines, "  "+help.Page, "", "o  open that page")
 	}
 	lines = append(lines, "Enter  close, then press t to test the login")
-	t.view = &viewer{title: "Public key: " + a.ID, lines: lines, url: page, copy: pub}
+	t.view = &viewer{title: "Public key: " + a.ID, lines: lines, url: help.Page, copy: pub}
 }
 
 func (t *tui) keyAccounts(k string) {
@@ -1019,6 +1020,9 @@ func (t *tui) footer() string {
 		return "y yes · n no"
 	}
 	if t.view != nil {
+		if t.view.copy != "" {
+			return "c copy · o open link · Enter close"
+		}
 		return "Enter close"
 	}
 	switch t.tab {

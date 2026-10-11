@@ -64,6 +64,7 @@ section[hidden]{display:none}
 .status-ok{color:var(--ok)} .status-bad{color:var(--bad)}
 .detail{grid-column:2 / 4;background:var(--paper);border:1px solid var(--rule);border-radius:var(--radius);padding:12px;font-size:14px}
 .detail textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--panel);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.detail a{color:var(--focus);word-break:break-all}
 
 form.card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:18px;margin:0 0 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
 form.card .full{grid-column:1/-1}
@@ -270,15 +271,18 @@ $('#accounts').addEventListener('click', async e => {
     await refresh();
   } else if (b.dataset.act === 'key'){
     const k = await act(() => api('GET', '/api/pubkey?id=' + encodeURIComponent(id))); if (!k) return;
-    openDetail[id] = `Add this public key to <strong>${esc(id)}</strong> on ${esc(a.host)} while signed in as that account.
+    let copied = false;
+    try { await navigator.clipboard.writeText(k.key); copied = true; } catch {}
+    openDetail[id] = `Public key for <strong>${esc(id)}</strong>${copied ? ' (copied to clipboard)' : ''}:
       <textarea readonly>${esc(k.key)}</textarea>
-      <div class="row-actions" style="margin-top:8px"><button class="btn" data-act="copy">Copy key</button>${k.page ? `<button class="btn" data-act="page" data-url="${esc(k.page)}">Open ${esc(a.host)} SSH keys page</button>` : ''}<button class="btn" data-act="close">Done</button></div>`;
+      <p style="margin:8px 0 4px">Add it on ${esc(a.host)}:</p>
+      <ol style="margin:0 0 4px;padding-left:22px">${(k.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+      ${k.page ? `<a href="${esc(k.page)}" target="_blank" rel="noopener noreferrer">${esc(k.page)}</a>` : ''}
+      <div class="row-actions" style="margin-top:8px"><button class="btn" data-act="copy">Copy key</button><button class="btn" data-act="test">Test login</button><button class="btn" data-act="close">Done</button></div>`;
     renderAccounts();
   } else if (b.dataset.act === 'copy'){
     const ta = b.closest('.detail').querySelector('textarea');
     try { await navigator.clipboard.writeText(ta.value); toast('Key copied'); } catch { await act(() => api('POST','/api/copy',{text:ta.value}), 'Key copied'); }
-  } else if (b.dataset.act === 'page'){
-    await act(() => api('POST', '/api/open', {url:b.dataset.url}));
   } else if (b.dataset.act === 'close'){
     delete openDetail[id]; renderAccounts();
   } else if (b.dataset.act === 'edit'){

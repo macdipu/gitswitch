@@ -127,14 +127,14 @@ func (a *App) Checks(deep bool) []doctor.Check { return a.Doctor.Run(deep) }
 // ExistingKeys lists key pairs in ~/.ssh.
 func (a *App) ExistingKeys() []keys.Existing { return keys.List(a.Config()) }
 
-// PublicKey returns an account's public key and the host page to add it.
-func (a *App) PublicKey(id string) (key, page string, err error) {
+// PublicKey returns an account's public key and how to add it on the host.
+func (a *App) PublicKey(id string) (key string, help keys.KeyHelp, err error) {
 	acc, err := a.Account(id)
 	if err != nil {
-		return "", "", err
+		return "", help, err
 	}
 	key, err = keys.PublicKey(acc)
-	return key, keys.AddKeyPage(acc.Host), err
+	return key, keys.AddKeyHelp(acc.Host), err
 }
 
 // AgentStatus reports, per account id, whether its key is loaded in

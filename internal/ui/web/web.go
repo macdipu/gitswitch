@@ -133,8 +133,8 @@ func (s *server) routes() map[string]handler {
 		"POST /api/default": func(r *http.Request) (any, error) { return nil, a.SetDefault(str(body(r), "id")) },
 		"POST /api/test":    func(r *http.Request) (any, error) { return a.TestAccount(str(body(r), "id"), true) },
 		"GET /api/pubkey": func(r *http.Request) (any, error) {
-			k, page, err := a.PublicKey(r.URL.Query().Get("id"))
-			return map[string]string{"key": k, "page": page}, err
+			k, help, err := a.PublicKey(r.URL.Query().Get("id"))
+			return map[string]any{"key": k, "page": help.Page, "steps": help.Steps}, err
 		},
 		"POST /api/open": func(r *http.Request) (any, error) {
 			u := str(body(r), "url")

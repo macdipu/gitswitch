@@ -48,6 +48,16 @@ func TestLayers(t *testing.T) {
 	fset := token.NewFileSet()
 	seen := map[string]bool{}
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		// Skip what `go build ./...` skips: hidden, _ and testdata folders,
+		// and nested modules (e.g. a clone inside sandbox/config).
+		if err == nil && d.IsDir() && p != root {
+			if n := d.Name(); strings.HasPrefix(n, ".") || strings.HasPrefix(n, "_") || n == "testdata" {
+				return filepath.SkipDir
+			}
+			if _, e := os.Stat(filepath.Join(p, "go.mod")); e == nil {
+				return filepath.SkipDir
+			}
+		}
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return err
 		}

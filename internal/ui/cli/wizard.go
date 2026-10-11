@@ -72,8 +72,8 @@ func (x *CLI) wizard() error {
 			continue
 		}
 		_ = x.showKey(acc.ID, false)
-		if _, page, _ := x.app.PublicKey(acc.ID); page != "" && yes("Open that page in your browser now?", true) {
-			_ = sys.OpenBrowser(page)
+		if _, help, _ := x.app.PublicKey(acc.ID); help.Page != "" && yes("Open that page in your browser now?", true) {
+			_ = sys.OpenBrowser(help.Page)
 		}
 		ask("Press Enter after you have added the key", "")
 		if r, _ := x.app.TestAccount(acc.ID, false); r.OK {

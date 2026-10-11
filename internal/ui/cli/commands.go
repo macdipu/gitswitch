@@ -155,19 +155,22 @@ func (x *CLI) cmdAccount(args []string) error {
 }
 
 func (x *CLI) showKey(id string, open bool) error {
-	pub, page, err := x.app.PublicKey(id)
+	pub, help, err := x.app.PublicKey(id)
 	if err != nil {
 		return err
 	}
-	a, _ := x.app.Account(id)
-	x.sayf("\nPublic key for %s (add it to %s, signed in as that account):\n\n%s\n\n", id, a.Host, pub)
+	x.sayf("\nPublic key for %s:\n\n%s\n\n", id, pub)
 	if sys.CopyToClipboard(pub) {
 		x.say("Copied to clipboard.")
 	}
-	if page != "" {
-		x.say("Add it here:", page)
+	x.say("Add it:")
+	for i, s := range help.Steps {
+		x.sayf("  %d. %s\n", i+1, s)
+	}
+	if help.Page != "" {
+		x.say("  " + help.Page)
 		if open {
-			_ = sys.OpenBrowser(page)
+			_ = sys.OpenBrowser(help.Page)
 		}
 	}
 	x.say("Then check it with: gitswitch test", id)
