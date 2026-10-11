@@ -7,9 +7,11 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/macdipu/gitswitch/internal/account"
@@ -105,10 +107,102 @@ func (a *App) SuggestedName() string {
 // RepoInfo describes one repo.
 func (a *App) RepoInfo(gitDir string) repo.Info { return repo.InfoFor(a.Git, a.Config(), gitDir) }
 
-// Repos scans the configured project folders, plus extra folders.
-func (a *App) Repos(extra ...string) []repo.Info {
+// Repos is the repo list: repos in the project folders plus repos added
+// by hand, pinned first.
+func (a *App) Repos() []repo.Info { return repo.List(a.Git, a.Config()) }
+
+// AddRepo adds an existing repo to the list. It only records the folder in
+// gitswitch's settings; the repo itself is not changed.
+func (a *App) AddRepo(path string) (repo.Info, error) {
+	gd, err := a.RepoFor(sys.ExpandHome(path))
+	if err != nil {
+		return repo.Info{}, err
+	}
+	root := a.Git.WorktreeOf(gd)
+	if err := a.Store.AddRepoPath("repo", root); err != nil {
+		return repo.Info{}, err
+	}
+	if err := a.Store.RemoveRepoPath("hideRepo", root); err != nil {
+		return repo.Info{}, err
+	}
+	return a.RepoInfo(gd), nil
+}
+
+// RemoveRepo takes a repo off the list without touching its files, remotes
+// or settings. A repo found in a project folder is hidden from the list.
+func (a *App) RemoveRepo(path string) error {
+	root := a.repoRoot(path)
 	c := a.Config()
-	return repo.Scan(a.Git, c, append(append([]string{}, c.ScanFolders...), extra...))
+	listed := false
+	for _, r := range a.Repos() {
+		if sys.SamePath(r.Path, root) {
+			listed = true
+		}
+	}
+	if !listed {
+		return fmt.Errorf("not in the repo list: %s", root)
+	}
+	if err := a.Store.RemoveRepoPath("repo", root); err != nil {
+		return err
+	}
+	if err := a.Store.RemoveRepoPath("pin", root); err != nil {
+		return err
+	}
+	for _, r := range repo.Scan(a.Git, c, c.ScanFolders) {
+		if sys.SamePath(r.Path, root) {
+			return a.Store.AddRepoPath("hideRepo", root)
+		}
+	}
+	return nil
+}
+
+// PinRepo pins a listed repo to the top of the list, or unpins it.
+func (a *App) PinRepo(path string, on bool) error {
+	root := a.repoRoot(path)
+	if !on {
+		return a.Store.RemoveRepoPath("pin", root)
+	}
+	for _, r := range a.Repos() {
+		if sys.SamePath(r.Path, root) {
+			return a.Store.AddRepoPath("pin", root)
+		}
+	}
+	return fmt.Errorf("not in the repo list: %s (add it first: gitswitch repo add)", root)
+}
+
+// OpenRepo opens a repo folder in the file manager, or with editor in the
+// configured editor (gitswitch.editor, then $VISUAL, then $EDITOR).
+func (a *App) OpenRepo(path string, editor bool) error {
+	root := a.repoRoot(path)
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		return fmt.Errorf("folder not found: %s", root)
+	}
+	if !editor {
+		return sys.OpenFolder(root)
+	}
+	cmd := a.Config().Editor
+	for _, v := range []string{"VISUAL", "EDITOR"} {
+		if cmd == "" {
+			cmd = os.Getenv(v)
+		}
+	}
+	if cmd == "" {
+		return errors.New("no editor set; choose one with: gitswitch set editor <command> (e.g. code)")
+	}
+	return sys.StartProgram(cmd, root)
+}
+
+// repoRoot turns a folder inside a repo into the repo's working folder.
+// A folder that is no longer a repo (e.g. deleted) is returned as given.
+func (a *App) repoRoot(path string) string {
+	p := sys.ExpandHome(path)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if gd := a.RepoAt(p); gd != "" {
+		return a.Git.WorktreeOf(gd)
+	}
+	return p
 }
 
 // History builds a repo's commit graph.

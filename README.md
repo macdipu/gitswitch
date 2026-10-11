@@ -37,6 +37,7 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - [Terminal app and desktop app](#terminal-app-and-desktop-app)
 - [IDE notes](#ide-notes)
 - [Commit history](#commit-history)
+- [Repo list](#repo-list)
 - [Health check](#health-check)
 - [Command reference](#command-reference)
 - [How it works](#how-it-works)
@@ -214,6 +215,21 @@ When the terminal app creates a key or tests a login, it steps aside so `ssh-key
 
 The apps' History page shows the same graph.
 
+## Repo list
+
+The Repos page in both apps, and `gitswitch repo`, show one shared list: repos found in your project folders plus repos you add by hand.
+
+```sh
+gitswitch repo add ~/code/side-project   # an existing repo outside your project folders
+gitswitch repo list                      # * pinned, + added by hand, ! folder gone
+gitswitch repo show                      # folder, branch, remotes, account (--json too)
+gitswitch repo pin                       # keep the current repo at the top
+gitswitch repo open --editor             # open in your editor (gitswitch set editor code)
+gitswitch repo remove ~/code/old-thing   # take it off the list
+```
+
+Adding or removing a repo changes only GitSwitch's list. The repo's files, remotes, branches and git settings are never touched. In the desktop app, "Add an existing repo…" uses the system folder picker.
+
 ## Health check
 
 `gitswitch doctor` finds anything that can make git skip GitSwitch or log in as the wrong account; `gitswitch doctor --fix` repairs what it can:
@@ -234,11 +250,11 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Apps | `tui`, `ui` |
 | Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default`, `test` |
 | Keys | `key new\|show\|pick\|agent` |
-| Repos | `use`, `forget`, `status` |
+| Repos | `use`, `forget`, `status`, `repo list\|add\|remove\|show\|open\|pin\|unpin` |
 | Rules | `rule add\|list\|remove` |
 | History | `log`, `fix-author` |
 | Diagnostics | `doctor [--fix]` |
-| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>` |
+| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>` |
 | Shell | `completions bash\|zsh\|fish\|powershell` |
 
 ### Shell completions
@@ -267,7 +283,7 @@ All settings live in git config, so the terminal, the desktop app and git always
 
 | Scope | File | Keys |
 | --- | --- | --- |
-| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default`, `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder` |
+| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default`, `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.editor` |
 | Per repo | `.git/config` | `gitswitch.account` |
 
 **Security:** GitSwitch never stores passphrases or tokens. The desktop app serves its page inside the process: it opens no network port.
@@ -297,7 +313,7 @@ Releases build macOS and Linux on their own runners, since the window needs cgo 
 
 The tests build the real binary and run real `git clone`, `pull` and `push` through it against local repos (no network). They cover install and uninstall, every way an account is chosen, clones inside other repos, submodules, port-443 hosts, renames, duplicate keys, dry runs, health checks, history and author fixes, the desktop app's API, and the terminal prompt. [GitHub Actions](https://github.com/macdipu/gitswitch/actions) runs them on Linux, macOS and Windows for every push.
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and [ROADMAP.md](ROADMAP.md) for planned features you can pick up.
 
 ## License
 

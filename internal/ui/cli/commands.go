@@ -449,7 +449,7 @@ func (x *CLI) cmdDoctor(fix, asJSON bool) error {
 
 func (x *CLI) cmdSet(args []string) error {
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path>")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command>")
 	}
 	switch args[0] {
 	case "gui-prompt":
@@ -458,6 +458,8 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.SetSetting("promptTimeout", args[1])
 	case "ssh-path":
 		return x.app.SetSetting("sshPath", args[1])
+	case "editor":
+		return x.app.SetSetting("editor", args[1])
 	}
 	return fmt.Errorf("unknown setting %q", args[0])
 }

@@ -22,6 +22,9 @@ const Available = true
 func Run(a *app.App) error {
 	sys.DetachConsole() // started from the Start menu: drop the empty console
 	var ctx context.Context
+	pick := func(title string) (string, error) {
+		return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title, DefaultDirectory: sys.HomeDir(), CanCreateDirectories: true})
+	}
 	return wails.Run(&options.App{
 		Title:            "GitSwitch",
 		Width:            1180,
@@ -29,7 +32,7 @@ func Run(a *app.App) error {
 		MinWidth:         760,
 		MinHeight:        520,
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 255},
-		AssetServer:      &assetserver.Options{Handler: Handler(a)},
+		AssetServer:      &assetserver.Options{Handler: Handler(a, pick)},
 		OnStartup:        func(c context.Context) { ctx = c },
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "github.com.macdipu.gitswitch",

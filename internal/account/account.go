@@ -9,6 +9,10 @@
 //	gitswitch.sshPath            optional path to the real ssh program
 //	gitswitch.rule               multi-valued: owner:<prefix>=<id> | folder:<path>=<id>
 //	gitswitch.scanFolder         multi-valued: folders the apps scan for repos
+//	gitswitch.repo               multi-valued: repos added by hand (working folders)
+//	gitswitch.hideRepo           multi-valued: scanned repos removed from the list
+//	gitswitch.pin                multi-valued: pinned repos (working folders)
+//	gitswitch.editor             command that opens a repo folder in an editor
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch-account.<id>.host|name|email|key|user
 //
@@ -54,6 +58,10 @@ type Config struct {
 	SSHPath       string            `json:"sshPath"`
 	Rules         []Rule            `json:"rules"`
 	ScanFolders   []string          `json:"scanFolders"`
+	Repos         []string          `json:"repos"`       // added by hand
+	HiddenRepos   []string          `json:"hiddenRepos"` // found by a scan, then removed
+	Pinned        []string          `json:"pinned"`
+	Editor        string            `json:"editor"`
 	Renamed       map[string]string `json:"-"` // old id (lower case) -> new id
 }
 

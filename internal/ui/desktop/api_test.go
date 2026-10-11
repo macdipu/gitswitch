@@ -30,7 +30,7 @@ func TestHandler(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("GIT_CONFIG_GLOBAL", home+"/.gitconfig")
 	t.Setenv("GITSWITCH_TEST_NO_SYSTEM", "1")
-	h := Handler(app.New(false, nil))
+	h := Handler(app.New(false, nil), nil)
 
 	if w, _ := call(t, h, "GET", "/", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "<title>GitSwitch</title>") {
 		t.Fatalf("GET / = %d", w.Code)

@@ -10,6 +10,7 @@
   --focus:#2F6FEB; --bad:#C92A37; --bad-soft:#FBE9EB; --ok:#1F8A4C;
   --a0:#2F6FEB; --a1:#0E9F8E; --a2:#8A5CF6; --a3:#D9822B; --a4:#D6457A; --a5:#4F8A2F;
   --radius:6px;
+  color-scheme:light dark; /* native controls (selects, scrollbars) follow the theme */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Noto Sans", sans-serif;
   font-size:15px; line-height:1.5; color:var(--ink); background:var(--paper);
 }
@@ -79,6 +80,11 @@ th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px
 td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
 td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 .path{font-weight:600}
+.repo-bar{display:flex;gap:12px;align-items:center;margin:-8px 0 16px}
+.pin{all:unset;cursor:pointer;color:var(--muted);padding:0 4px 0 0}
+.pin[aria-pressed=true]{color:var(--a3)}
+.pin:focus-visible{outline:2px solid var(--focus)}
+td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .empty{padding:28px;border:1px dashed var(--rule);border-radius:var(--radius);color:var(--muted)}
 
 /* history */
@@ -159,12 +165,14 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-repos" hidden>
     <h1>Repos</h1>
-    <p class="lead">Choose an account for each repo. Repos set to "Ask" follow your rules, then ask on the next pull or push.</p>
-    <form class="card" id="folderForm" style="grid-template-columns:1fr auto;align-items:end">
+    <p class="lead">Choose an account for each repo. Repos set to "Ask" follow your rules, then ask on the next pull or push. Adding or removing a repo here only changes GitSwitch's list, never the repo.</p>
+    <form class="card" id="folderForm" style="grid-template-columns:1fr auto auto;align-items:end">
       <label>Folder with your projects<input name="path" placeholder="~/work or D:\Projects" required></label>
+      <button class="btn" type="button" id="browseFolder">Browse…</button>
       <button class="btn primary" type="submit">Add folder</button>
       <div class="full hint" id="folders"></div>
     </form>
+    <div class="repo-bar"><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span></div>
     <div id="repos"></div>
   </section>
 
@@ -362,7 +370,7 @@ $('#installBtn').onclick = async () => { await act(() => api('POST','/api/instal
 async function loadRepos(){
   const c = S.config;
   $('#folders').innerHTML = c.scanFolders.length ? 'Scanning: ' + c.scanFolders.map(p => `<code>${esc(p)}</code> <button class="btn" style="padding:0 6px" data-rmfolder="${esc(p)}" aria-label="Stop scanning ${esc(p)}">×</button>`).join(' ') : 'Add the folders where you keep your projects.';
-  if (!c.scanFolders.length){ $('#repos').innerHTML = ''; repos = []; return; }
+  if (!c.scanFolders.length && !c.repos.length){ $('#repos').innerHTML = ''; repos = []; return; }
   $('#repos').innerHTML = '<p class="hint">Looking for repos…</p>';
   repos = await act(() => api('GET', '/api/repos')) || [];
   renderRepos();
@@ -370,31 +378,59 @@ async function loadRepos(){
 function acctOptions(sel, askLabel){
   return `<option value="">${askLabel}</option>` + S.config.accounts.map(a => `<option value="${esc(a.id)}"${a.id === sel ? ' selected' : ''}>${esc(a.id)}</option>`).join('');
 }
+// pickFolder returns a folder from the native picker, or a typed path when
+// this build has none; null when cancelled.
+async function pickFolder(title){
+  const r = await act(() => api('POST','/api/pick-folder',{title}));
+  if (!r) return null;
+  if (r.supported) return r.path || null;
+  return await ask(title + ' (full path):', {input:'', ok:'Choose'}) || null;
+}
+const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
 function renderRepos(){
-  if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found in these folders.</div>'; return; }
+  if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found. Add a projects folder, or an existing repo.</div>'; return; }
   const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', asks:'asks on next push', '':'no matching account'};
   $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
-    repos.map((r, i) => `<tr>
-      <td><div class="path">${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.remote || 'no remote')}</div></td>
+    repos.map((r, i) => r.missing ? `<tr>
+      <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="Pin to the top">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.path)}</div></td>
+      <td colspan="3" class="status-bad">Folder not found or no longer a git repo. Remove it from the list, or add it again from its new place.</td>
+      <td>${repoActions(r, i)}</td></tr>` : `<tr>
+      <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="${r.pinned ? 'Unpin' : 'Pin to the top'}">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono" title="${esc(r.path)}">${esc(r.branch || 'detached HEAD')} · ${esc(r.remote || 'no remote')}</div></td>
       <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${acctOptions(r.saved, r.saved ? 'Ask (follow rules)' : 'Ask (follow rules)')}</select></td>
       <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && !r.saved ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${why[r.reason] || r.reason}` : (why[r.reason] ?? esc(r.reason))}</td>
       <td class="${r.emailBad ? 'status-bad' : 'hint'}">${esc(r.email || 'not set yet')}${r.emailBad ? ' (wrong account)' : ''}</td>
-      <td><button class="btn" data-hist="${i}">History</button></td></tr>`).join('') + '</tbody></table>';
+      <td>${repoActions(r, i)}</td></tr>`).join('') + '</tbody></table>';
 }
 $('#repos').addEventListener('change', async e => {
   const i = e.target.dataset.repo; if (i === undefined) return;
   const r = await act(() => api('POST', '/api/repo/use', {gitDir:repos[i].gitDir, account:e.target.value}), e.target.value ? 'Saved: this repo uses ' + e.target.value : 'This repo will follow rules or ask');
   if (r){ repos[i] = r; renderRepos(); }
 });
-$('#repos').addEventListener('click', e => { const i = e.target.dataset.hist; if (i !== undefined){ show('history'); $('#histRepo').value = repos[i].gitDir; loadHistory(); } });
+$('#repos').addEventListener('click', async e => {
+  const d = e.target.closest('button')?.dataset; if (!d) return;
+  if (d.hist !== undefined){ show('history'); $('#histRepo').value = repos[d.hist].gitDir; loadHistory(); }
+  else if (d.open !== undefined) act(() => api('POST','/api/repo/open',{path:repos[d.open].path}));
+  else if (d.pin !== undefined){ const r = repos[d.pin]; if (await act(() => api('POST','/api/repo/pin',{path:r.path, on:!r.pinned})) !== undefined) loadRepos(); }
+  else if (d.rmrepo !== undefined){
+    const r = repos[d.rmrepo];
+    if (!await ask(`Remove ${r.path} from the list?\nThe folder, its files and its git settings are not changed.`, {ok:'Remove from list'})) return;
+    if (await act(() => api('POST','/api/repo/remove',{path:r.path}), 'Removed from the list') !== undefined){ await refresh(); loadRepos(); }
+  }
+});
+$('#addRepo').onclick = async () => {
+  const p = await pickFolder('Choose a git repo'); if (!p) return;
+  const r = await act(() => api('POST','/api/repo/add',{path:p}));
+  if (r){ toast('Added ' + r.path); await refresh(); loadRepos(); }
+};
+$('#browseFolder').onclick = async () => { const p = await pickFolder('Choose your projects folder'); if (p) $('#folderForm').path.value = p; };
 $('#folderForm').onsubmit = async e => { e.preventDefault(); await act(() => api('POST','/api/folder',{path:e.target.path.value}), 'Folder added'); e.target.reset(); await refresh(); loadRepos(); };
 $('#folders').addEventListener('click', async e => { const p = e.target.dataset.rmfolder; if (!p) return; await act(() => api('POST','/api/folder/remove',{path:p})); await refresh(); loadRepos(); });
 
 // ---- history ----
 async function fillRepoSelect(){
-  if (!repos.length && S.config.scanFolders.length) repos = await act(() => api('GET','/api/repos')) || [];
-  const cur = $('#histRepo').value;
-  $('#histRepo').innerHTML = repos.length ? repos.map(r => `<option value="${esc(r.gitDir)}">${esc(r.path)}</option>`).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
+  if (!repos.length && (S.config.scanFolders.length || S.config.repos.length)) repos = await act(() => api('GET','/api/repos')) || [];
+  const cur = $('#histRepo').value, ok = repos.filter(r => !r.missing);
+  $('#histRepo').innerHTML = ok.length ? ok.map(r => `<option value="${esc(r.gitDir)}">${esc(r.path)}</option>`).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
   if (cur) $('#histRepo').value = cur;
   if (repos.length && !$('#history').dataset.loaded) loadHistory();
 }

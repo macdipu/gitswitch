@@ -86,9 +86,9 @@ func (d *Doctor) Run(deep bool) []Check {
 			}
 		}
 	}
-	if deep && len(c.ScanFolders) > 0 {
+	if deep && len(c.ScanFolders)+len(c.Repos) > 0 {
 		var over []string
-		for _, r := range repo.Scan(d.Git, c, c.ScanFolders) {
+		for _, r := range repo.List(d.Git, c) {
 			if r.SSHOverride != "" {
 				over = append(over, filepath.Base(r.Path))
 			}
@@ -216,7 +216,7 @@ func (d *Doctor) Fix(id string) error {
 		return nil
 	case "reposhooks":
 		c := d.Store.Load()
-		for _, r := range repo.Scan(d.Git, c, c.ScanFolders) {
+		for _, r := range repo.List(d.Git, c) {
 			if r.SSHOverride != "" {
 				if err := d.Git.RepoUnset(r.GitDir, "core.sshCommand"); err != nil {
 					return err

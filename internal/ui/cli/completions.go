@@ -5,11 +5,10 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule status log fix-author doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
-// printCompletions prints a shell completion script.
 func printCompletions(w io.Writer, shell string) error {
 	switch shell {
 	case "bash":
@@ -23,7 +22,8 @@ _gitswitch() {
     account) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add edit list remove rename" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --email --name --host --key --default --delete-keys -y" -- "$cur") ) ;;
     key) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "new show pick agent" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --open --copy" -- "$cur") ) ;;
     rule) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add list remove" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) owner: folder:" -- "$cur") ) ;;
-    set) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path" -- "$cur") ) || COMPREPLY=( $(compgen -W "on off" -- "$cur") ) ;;
+    repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list add remove show open pin unpin" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --editor" -- "$cur") ) ;;
+    set) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor" -- "$cur") ) || COMPREPLY=( $(compgen -W "on off" -- "$cur") ) ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
     use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
     log) COMPREPLY=( $(compgen -W "--flagged -n" -- "$cur") ) ;;
@@ -45,7 +45,8 @@ _gitswitch() {
     account) (( CURRENT == 3 )) && compadd add edit list remove rename || compadd -a accts -- --email --name --host --key --default --delete-keys -y ;;
     key) (( CURRENT == 3 )) && compadd new show pick agent || compadd -a accts -- --open --copy ;;
     rule) (( CURRENT == 3 )) && compadd add list remove || compadd -a accts -- owner: folder: ;;
-    set) (( CURRENT == 3 )) && compadd gui-prompt prompt-timeout ssh-path || compadd on off ;;
+    repo) (( CURRENT == 3 )) && compadd list add remove show open pin unpin || { _files -/; compadd -- --json --pinned --editor; } ;;
+    set) (( CURRENT == 3 )) && compadd gui-prompt prompt-timeout ssh-path editor || compadd on off ;;
     completions) compadd bash zsh fish powershell ;;
     use|default|test) compadd -a accts -- --once ;;
     log) compadd -- --flagged -n ;;
@@ -63,7 +64,8 @@ complete -c gitswitch -n "__fish_seen_subcommand_from account" -a "add edit list
 complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick agent (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
-complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path on off"
+complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list add remove show open pin unpin (__fish_complete_directories)"
+complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from completions" -a "bash zsh fish powershell"
 complete -c gitswitch -l dry-run -d "show changes without making them"
 `)
@@ -75,7 +77,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
     account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
-    set = 'gui-prompt prompt-timeout ssh-path'; completions = 'bash zsh fish powershell'
+    repo = 'list add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor'; completions = 'bash zsh fish powershell'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '

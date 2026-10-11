@@ -9,7 +9,7 @@ rules there keep the project clean as it grows.
 go run ./cmd/gitswitch help      # run from source
 go test ./...                    # all tests (unit, integration, architecture)
 go vet ./... && gofmt -l .       # must be clean
-./build.sh                       # all six platform builds into dist/
+./build.sh                       # every build this machine can make, into dist/
 ```
 
 ## Try changes safely
@@ -103,6 +103,23 @@ repeat step 3 after the next `up`; accounts and keys stay in
   ssh finds it from your user account, not `$HOME`, so a first connection may
   add a host entry there. This is harmless.
 
+## Planned work
+
+[ROADMAP.md](ROADMAP.md) lists features that are planned but not built yet:
+repository management (browsing and cloning repos from every GitHub account,
+a shared repo list, favorites, grouping) and a full git client. Each item
+says whether it is done, partly done or planned, plus notes on the approach.
+
+If you want to build one:
+
+1. Open an issue named after the item (for example "Roadmap #5: Clone via
+   URL") and say you are working on it, so nobody else builds it too.
+2. Check [ARCHITECTURE.md](ARCHITECTURE.md) for which layer it goes in.
+   Repo features go through `internal/repo` and `internal/app`; GitHub API
+   work goes in a new `hosting` package.
+3. Build it for every front end that the item names (desktop app, terminal
+   app, CLI), and update its row in ROADMAP.md in the same pull request.
+
 ## Pull requests
 
 - Put new behavior in the right layer; front ends only call `internal/app`.
@@ -116,6 +133,7 @@ repeat step 3 after the next `up`; accounts and keys stay in
 ## Publishing a release (maintainers)
 
 1. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
-2. The `release` workflow runs the tests, builds all six binaries plus
-   `SHA256SUMS`, and attaches them to the GitHub release.
+2. The `release` workflow runs the tests, builds every binary (macOS and
+   Linux on their own runners, for the desktop window) plus `SHA256SUMS`, and
+   attaches them to the GitHub release.
 3. The one-line installers always fetch the latest release.

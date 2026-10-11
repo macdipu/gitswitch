@@ -22,7 +22,9 @@ type Store struct {
 
 // Load reads the current configuration (always fresh from git config).
 func (s *Store) Load() *Config {
-	c := &Config{GUIPrompt: true, PromptTimeout: 60}
+	// Lists start empty, not nil, so the apps get [] rather than null in JSON.
+	c := &Config{GUIPrompt: true, PromptTimeout: 60, Accounts: []Account{}, Rules: []Rule{},
+		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}}
 	accts := map[string]*Account{}
 	var order []string
 	out, err := s.Git.Run("config", "--global", "-z", "--get-regexp", `^gitswitch`)
@@ -76,6 +78,14 @@ func (s *Store) Load() *Config {
 			}
 		case k == "gitswitch.scanfolder":
 			c.ScanFolders = append(c.ScanFolders, v)
+		case k == "gitswitch.repo":
+			c.Repos = append(c.Repos, v)
+		case k == "gitswitch.hiderepo":
+			c.HiddenRepos = append(c.HiddenRepos, v)
+		case k == "gitswitch.pin":
+			c.Pinned = append(c.Pinned, v)
+		case k == "gitswitch.editor":
+			c.Editor = v
 		case k == "gitswitch.renamed":
 			if old, nw, ok := strings.Cut(v, "="); ok {
 				if c.Renamed == nil {
@@ -317,6 +327,46 @@ func (s *Store) AddScanFolder(p string) error {
 func (s *Store) RemoveScanFolder(p string) error {
 	_, err := s.Git.Global("--fixed-value", "--unset-all", "gitswitch.scanFolder", p)
 	return err
+}
+
+// Repo lists: key is "repo", "hideRepo" or "pin". Values are absolute
+// working folders; adding one twice or removing a missing one is a no-op.
+
+// AddRepoPath adds a folder to a repo list.
+func (s *Store) AddRepoPath(key, p string) error {
+	if HasPath(s.repoList(key), p) {
+		return nil
+	}
+	_, err := s.Git.Global("--add", "gitswitch."+key, p)
+	return err
+}
+
+// RemoveRepoPath removes a folder from a repo list, in any spelling the
+// file system treats as the same folder.
+func (s *Store) RemoveRepoPath(key, p string) error {
+	for _, v := range s.repoList(key) {
+		if sys.SamePath(v, p) {
+			if _, err := s.Git.Global("--fixed-value", "--unset-all", "gitswitch."+key, v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) repoList(key string) []string {
+	c := s.Load()
+	return map[string][]string{"repo": c.Repos, "hideRepo": c.HiddenRepos, "pin": c.Pinned}[key]
+}
+
+// HasPath reports whether list holds folder p.
+func HasPath(list []string, p string) bool {
+	for _, v := range list {
+		if sys.SamePath(v, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Rename renames an account's stored settings, rules, default, identity

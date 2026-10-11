@@ -45,12 +45,19 @@ Repos and rules
   gitswitch rule add owner:<org> <id>     e.g. owner:acme-corp client-acme
   gitswitch rule add folder:<path> <id>   e.g. folder:~/work polygon
   gitswitch rule list | remove <n>
+  gitswitch repo list [--pinned] [--json]   repos in your project folders plus ones you added
+  gitswitch repo add [path]         add an existing repo to the list (nothing in it changes)
+  gitswitch repo remove [path]      take a repo off the list (its files are not touched)
+  gitswitch repo show [path] [--json]     folder, branch, remotes, account
+  gitswitch repo open [path] [--editor]   open in the file manager or your editor
+  gitswitch repo pin|unpin [path]   keep a repo at the top of the list
   gitswitch status [--json]
   gitswitch log [-n 40] [--flagged] commit graph with the account of each commit
   gitswitch fix-author              fix not-pushed commits made with the wrong account
   gitswitch doctor [--fix]
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
+  gitswitch set editor <command>    editor for repo open --editor (e.g. code)
   gitswitch completions bash|zsh|fish|powershell
 
 Add --dry-run to any command to see what it would change without changing anything.
@@ -164,6 +171,8 @@ func (x *CLI) dispatch(args []string) error {
 		return nil
 	case "rule":
 		return x.cmdRule(rest)
+	case "repo", "repos":
+		return x.cmdRepo(rest)
 	case "status":
 		return x.cmdStatus(hasFlag(rest, "--json"))
 	case "log":

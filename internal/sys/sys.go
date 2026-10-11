@@ -4,6 +4,7 @@
 package sys
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -177,6 +178,36 @@ func OpenBrowser(url string) error {
 		cmd = exec.Command("xdg-open", url)
 	}
 	return cmd.Start()
+}
+
+// OpenFolder shows a folder in the file manager.
+func OpenFolder(dir string) error {
+	if NoSystemChanges() {
+		return nil
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	case "windows":
+		cmd = exec.Command("explorer", dir)
+	default:
+		cmd = exec.Command("xdg-open", dir)
+	}
+	return cmd.Start()
+}
+
+// StartProgram starts a command line such as "code --new-window" with arg
+// added, and does not wait for it. Words are split on spaces; no quoting.
+func StartProgram(command, arg string) error {
+	f := strings.Fields(command)
+	if len(f) == 0 {
+		return errors.New("empty command")
+	}
+	if NoSystemChanges() {
+		return nil
+	}
+	return exec.Command(f[0], append(f[1:], arg)...).Start()
 }
 
 // CopyToClipboard copies text; it reports false when no clipboard tool exists.

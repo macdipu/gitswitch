@@ -1,4 +1,6 @@
-// Package repo finds repos on disk and reports which account each uses.
+// Package repo finds repos on disk, keeps the list of repos added by hand,
+// and reports which account each uses. It only reads repos: adding or
+// removing one changes gitswitch's own list, never the repo.
 package repo
 
 import (
@@ -26,7 +28,18 @@ type Info struct {
 	Email    string `json:"email"`
 	EmailBad bool   `json:"emailBad"`
 	// SSHOverride is a repo-local core.sshCommand that bypasses gitswitch.
-	SSHOverride string `json:"sshOverride"`
+	SSHOverride string   `json:"sshOverride"`
+	Branch      string   `json:"branch"` // "" when HEAD is detached
+	Remotes     []Remote `json:"remotes"`
+	Added       bool     `json:"added"` // added by hand (gitswitch repo add)
+	Pinned      bool     `json:"pinned"`
+	Missing     bool     `json:"missing"` // added by hand, but the folder is gone or no longer a repo
+}
+
+// Remote is one configured remote.
+type Remote struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 // AccountFor resolves a repo's account without prompting. The reason is
@@ -57,6 +70,9 @@ func InfoFor(git *gitcli.Runner, c *account.Config, gitDir string) Info {
 	if v := git.RepoGet(gitDir, "core.sshCommand"); v != "" && !account.IsHook(v) {
 		ri.SSHOverride = v
 	}
+	ri.Branch, _ = git.Run("--git-dir="+gitDir, "symbolic-ref", "--short", "-q", "HEAD")
+	ri.Remotes = remotes(git, gitDir)
+	ri.Added, ri.Pinned = account.HasPath(c.Repos, ri.Path), account.HasPath(c.Pinned, ri.Path)
 	if a, why := AccountFor(git, c, gitDir); a != nil {
 		ri.Account, ri.Reason = a.ID, why
 		ri.EmailBad = ri.Email != "" && !strings.EqualFold(ri.Email, a.Email)
@@ -69,10 +85,69 @@ func InfoFor(git *gitcli.Runner, c *account.Config, gitDir string) Info {
 var skipDirs = map[string]bool{"node_modules": true, ".gradle": true, "build": true, "Pods": true,
 	".dart_tool": true, "vendor": true, "target": true, ".venv": true, "venv": true, ".idea": true}
 
+// remotes lists a repo's remotes in config order.
+func remotes(git *gitcli.Runner, gitDir string) []Remote {
+	out, _ := git.Run("--git-dir="+gitDir, "config", "--local", "--get-regexp", `^remote\..*\.url$`)
+	rs := []Remote{}
+	for _, l := range strings.Split(out, "\n") {
+		k, url, ok := strings.Cut(l, " ")
+		if !ok {
+			continue
+		}
+		rs = append(rs, Remote{Name: strings.TrimSuffix(strings.TrimPrefix(k, "remote."), ".url"), URL: url})
+	}
+	return rs
+}
+
+// List is the repo list every app shows: repos found in the project folders
+// plus repos added by hand, minus the ones removed from the list. Pinned
+// repos come first. Added repos whose folder is gone stay, marked Missing,
+// so they can be removed.
+func List(git *gitcli.Runner, c *account.Config) []Info {
+	var dirs []string
+	var missing []Info
+	for _, p := range c.Repos {
+		if gd := git.GitDirFor(p); gd != "" {
+			dirs = append(dirs, gd)
+		} else {
+			missing = append(missing, Info{Path: p, Added: true, Missing: true, Pinned: account.HasPath(c.Pinned, p), Remotes: []Remote{}})
+		}
+	}
+	var out []Info
+	for _, r := range read(git, c, find(git, c.ScanFolders, dirs)) {
+		if !account.HasPath(c.HiddenRepos, r.Path) || r.Added {
+			out = append(out, r)
+		}
+	}
+	out = append(out, missing...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Pinned != out[j].Pinned {
+			return out[i].Pinned
+		}
+		return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path)
+	})
+	return out
+}
+
 // Scan finds repos in folders (up to 5 levels deep) and reads them in parallel.
 func Scan(git *gitcli.Runner, c *account.Config, folders []string) []Info {
-	var dirs []string
+	out := read(git, c, find(git, folders, nil))
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path) })
+	return out
+}
+
+// find returns the git dirs of repos in folders, after the given ones,
+// without duplicates.
+func find(git *gitcli.Runner, folders, dirs []string) []string {
 	seen := map[string]bool{}
+	var unique []string
+	for _, gd := range dirs {
+		if !seen[gd] {
+			seen[gd] = true
+			unique = append(unique, gd)
+		}
+	}
+	dirs = unique
 	for _, root := range folders {
 		root = sys.ExpandHome(root)
 		base := strings.Count(filepath.ToSlash(root), "/")
@@ -97,7 +172,11 @@ func Scan(git *gitcli.Runner, c *account.Config, folders []string) []Info {
 			return nil
 		})
 	}
-	// Read repos in parallel: each one starts a few short git processes.
+	return dirs
+}
+
+// read reads repos in parallel: each one starts a few short git processes.
+func read(git *gitcli.Runner, c *account.Config, dirs []string) []Info {
 	out := make([]Info, len(dirs))
 	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
@@ -111,6 +190,5 @@ func Scan(git *gitcli.Runner, c *account.Config, folders []string) []Info {
 		}(i, gd)
 	}
 	wg.Wait()
-	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path) })
 	return out
 }

@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -567,6 +568,94 @@ func TestCompletionsAndAccountsList(t *testing.T) {
 				t.Fatalf("bash completion has a syntax error: %s", out)
 			}
 		}
+	}
+}
+
+type repoRow struct {
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Added   bool   `json:"added"`
+	Pinned  bool   `json:"pinned"`
+	Missing bool   `json:"missing"`
+	Remotes []struct {
+		Name, URL string
+	} `json:"remotes"`
+}
+
+func (e *env) repoList() map[string]repoRow {
+	e.t.Helper()
+	var rows []repoRow
+	must(e.t, json.Unmarshal([]byte(e.gs("repo", "list", "--json")), &rows))
+	m := map[string]repoRow{}
+	for _, r := range rows {
+		m[filepath.Base(r.Path)] = r
+	}
+	return m
+}
+
+// Adding, pinning and removing repos changes only gitswitch's own list:
+// never the repo's config, remotes, branch or files.
+func TestRepoRegistry(t *testing.T) {
+	e := newEnv(t)
+	e.clone("git@github.com:dipu/notes.git", "notes")
+	notes := filepath.Join(e.root, "notes")
+	work := filepath.Join(e.root, "work")
+	e.gitIn(work, "clone", "-q", "git@github.com:acme-corp/api.git", "api")
+	before := e.gitIn(notes, "config", "--local", "--list")
+
+	if got := e.repoList(); len(got) != 0 {
+		t.Fatalf("list should start empty, got %v", got)
+	}
+	e.gs("repo", "add", notes)
+	e.git("config", "--global", "--add", "gitswitch.scanFolder", work)
+	l := e.repoList()
+	if r := l["notes"]; !r.Added || r.Branch != "main" || len(r.Remotes) != 1 || r.Remotes[0].Name != "origin" {
+		t.Fatalf("notes after add: %+v", r)
+	}
+	if r, ok := l["api"]; !ok || r.Added {
+		t.Fatalf("api should be found by the folder scan, not added: %+v", l)
+	}
+
+	e.gs("repo", "pin", filepath.Join(work, "api"))
+	var rows []repoRow
+	must(t, json.Unmarshal([]byte(e.gs("repo", "list", "--json")), &rows))
+	if len(rows) != 2 || filepath.Base(rows[0].Path) != "api" || !rows[0].Pinned {
+		t.Fatalf("pinned repo should come first: %+v", rows)
+	}
+
+	// A scanned repo is hidden when removed, and comes back when added.
+	e.gs("repo", "remove", filepath.Join(work, "api"))
+	if _, ok := e.repoList()["api"]; ok {
+		t.Fatal("removed scanned repo is still listed")
+	}
+	e.gs("repo", "add", filepath.Join(work, "api", "."))
+	if r, ok := e.repoList()["api"]; !ok || r.Pinned {
+		t.Fatalf("re-added api: %+v (ok=%v); it should be back and unpinned", r, ok)
+	}
+
+	e.gs("repo", "remove", notes)
+	if _, ok := e.repoList()["notes"]; ok {
+		t.Fatal("removed repo is still listed")
+	}
+	if after := e.gitIn(notes, "config", "--local", "--list"); after != before {
+		t.Fatalf("repo config changed by add/remove:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if out := e.gs("repo", "show", notes); !strings.Contains(out, "not in the list") || !strings.Contains(out, "origin") {
+		t.Fatalf("repo show:\n%s", out)
+	}
+
+	// An added repo whose folder is gone stays listed as missing until removed.
+	e.gs("repo", "add", notes)
+	must(t, os.RemoveAll(notes))
+	if r := e.repoList()["notes"]; !r.Missing {
+		t.Fatalf("deleted repo should be listed as missing: %+v", r)
+	}
+	e.gs("repo", "remove", notes)
+	if _, ok := e.repoList()["notes"]; ok {
+		t.Fatal("missing repo could not be removed")
+	}
+	if _, err := e.run(e.root, gsBin, "repo", "add", e.home); err == nil {
+		t.Fatal("adding a folder that is not a repo should fail")
 	}
 }
 

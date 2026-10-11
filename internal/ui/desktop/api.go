@@ -20,11 +20,16 @@ import (
 //go:embed assets/index.html
 var indexHTML []byte
 
-type server struct{ app *app.App }
+type server struct {
+	app        *app.App
+	pickFolder func(title string) (string, error)
+}
 
-// Handler serves the page at / and its JSON API under /api/.
-func Handler(a *app.App) http.Handler {
-	s := &server{app: a}
+// Handler serves the page at / and its JSON API under /api/. pickFolder
+// shows the native folder picker ("" when cancelled); nil means there is
+// none, and the page asks for a typed path instead.
+func Handler(a *app.App, pickFolder func(title string) (string, error)) http.Handler {
+	s := &server{app: a, pickFolder: pickFolder}
 	routes := s.routes()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
@@ -89,6 +94,25 @@ func (s *server) routes() map[string]handler {
 		"POST /api/folder":        func(r *http.Request) (any, error) { return nil, a.AddScanFolder(str(body(r), "path")) },
 		"POST /api/folder/remove": func(r *http.Request) (any, error) { return nil, a.RemoveScanFolder(str(body(r), "path")) },
 		"GET /api/repos":          func(r *http.Request) (any, error) { return a.Repos(), nil },
+		"POST /api/repo/add":      func(r *http.Request) (any, error) { return a.AddRepo(str(body(r), "path")) },
+		"POST /api/repo/remove":   func(r *http.Request) (any, error) { return nil, a.RemoveRepo(str(body(r), "path")) },
+		"POST /api/repo/pin": func(r *http.Request) (any, error) {
+			b := body(r)
+			on, _ := b["on"].(bool)
+			return nil, a.PinRepo(str(b, "path"), on)
+		},
+		"POST /api/repo/open": func(r *http.Request) (any, error) {
+			b := body(r)
+			ed, _ := b["editor"].(bool)
+			return nil, a.OpenRepo(str(b, "path"), ed)
+		},
+		"POST /api/pick-folder": func(r *http.Request) (any, error) {
+			if s.pickFolder == nil {
+				return map[string]any{"supported": false}, nil
+			}
+			p, err := s.pickFolder(str(body(r), "title"))
+			return map[string]any{"supported": true, "path": p}, err
+		},
 		"POST /api/repo/use": func(r *http.Request) (any, error) {
 			b := body(r)
 			gd, err := s.gitDir(str(b, "gitDir"))

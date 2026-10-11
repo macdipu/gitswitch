@@ -465,7 +465,8 @@ Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default
   p passphrase to agent   x remove (then d to also delete key files)
 Repos
-  Enter choose account   h history   f add folder   r rescan
+  Enter choose account   h history   f add folder   a add one repo   r rescan
+  p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
 History
   o other repo   f only wrong-account commits   x fix not-pushed commits   r reload
 Rules
@@ -767,11 +768,56 @@ func (t *tui) keyRepos(k string) {
 				return nil
 			}}
 	case "h":
-		if r != nil {
+		if r != nil && !r.Missing {
 			t.histDir = r.GitDir
 			t.loadHistory()
 			t.tab = tabHistory
 		}
+	case "a":
+		t.form = &form{title: "Add an existing repo (nothing in it changes)", fields: []field{{label: "Repo folder", hint: "e.g. ~/code/my-app"}},
+			submit: func(v []string) error {
+				ri, err := t.app.AddRepo(v[0])
+				if err != nil {
+					return err
+				}
+				t.reload()
+				t.scanRepos()
+				t.say(nil, "Added "+ri.Path+".")
+				return nil
+			}}
+	case "p":
+		if r == nil {
+			return
+		}
+		path, on := r.Path, !r.Pinned
+		t.say(t.app.PinRepo(path, on), map[bool]string{true: "Pinned.", false: "Unpinned."}[on])
+		t.reload()
+		t.scanRepos()
+		for j, x := range t.repos { // keep the same repo selected after it moves
+			if x.Path == path {
+				t.sel[tabRepos] = j
+			}
+		}
+	case "o", "O":
+		if r != nil {
+			t.say(t.app.OpenRepo(r.Path, k == "O"), "Opened "+filepath.Base(r.Path)+".")
+		}
+	case "x":
+		if r == nil {
+			return
+		}
+		path := r.Path
+		t.confirm = &confirmBox{"Remove " + path + " from the list? Its files and git settings are not changed. (y/n)",
+			map[string]func() error{"y": func() error {
+				if err := t.app.RemoveRepo(path); err != nil {
+					return err
+				}
+				t.reload()
+				t.scanRepos()
+				t.sel[tabRepos] = min(t.sel[tabRepos], max(0, len(t.repos)-1))
+				t.say(nil, "Removed from the list.")
+				return nil
+			}}}
 	}
 }
 
@@ -915,12 +961,13 @@ func (t *tui) keySettings(k string) {
 // ---------------- drawing ----------------
 
 const (
-	cReset = "\x1b[0m"
-	cBold  = "\x1b[1m"
-	cDim   = "\x1b[2m"
-	cRev   = "\x1b[7m"
-	cRed   = "\x1b[31m"
-	cGreen = "\x1b[32m"
+	cReset  = "\x1b[0m"
+	cBold   = "\x1b[1m"
+	cDim    = "\x1b[2m"
+	cRev    = "\x1b[7m"
+	cRed    = "\x1b[31m"
+	cGreen  = "\x1b[32m"
+	cYellow = "\x1b[33m"
 )
 
 func (t *tui) color(id string) string { return "\x1b[" + history.AccountColor(t.cfg, id) + "m" }
@@ -1029,7 +1076,7 @@ func (t *tui) footer() string {
 	case tabAccounts:
 		return "a add · e edit · R rename · t test · k public key · K pick key · d default · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter choose account · h history · f add folder · r rescan · ? help · q quit"
+		return "Enter account · h history · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "o other repo · f wrong-account only · x fix · r reload · ? help · q quit"
 	case tabRules:
@@ -1093,11 +1140,19 @@ func boldIf(on bool) string {
 func (t *tui) drawRepos() ([]string, int) {
 	l := []string{"\x00" + cDim + " Folders: " + orNone(strings.Join(t.cfg.ScanFolders, ", ")) + cReset, "\x00"}
 	if len(t.repos) == 0 {
-		return append(l, " No repos found. Press f to add the folder where you keep your projects."), -1
+		return append(l, " No repos found. Press f to add the folder where you keep your projects, or a to add one repo."), -1
 	}
 	why := map[string]string{"saved": "saved", "owner-rule": "owner rule", "folder-rule": "folder rule", "only-account": "only account", "asks": "asks on next push", "": "no account for this host"}
 	for i, r := range t.repos {
 		on := i == t.sel[tabRepos]
+		star := "  "
+		if r.Pinned {
+			star = cYellow + "★ " + cReset + boldIf(on)
+		}
+		if r.Missing {
+			l = append(l, fmt.Sprintf("%s%s%-22s%s %s", mark(on), star, clip(filepath.Base(r.Path), 22), cReset, cRed+"folder not found: "+r.Path+" (x removes it from the list)"+cReset))
+			continue
+		}
 		acct := cDim + why[r.Reason] + cReset
 		if r.Account != "" {
 			acct = t.color(r.Account) + r.Account + cReset + cDim + " (" + why[r.Reason] + ")" + cReset
@@ -1109,7 +1164,11 @@ func (t *tui) drawRepos() ([]string, int) {
 		if r.EmailBad {
 			email = cRed + r.Email + " (wrong account)" + cReset
 		}
-		l = append(l, fmt.Sprintf("%s%-22s%s %s  %s  %s", mark(on), clip(filepath.Base(r.Path), 22), cReset, padANSI(acct, 34), padANSI(email, 34), cDim+r.Remote+cReset))
+		branch := r.Branch
+		if branch == "" {
+			branch = "(detached)"
+		}
+		l = append(l, fmt.Sprintf("%s%s%-22s%s %s  %s  %s  %s", mark(on), star, clip(filepath.Base(r.Path), 22), cReset, cDim+padANSI(clip(branch, 16), 16)+cReset, padANSI(acct, 34), padANSI(email, 34), cDim+r.Remote+cReset))
 	}
 	return l, t.sel[tabRepos]
 }
