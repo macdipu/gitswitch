@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -62,4 +65,96 @@ func TestHandler(t *testing.T) {
 	if w.Code != 200 || data["version"] != bootstrap.Version {
 		t.Fatalf("GET /api/state = %d %v", w.Code, m)
 	}
+}
+
+// The history page's branch and commit actions, against a real repo.
+func TestHistoryActions(t *testing.T) {
+	home := t.TempDir()
+	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": home,
+		"GIT_CONFIG_GLOBAL": filepath.Join(home, ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GITSWITCH_TEST_NO_SYSTEM": "1",
+		"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@x.example", "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@x.example"} {
+		t.Setenv(k, v)
+	}
+	dir := filepath.Join(home, "r")
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	commit := func(file, msg string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(msg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git("add", file)
+		git("commit", "-q", "-m", msg)
+		return git("rev-parse", "HEAD")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-q", "-b", "main")
+	base := commit("a", "base")
+	git("switch", "-q", "-c", "side")
+	s1, s2 := commit("s1", "side one"), commit("s2", "side two")
+	git("switch", "-q", "main")
+	m1 := commit("m1", "main one")
+	commit("m2", "main two")
+
+	h := Handler(bootstrap.New(false, nil), nil)
+	post := func(path, body string) map[string]any {
+		t.Helper()
+		w, m := call(t, h, "POST", path, body)
+		if w.Code != 200 {
+			t.Fatalf("POST %s %s = %d %v", path, body, w.Code, m)
+		}
+		d, _ := m["data"].(map[string]any)
+		return d
+	}
+	fails := func(path, body, want string) {
+		t.Helper()
+		w, m := call(t, h, "POST", path, body)
+		if e, _ := m["error"].(string); w.Code != 400 || !strings.Contains(e, want) {
+			t.Fatalf("POST %s %s = %d %v, want an error with %q", path, body, w.Code, m, want)
+		}
+	}
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+
+	_, m := call(t, h, "GET", "/api/refs?gitDir="+dir, "")
+	data, _ := m["data"].(map[string]any)
+	head, _ := data["head"].(map[string]any)
+	if branches, _ := data["branches"].([]any); head["branch"] != "main" || len(branches) != 2 {
+		t.Fatalf("refs = %v", m)
+	}
+	fails("/api/commit/revert", `{"gitDir":"`+filepath.ToSlash(home)+`","hash":"`+m1+`"}`, "not a git repo")
+
+	if d := post("/api/commit/cherry-pick", `{`+gd+`,"hashes":["`+s2+`","`+s1+`"]}`); d["picked"] != float64(2) {
+		t.Fatalf("cherry-pick = %v", d)
+	}
+	if got := git("log", "-3", "--format=%s"); got != "side two\nside one\nmain two" {
+		t.Fatalf("after cherry-pick:\n%s", got)
+	}
+	picked1 := git("rev-parse", "HEAD~1") // the copy of "side one"
+	post("/api/commit/revert", `{`+gd+`,"hash":"`+m1+`"}`)
+	fails("/api/commit/drop", `{`+gd+`,"hash":"`+s1+`"}`, "not on the current branch")
+	post("/api/commit/drop", `{`+gd+`,"hash":"`+picked1[:7]+`"}`)
+	if got := git("log", "-3", "--format=%s"); got != "Revert \"main one\"\nside two\nmain two" {
+		t.Fatalf("after revert and drop:\n%s", got)
+	}
+	if d := post("/api/commit/rollback", `{`+gd+`,"hash":"`+base+`"}`); d["undone"] != float64(4) {
+		t.Fatalf("rollback = %v", d)
+	}
+	if git("rev-parse", "HEAD") != base || git("status", "--porcelain") == "" {
+		t.Fatal("rollback should keep the undone changes as uncommitted changes")
+	}
+	git("stash", "-q", "-u")
+	if d := post("/api/repo/switch", `{`+gd+`,"branch":"side"}`); d["branch"] != "side" {
+		t.Fatalf("switch = %v", d)
+	}
+	fails("/api/repo/update", `{`+gd+`}`, "not on a remote")
+	fails("/api/commit/browse", `{`+gd+`,"hash":""}`, "no remote")
+	fails("/api/commit/drop", `{`+gd+`,"hash":"--force"}`, "not a commit")
 }

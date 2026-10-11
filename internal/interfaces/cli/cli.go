@@ -52,8 +52,23 @@ Repos and rules
   gitswitch repo open [path] [--editor]   open in the file manager or your editor
   gitswitch repo pin|unpin [path]   keep a repo at the top of the list
   gitswitch status [--json]
-  gitswitch log [-n 40] [--flagged] commit graph with the account of each commit
   gitswitch fix-author              fix not-pushed commits made with the wrong account
+
+History and branches
+  gitswitch log [-n 40] [--flagged] commit graph with the account of each commit
+  gitswitch log [--author TEXT] [--grep TEXT] [--since DATE] [--until DATE] [--account ID]
+                                    only matching commits (author name or email, message, dates
+                                    like 2024-05-01 or "2 weeks ago", gitswitch account)
+  gitswitch branch [--json]         current branch, HEAD and the branch list
+  gitswitch switch <branch>         check out a branch (origin/x creates a local x)
+  gitswitch update                  pull the current branch, fast-forward only, with the repo's account
+  gitswitch revert <commit>         add a commit that undoes one (safe for pushed commits)
+  gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
+  gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
+  gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
+  gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
+
+Settings
   gitswitch doctor [--fix]
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
@@ -179,6 +194,22 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdLog(rest)
 	case "fix-author":
 		return x.cmdFixAuthor()
+	case "branch", "branches":
+		return x.cmdBranch(hasFlag(rest, "--json"))
+	case "switch":
+		return x.cmdSwitch(rest)
+	case "update", "pull":
+		return x.cmdUpdate()
+	case "revert":
+		return x.cmdRevert(rest)
+	case "drop":
+		return x.cmdDrop(rest)
+	case "rollback", "reset":
+		return x.cmdRollback(rest)
+	case "cherry-pick", "pick":
+		return x.cmdCherryPick(rest)
+	case "browse":
+		return x.cmdBrowse(rest)
 	case "doctor":
 		return x.cmdDoctor(hasFlag(rest, "--fix"), hasFlag(rest, "--json"))
 	case "set":
@@ -188,6 +219,9 @@ func (x *CLI) dispatch(args []string) error {
 			return usageErr("gitswitch completions bash|zsh|fish|powershell")
 		}
 		return printCompletions(x.out, rest[0])
+	case "__branches":
+		x.branchNames()
+		return nil
 	case "__accounts":
 		for _, id := range x.app.Accounts.Config().SortedIDs() {
 			x.say(id)

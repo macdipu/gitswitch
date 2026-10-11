@@ -31,16 +31,20 @@ internal/
     identity/
       domain/                 resolve: which account a repo uses (pure decision, table-tested)
     git/
-      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned
+      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
     repository/
       domain/                 Info, Remote; ports Reader, Locator, Cloner, ListStore
       application/            the repo list: show, add, clone, remove, pin, open
       infrastructure/         Reader (find repos on disk, read them with git), Cloner
     history/
-      domain/                 commits, graph lanes, the wrong-account rule, line rendering; port Log
-      application/            commit graph with accounts; fix not-pushed wrong-account commits
-      infrastructure/         Log: git log, rev-list, author rewrite
+      domain/                 commits, graph lanes, the wrong-account rule, filters and dates, line rendering; port Log
+      application/            commit graph with accounts and filters; fix authors; revert, drop, roll back, cherry-pick; web links
+      infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
+    refs/
+      domain/                 Head (branch, HEAD, upstream, ahead/behind), Branch; port Refs
+      application/            show where a repo is, list branches, switch, update (pull --ff-only)
+      infrastructure/         Git: symbolic-ref, for-each-ref, switch, pull
     ssh/
       domain/                 ssh command line from git, key help per host, login greeting; ports KeyTool, HookRepos, Transport, Prompter
       application/            Hook (git runs it on every clone/pull/push/fetch); Keys (show, list, test, agent)
@@ -66,7 +70,7 @@ Packages are named after their layer (`domain`, `application`,
 naturally: `account.Account`, `accountapp.Service`, `accountinfra.Store`,
 `remote.Parse`, `gitinfra.Runner`, `resolve.Decide`, `repo.Info`,
 `repoapp`, `repoinfra`, `history.Commit`, `historyapp`, `historyinfra`,
-`ssh.Invocation`, `sshapp`, `sshinfra`.
+`refs.Head`, `refsapp`, `refsinfra`, `ssh.Invocation`, `sshapp`, `sshinfra`.
 
 ## Layers and what each may import
 
@@ -171,7 +175,7 @@ does not change.
 | --- | --- |
 | Status, staging (files, hunks, lines), commit | A `workspace` feature: porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
 | Diff viewer, blame | A `diff` feature over git parsers. Render only the visible rows. |
-| Branches, checkout, stash, tags | A `refs` feature. |
+| Branches, checkout, stash, tags | The `refs` feature (branches, switch and update exist; stash and tags go there too). |
 | Merge, rebase, conflict editor, cherry-pick, undo | A `merge` feature (3-way conflict model in its domain) and an `undo` feature over the reflog. |
 | Pull requests and issues | A `hosting` feature (GitHub/GitLab APIs in its infrastructure) that uses the account domain so each repo talks to its host as the right account. |
 | File watching (live refresh) | File events in `platform` + a `watch` feature that tells the front ends what changed. |

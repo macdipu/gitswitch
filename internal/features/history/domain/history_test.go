@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"strconv"
 	"testing"
+	"time"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 )
@@ -50,5 +52,42 @@ func TestWrongAccountRule(t *testing.T) {
 	}
 	if !IsWrongAccount(c, repo, "stray@x", true) {
 		t.Error("unknown email on a local-only commit not flagged")
+	}
+}
+
+func TestParseDateAndForGit(t *testing.T) {
+	now := time.Date(2026, 10, 11, 15, 30, 0, 0, time.UTC)
+	ok := map[string]string{
+		"2024-05-01":       "2024-05-01 00:00:00",
+		"2024-05-01 14:30": "2024-05-01 14:30:00",
+		" Today ":          "2026-10-11 00:00:00",
+		"yesterday":        "2026-10-10 00:00:00",
+		"2 weeks ago":      "2026-09-27 15:30:00",
+		"1 month ago":      "2026-09-11 15:30:00",
+		"3 hours ago":      "2026-10-11 12:30:00",
+	}
+	for in, want := range ok {
+		got, err := ParseDate(in, now, false)
+		if err != nil || got.Format("2006-01-02 15:04:05") != want {
+			t.Errorf("ParseDate(%q) = %v, %v; want %s", in, got, err, want)
+		}
+	}
+	if got, _ := ParseDate("2024-05-01", now, true); got.Format("15:04:05") != "23:59:59" {
+		t.Errorf("an end date covers the whole day, got %v", got)
+	}
+	for _, in := range []string{"bogus", "2024-13-45", "2999-01-01", "1960-01-01", "x weeks ago", "2 fortnights ago", "-1"} {
+		if _, err := ParseDate(in, now, false); err == nil {
+			t.Errorf("ParseDate(%q) should fail", in)
+		}
+	}
+	g, none, err := Filter{Since: "2024-05-01", Until: "2024-05-31", Author: "ana"}.ForGit(now)
+	if err != nil || none || g.Since != "@"+strconv.FormatInt(time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC).Unix(), 10) || g.Author != "ana" {
+		t.Errorf("ForGit = %+v %v %v", g, none, err)
+	}
+	if _, _, err := (Filter{Since: "2024-06-01", Until: "2024-05-01"}).ForGit(now); err == nil {
+		t.Error("a start after the end must be refused")
+	}
+	if _, none, _ := (Filter{Since: "2030-01-01"}).ForGit(now); !none {
+		t.Error("a start in the future matches nothing")
 	}
 }

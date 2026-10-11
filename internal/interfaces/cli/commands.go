@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
 
@@ -377,7 +378,9 @@ func (x *CLI) cmdLog(args []string) error {
 		fmt.Sscan(args[i+1], &n)
 	}
 	flagged := hasFlag(args, "--flagged")
-	lines, h, err := x.app.History.Lines(gd, n, flagged, os.Getenv("NO_COLOR") == "")
+	f := history.Filter{Author: flagValue(args, "--author"), Text: flagValue(args, "--grep"),
+		Since: flagValue(args, "--since"), Until: flagValue(args, "--until"), Account: flagValue(args, "--account")}
+	lines, h, err := x.app.History.Lines(gd, n, flagged, os.Getenv("NO_COLOR") == "", f)
 	if err != nil {
 		return err
 	}
@@ -386,6 +389,12 @@ func (x *CLI) cmdLog(args []string) error {
 		acct = "not set (" + h.Repo.Reason + ")"
 	}
 	x.sayf("%s  account: %s\n", h.Repo.Path, acct)
+	if head, err := x.app.Refs.Head(gd); err == nil {
+		x.say("branch:", head.Describe())
+	}
+	if f.Active() {
+		x.sayf("filter: %s (%d commit(s))\n", f.Describe(), len(h.Commits))
+	}
 	for _, l := range lines {
 		x.say(l)
 	}
@@ -461,4 +470,17 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.Accounts.SetSetting("editor", args[1])
 	}
 	return fmt.Errorf("unknown setting %q", args[0])
+}
+
+// flagValue reads "--name value" or "--name=value" ("" when absent).
+func flagValue(args []string, name string) string {
+	for i, a := range args {
+		if a == name && i+1 < len(args) {
+			return args[i+1]
+		}
+		if v, ok := strings.CutPrefix(a, name+"="); ok {
+			return v
+		}
+	}
+	return ""
 }

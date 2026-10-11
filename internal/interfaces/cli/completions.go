@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -26,7 +26,10 @@ _gitswitch() {
     set) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor" -- "$cur") ) || COMPREPLY=( $(compgen -W "on off" -- "$cur") ) ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
     use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
-    log) COMPREPLY=( $(compgen -W "--flagged -n" -- "$cur") ) ;;
+    log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
+    branch) COMPREPLY=( $(compgen -W "--json" -- "$cur") ) ;;
+    switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") ) ;;
+    drop|rollback) COMPREPLY=( $(compgen -W "-y" -- "$cur") ) ;;
     doctor) COMPREPLY=( $(compgen -W "--fix" -- "$cur") ) ;;
     uninstall) COMPREPLY=( $(compgen -W "--purge" -- "$cur") ) ;;
   esac
@@ -49,7 +52,10 @@ _gitswitch() {
     set) (( CURRENT == 3 )) && compadd gui-prompt prompt-timeout ssh-path editor || compadd on off ;;
     completions) compadd bash zsh fish powershell ;;
     use|default|test) compadd -a accts -- --once ;;
-    log) compadd -- --flagged -n ;;
+    log) compadd -- --flagged -n --author --grep --since --until --account ;;
+    branch) compadd -- --json ;;
+    switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} ;;
+    drop|rollback) compadd -- -y ;;
     doctor) compadd -- --fix ;;
   esac
 }
@@ -67,6 +73,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(git
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin (__fish_complete_directories)"
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from completions" -a "bash zsh fish powershell"
+complete -c gitswitch -n "__fish_seen_subcommand_from switch" -a "(gitswitch __branches)"
 complete -c gitswitch -l dry-run -d "show changes without making them"
 `)
 	case "powershell", "pwsh":
@@ -82,7 +89,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '
   } elseif ($words.Count -le 2 -or ($words.Count -eq 3 -and $wordToComplete -and $subs.ContainsKey($words[1]))) {
-    $list = if ($subs.ContainsKey($words[1])) { $subs[$words[1]] -split ' ' } else { @(gitswitch __accounts) }
+    $list = if ($subs.ContainsKey($words[1])) { $subs[$words[1]] -split ' ' } elseif ($words[1] -eq 'switch') { @(gitswitch __branches) } else { @(gitswitch __accounts) }
   } else {
     $list = @(gitswitch __accounts) + @('--dry-run')
   }

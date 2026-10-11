@@ -58,3 +58,46 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 Commit graph, staging, diffs, branches, merges, pull requests. See
 [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client) for where
 each piece goes.
+
+## History screen
+
+One screen for someone on their first week of git and for someone who lives
+in it. The same actions in the desktop app, the terminal app and the CLI.
+
+### Design rules
+
+- **The commits are the screen.** One toolbar line (repo, branch, sync,
+  update), one search line, then the graph. Filters, branch lists and
+  actions open where you need them instead of sitting in rows above the
+  graph.
+- **Safe first, in plain words.** Every action says what it does to your
+  work ("adds a new commit that undoes this one; safe after pushing").
+  Actions that rewrite history sit apart, need a confirmation, and are
+  disabled with the reason when the commit is already pushed.
+- **Fast for daily use.** Keyboard first (`/` search, `j`/`k` move, `Enter`
+  details, `Esc` clear), search tokens (`author:ana since:7d account:work`),
+  multi-select with Ctrl/⌘-click, and the same commands in the CLI.
+- **Never surprise.** Nothing changes a repo without a click and a
+  confirmation; a failed operation is aborted so nothing is half done;
+  `--dry-run` everywhere in the CLI.
+
+### Features
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| H1 | **Current branch and HEAD**, ahead/behind the upstream | done | `refs` feature: `Head` (branch, HEAD, upstream, ahead, behind, operation in progress). |
+| H2 | **Switch branch**, including a remote-only branch | done | `refs.Switch`; `origin/x` creates a local `x` that tracks it. Desktop: searchable branch menu. TUI `b`, CLI `gitswitch switch`. |
+| H3 | **Update** the branch (pull, fast-forward only) with the repo's account | done | `refs.Update`; explains a diverged branch instead of merging. |
+| H4 | **Revert** a commit (pushed or not) | done | `history.Revert`; a merge is reverted against its first parent. |
+| H5 | **Drop** a not-pushed commit | done | `history.Drop`: `rebase --onto`, aborted on conflict. Refuses pushed, merge and first commits. |
+| H6 | **Roll back (reset)** to a commit, keeping the changes | done | `history.Rollback`: `reset --mixed`; every undone commit must be not pushed. |
+| H7 | **Cherry-pick** one or several commits | done | `history.CherryPick`: parents before children, aborted on conflict. |
+| H8 | **View on the web** (commit or repo) | done | `remote.CommitURL`: GitHub, GitLab, Bitbucket and GitHub-style hosts. |
+| H9 | **Filters**: message, author, account, dates; wrong-account and not-pushed only | done | `history.Filter`. Text, author and dates are sent to git, so they search the whole history; dates are parsed by gitswitch (git guesses silently). |
+| H10 | **Redesigned desktop screen**: toolbar, search with tokens and date presets, filter chips, details panel, selection bar, keyboard | done | Desktop page only; uses the API above. |
+| H11 | **Commit details**: full message, changed files and line counts | planned | A `Show` port in the history domain (`git show --numstat --format=...`), shown in the details panel and `gitswitch show <commit>`. |
+| H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, switch) | planned | An `undo` feature over the reflog: remember HEAD before each action, offer "Undo" in the toast, `git reset --keep` back to it. |
+| H13 | **Load more**: page through history beyond the latest 400 commits | planned | `--skip` in `Log.Commits`; the list loads the next page when you scroll to the end. |
+| H14 | **Uncommitted changes when switching**: offer to stash and restore | planned | A `stash` use case in `refs`; ask before stashing, restore after switching. |
+| H15 | **Update with rebase** for people who prefer it | planned | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
+| H16 | **Compare a branch with its upstream**: list what you would push or pull | planned | `rev-list HEAD...@{upstream}` in `refs`, shown from the sync status. |

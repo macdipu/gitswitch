@@ -14,6 +14,8 @@ import (
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
 	historyapp "github.com/macdipu/gitswitch/internal/features/history/application"
 	historyinfra "github.com/macdipu/gitswitch/internal/features/history/infrastructure"
+	refsapp "github.com/macdipu/gitswitch/internal/features/refs/application"
+	refsinfra "github.com/macdipu/gitswitch/internal/features/refs/infrastructure"
 	repoapp "github.com/macdipu/gitswitch/internal/features/repository/application"
 	repoinfra "github.com/macdipu/gitswitch/internal/features/repository/infrastructure"
 	"github.com/macdipu/gitswitch/internal/features/setup"
@@ -35,6 +37,7 @@ type App struct {
 	Keys     *sshapp.Keys
 	Repos    *repoapp.Service
 	History  *historyapp.Service
+	Refs     *refsapp.Service
 	Setup    *setup.Installer
 	Doctor   *doctor.Doctor
 
@@ -62,6 +65,7 @@ func New(dryRun bool, out io.Writer) *App {
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
 		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs},
+		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Locator: git, FS: fs},
 		Setup:   installer,
 		Doctor:  &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
 		dryRun:  dryRun,

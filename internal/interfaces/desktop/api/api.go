@@ -14,6 +14,8 @@ import (
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
 	"github.com/macdipu/gitswitch/internal/interfaces/desktop/assets"
@@ -155,7 +157,9 @@ func (s *server) routes() map[string]handler {
 			if n < 1 || n > 2000 {
 				n = 300
 			}
-			return a.History.Build(gd, n)
+			q := r.URL.Query()
+			return a.History.Build(gd, n, history.Filter{Author: strings.TrimSpace(q.Get("author")), Text: strings.TrimSpace(q.Get("text")),
+				Since: strings.TrimSpace(q.Get("since")), Until: strings.TrimSpace(q.Get("until")), Account: strings.TrimSpace(q.Get("account"))})
 		},
 		"POST /api/repo/fix": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(str(body(r), "gitDir"))
@@ -165,6 +169,58 @@ func (s *server) routes() map[string]handler {
 			n, err := a.History.FixAuthor(gd)
 			return map[string]int{"fixed": n}, err
 		},
+		"GET /api/refs": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			h, err := a.Refs.Head(gd)
+			if err != nil {
+				return nil, err
+			}
+			bs, err := a.Refs.Branches(gd)
+			if bs == nil {
+				bs = []refs.Branch{}
+			}
+			return map[string]any{"head": h, "branches": bs}, err
+		},
+		"POST /api/repo/switch": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			name, err := a.Refs.Switch(gd, str(b, "branch"))
+			return map[string]string{"branch": name}, err
+		}),
+		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.Update(gd, func(string) {})
+		}),
+		"POST /api/commit/revert": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			t, err := a.History.Revert(gd, str(b, "hash"))
+			return map[string]string{"commit": t.Label()}, err
+		}),
+		"POST /api/commit/drop": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			t, err := a.History.Drop(gd, str(b, "hash"))
+			return map[string]string{"commit": t.Label()}, err
+		}),
+		"POST /api/commit/rollback": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			n, t, err := a.History.Rollback(gd, str(b, "hash"))
+			return map[string]any{"commit": t.Label(), "undone": n}, err
+		}),
+		"POST /api/commit/cherry-pick": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			var hashes []string
+			list, _ := b["hashes"].([]any)
+			for _, h := range list {
+				if v, ok := h.(string); ok {
+					hashes = append(hashes, v)
+				}
+			}
+			ts, err := a.History.CherryPick(gd, hashes)
+			return map[string]int{"picked": len(ts)}, err
+		}),
+		"POST /api/commit/browse": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			u, err := a.History.WebURL(gd, str(b, "hash"))
+			if err != nil {
+				return nil, err
+			}
+			return map[string]string{"url": u}, process.OpenBrowser(u)
+		}),
 		"POST /api/doctor/fix": func(r *http.Request) (any, error) { return nil, a.Doctor.Fix(str(body(r), "id")) },
 		"POST /api/install":    func(r *http.Request) (any, error) { return nil, a.Setup.Install(nil) },
 	}
@@ -263,6 +319,18 @@ func (s *server) settings(r *http.Request) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+// withRepo reads a JSON body whose gitDir must be a git repo.
+func (s *server) withRepo(f func(gitDir string, b map[string]any) (any, error)) handler {
+	return func(r *http.Request) (any, error) {
+		b := body(r)
+		gd, err := s.gitDir(str(b, "gitDir"))
+		if err != nil {
+			return nil, err
+		}
+		return f(gd, b)
+	}
 }
 
 // gitDir accepts only paths that really are git repos.

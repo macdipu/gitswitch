@@ -191,7 +191,7 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 | --- | --- |
 | Accounts | `a` add · `e` edit · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `d` make default · `p` load passphrase into agent · `x` remove |
 | Repos | Enter choose account · `h` history · `f` add projects folder · `r` rescan |
-| History | `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
+| History | `/` filter · `b` switch branch · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check |
 
@@ -207,13 +207,36 @@ When the terminal app creates a key or tests a login, it steps aside so `ssh-key
 - **Windows:** the Windows `ssh-agent` service remembers passphrases. `gitswitch doctor` tells you if it is off and how to turn it on (one admin command).
 - **WSL:** WSL is a separate Linux system with its own git. Install the Linux binary inside WSL too.
 
-## Commit history
+## Commit history and branches
 
-- `gitswitch log` shows the commit graph with the account of each commit.
+- `gitswitch log` shows the commit graph with the account of each commit, and the current branch.
 - `gitswitch log --flagged` lists commits made with another of your accounts.
 - `gitswitch fix-author` corrects those that are not pushed yet, on the current branch. Pushed commits are never changed.
 
-The apps' History page shows the same graph.
+Find commits with filters. Text, author and dates search the whole history, not only the latest commits:
+
+```sh
+gitswitch log --author ana --since "2 weeks ago"      # author name or email
+gitswitch log --grep login --until 2024-06-30         # message; both ends of a date range are included
+gitswitch log --account work                          # commits made with one of your accounts
+```
+
+Work with branches and commits, always with the repo's account:
+
+```sh
+gitswitch branch                     # current branch, HEAD, what to push and pull, all branches
+gitswitch switch origin/feature-x    # a remote branch becomes a local branch that tracks it
+gitswitch update                     # pull, fast-forward only; never a surprise merge commit
+gitswitch revert 1a2b3c4             # a new commit that undoes one (safe after pushing)
+gitswitch cherry-pick 5d6e7f8 9a0b1c2   # copy commits from another branch, oldest first
+gitswitch drop 1a2b3c4               # remove a not-pushed commit
+gitswitch rollback 1a2b3c4           # undo the not-pushed commits after it; their changes stay in your files
+gitswitch browse 1a2b3c4             # open the commit on GitHub, GitLab, Bitbucket, ...
+```
+
+`drop` and `rollback` rewrite history, so they only work on commits that are not pushed, and ask first (`-y` to skip). If a revert, drop or cherry-pick does not apply cleanly, it is aborted and nothing changes.
+
+The apps' History page has all of this. In the desktop app, click a commit to see what you can do with it (each action explains itself), Ctrl/⌘-click several to cherry-pick them, and search with words or tokens like `author:ana since:7d`. Keys: `/` search, `j`/`k` move, `b` branch, `Esc` clear.
 
 ## Repo list
 
@@ -255,7 +278,8 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin` |
 | Rules | `rule add\|list\|remove` |
-| History | `log`, `fix-author` |
+| History | `log [--author\|--grep\|--since\|--until\|--account]`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `browse` |
+| Branches | `branch`, `switch`, `update` |
 | Diagnostics | `doctor [--fix]` |
 | Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>` |
 | Shell | `completions bash\|zsh\|fish\|powershell` |

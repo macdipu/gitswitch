@@ -88,13 +88,57 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .empty{padding:28px;border:1px dashed var(--rule);border-radius:var(--radius);color:var(--muted)}
 
 /* history */
-.hist-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.hist-bar select{padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);max-width:420px}
-.summary{display:flex;gap:18px;align-items:center;margin:0 0 12px;font-size:14px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.toolbar select{padding:6px 8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);max-width:300px}
+.spacer{flex:1}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--hover);color:var(--ink)}
+.branch-btn{display:inline-flex;align-items:center;gap:6px;font-weight:600;max-width:280px}
+.branch-btn span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync{font-size:13px;color:var(--muted);white-space:nowrap}
+.sync b{color:var(--ink);font-weight:600}
+.pop-wrap{position:relative}
+.popover{position:absolute;top:calc(100% + 6px);left:0;z-index:5;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .14);padding:10px;width:320px;max-width:calc(100vw - 32px)}
+.popover input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin-bottom:8px}
+.blist{max-height:280px;overflow:auto;display:flex;flex-direction:column}
+.blist h4{margin:8px 4px 4px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.blist button{all:unset;cursor:pointer;padding:6px 8px;border-radius:4px;font-size:14px;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blist button:hover,.blist button:focus-visible{background:var(--hover)}
+.blist button[aria-current=true]{font-weight:600}
+.blist .up{margin-left:auto;font-size:12px;color:var(--muted)}
+.searchrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
+.search{flex:1 1 320px;position:relative}
+.search input{width:100%;padding:8px 10px 8px 32px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel)}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+.seg button{all:unset;cursor:pointer;padding:6px 10px;font-size:13.5px;color:var(--muted);border-right:1px solid var(--rule)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--panel)}
+.seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.count{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:var(--ink);color:var(--panel);font-size:12px;text-align:center}
+.fpanel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:12px;margin:0 0 8px}
+.fpanel .checks2{grid-column:1/-1;display:flex;gap:18px;flex-wrap:wrap}
+.fpanel .checks2 label{flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:14px}
+.fpanel .row-actions{grid-column:1/-1;justify-content:flex-end}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.chips:empty{display:none}
+.fchip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border:1px solid var(--rule);border-radius:999px;font-size:13px;background:var(--panel)}
+.fchip button{all:unset;cursor:pointer;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
+.fchip button:hover{background:var(--hover);color:var(--ink)}
+.alert{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:var(--radius);margin:0 0 8px;font-size:14px;border:1px solid var(--rule);background:var(--panel)}
+.alert.bad{border-color:var(--bad);background:var(--bad-soft)}
+.hmeta{display:flex;gap:14px;align-items:center;font-size:13px;color:var(--muted);margin:0 0 6px}
+.hist-main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
+.hist-main.open{grid-template-columns:minmax(0,1fr) 340px}
 .history{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);overflow:auto}
-.hrow{display:grid;grid-template-columns:var(--gw) 104px minmax(0,1fr) 210px 92px;align-items:center;height:32px;font-size:13.5px;border-bottom:1px solid var(--rule)}
+.hrow{display:grid;grid-template-columns:var(--gw) 104px minmax(0,1fr) 200px 92px;align-items:center;height:32px;font-size:13.5px;border-bottom:1px solid var(--rule);cursor:pointer}
+.open .hrow{grid-template-columns:var(--gw) 96px minmax(0,1fr) 84px}
+.open .hrow .em{display:none}
 .hrow:last-child{border-bottom:0}
+.hrow:hover{background:var(--hover)}
 .hrow.flag{background:var(--bad-soft)}
+.hrow.sel{background:var(--hover);box-shadow:inset 3px 0 0 var(--focus)}
+.hrow:focus-visible{outline-offset:-2px}
 .hrow svg{display:block}
 .chip{font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid;justify-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
 .subj{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
@@ -102,6 +146,27 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .em{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
 .flag .em{color:var(--bad);font-weight:600}
 .when{color:var(--muted);text-align:right;padding-right:12px;font-size:12.5px;white-space:nowrap}
+.details{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:14px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.dhead{display:flex;align-items:center;gap:6px;margin:-4px -4px 0 0}
+.dhead .btn{padding:2px 8px;font-size:12.5px}
+.details h2{font-size:16px;font-weight:650;margin:2px 0 8px;overflow-wrap:anywhere}
+.details dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0 0 12px;font-size:13.5px}
+.details dt{color:var(--muted)}
+.details dd{margin:0;overflow-wrap:anywhere}
+.state{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--rule)}
+.state.local{border-style:dashed}
+.agroup{border-top:1px solid var(--rule);padding:10px 0 2px}
+.agroup h3{margin:0 0 6px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.action{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center;margin:0 0 8px}
+.action .btn{min-width:118px}
+.action .why{font-size:12.5px;color:var(--muted);line-height:1.35}
+.selbar{position:sticky;bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 12px;background:var(--ink);color:var(--panel);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .2)}
+.selbar .btn{background:var(--panel);color:var(--ink);border-color:var(--panel)}
+.selbar .btn.ghost{background:transparent;color:var(--panel);border-color:transparent}
+kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;color:var(--muted)}
+.keys{font-size:12.5px;color:var(--muted);margin-top:8px}
+@media (max-width:1100px){.hist-main.open{grid-template-columns:minmax(0,1fr) 300px}}
+@media (max-width:900px){.hist-main.open{grid-template-columns:minmax(0,1fr)} .details{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:62vh;z-index:6;box-shadow:0 -6px 24px rgb(0 0 0 / .2)} .fpanel{grid-template-columns:1fr 1fr}}
 
 .toast{position:fixed;bottom:18px;right:18px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:var(--radius);font-size:14px;max-width:420px;opacity:0;transform:translateY(6px);transition:.18s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
@@ -187,14 +252,61 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-history" hidden>
     <h1>History</h1>
-    <p class="lead">The commit graph with the account behind every commit. Commits made with another account's email are marked before you push them.</p>
-    <div class="hist-bar">
+    <p class="lead">Every commit with the account that made it. Click a commit to see what you can do with it.</p>
+    <div class="toolbar">
       <select id="histRepo" aria-label="Repo"></select>
-      <label style="flex-direction:row;align-items:center;gap:6px;color:var(--ink)"><input type="checkbox" id="onlyFlagged"> Only wrong-account commits</label>
-      <button class="btn" id="histReload">Reload</button>
+      <div class="pop-wrap">
+        <button class="btn branch-btn" id="branchBtn" aria-haspopup="listbox" aria-expanded="false" title="Switch branch (b)">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v3c0 3-6 2-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="11" cy="3" r="1.6" fill="currentColor"/></svg>
+          <span id="branchName">…</span><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <div class="popover" id="branchPop" hidden>
+          <input id="branchFind" placeholder="Find a branch" aria-label="Find a branch" autocomplete="off">
+          <div class="blist" id="branchList" role="listbox" aria-label="Branches"></div>
+          <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. Git stops you if uncommitted changes would be lost.</p>
+        </div>
+      </div>
+      <span class="sync" id="syncState" aria-live="polite"></span>
+      <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="browseRepo" title="Open the repo on GitHub, GitLab, …">View on web ↗</button>
+      <button class="btn ghost" id="histReload" title="Reload (r)" aria-label="Reload" style="font-size:17px;line-height:1">↻</button>
     </div>
-    <div class="summary" id="histSummary"></div>
-    <div id="history"></div>
+    <form class="searchrow" id="histSearchForm" role="search">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <input id="histSearch" type="search" placeholder="Search messages   (also author:ana  account:work  since:7d)" aria-label="Search commits (press / to focus)" autocomplete="off">
+      </div>
+      <div class="seg" role="group" aria-label="Time range" id="rangeSeg">
+        <button type="button" data-range="" aria-pressed="true">Any time</button>
+        <button type="button" data-range="today" aria-pressed="false">Today</button>
+        <button type="button" data-range="7 days ago" aria-pressed="false">7 days</button>
+        <button type="button" data-range="30 days ago" aria-pressed="false">30 days</button>
+      </div>
+      <button type="button" class="btn" id="moreFilters" aria-expanded="false" aria-controls="filterPanel">Filters<span id="filterCount"></span></button>
+    </form>
+    <form class="fpanel" id="filterPanel" hidden aria-label="More filters">
+      <label>Author<input name="author" placeholder="Name or email" autocomplete="off"></label>
+      <label>Account<select name="account"><option value="">Any account</option></select></label>
+      <label>From<input type="date" name="since"></label>
+      <label>To<input type="date" name="until"></label>
+      <div class="checks2">
+        <label><input type="checkbox" name="flagged"> Only wrong-account commits</label>
+        <label><input type="checkbox" name="local"> Only not pushed</label>
+      </div>
+      <div class="row-actions"><button type="button" class="btn" id="filterReset">Reset</button><button class="btn primary">Apply</button></div>
+    </form>
+    <div class="chips" id="chips" aria-label="Active filters"></div>
+    <div id="histAlert"></div>
+    <div class="hmeta" id="histMeta"></div>
+    <div class="hist-main" id="histMain">
+      <div>
+        <div id="history"></div>
+        <div class="selbar" id="selbar" hidden aria-live="polite"></div>
+        <p class="keys" id="histKeys"><kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>Enter</kbd> select · Ctrl/⌘-click select several · <kbd>Esc</kbd> clear · <kbd>b</kbd> branch · <kbd>r</kbd> reload</p>
+      </div>
+      <aside class="details" id="details" hidden aria-label="Commit details"></aside>
+    </div>
   </section>
 
   <section id="tab-rules" hidden>
@@ -465,63 +577,324 @@ $('#folderForm').onsubmit = async e => { e.preventDefault(); await act(() => api
 $('#folders').addEventListener('click', async e => { const p = e.target.dataset.rmfolder; if (!p) return; await act(() => api('POST','/api/folder/remove',{path:p})); await refresh(); loadRepos(); });
 
 // ---- history ----
+let H = null, R = null;          // the shown history, and {head, branches} of its repo
+const picked = new Set();        // selected commit hashes
+const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false};
+const histVisible = () => !$('#tab-history').hidden;
+
 async function fillRepoSelect(){
   if (!repos.length && (S.config.scanFolders.length || S.config.repos.length)) repos = await act(() => api('GET','/api/repos')) || [];
   const cur = $('#histRepo').value, ok = repos.filter(r => !r.missing);
   $('#histRepo').innerHTML = ok.length ? ok.map(r => `<option value="${esc(r.gitDir)}">${esc(r.path)}</option>`).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
   if (cur) $('#histRepo').value = cur;
+  const fa = $('#filterPanel').account;
+  fa.innerHTML = '<option value="">Any account</option>' + S.config.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
+  fa.value = F.account;
   if (repos.length && !$('#history').dataset.loaded) loadHistory();
 }
-$('#histRepo').onchange = () => loadHistory();
+$('#histRepo').onchange = () => { picked.clear(); H = null; loadHistory(); };
 $('#histReload').onclick = () => loadHistory();
-$('#onlyFlagged').onchange = () => H && renderHistory();
-let H = null;
+
+// The search box takes plain words (the commit message) and, for people
+// who like typing, author:, account:, since: and until: tokens. since:7d
+// means 7 days ago (h, d, w, m, y). Tokens turn into filter chips.
+const units = {h:'hours', d:'days', w:'weeks', m:'months', y:'years'};
+const rel = v => { const m = /^(\d+)([hdwmy])$/i.exec(v); return m ? `${m[1]} ${units[m[2].toLowerCase()]} ago` : v; };
+function applySearch(q){
+  const rest = [];
+  for (const m of q.matchAll(/(\w+):(?:"([^"]*)"|(\S+))|"([^"]*)"|(\S+)/g)){
+    const key = (m[1] || '').toLowerCase(), val = (m[2] ?? m[3] ?? '').trim();
+    if (['author','account','since','until'].includes(key) && val){
+      F[key] = key === 'since' || key === 'until' ? rel(val) : val;
+      if (key === 'since') F.range = '';
+    } else rest.push(m[4] ?? m[0]);
+  }
+  F.text = rest.join(' ').trim();
+}
+let searchTimer;
+$('#histSearchForm').onsubmit = e => { e.preventDefault(); clearTimeout(searchTimer); runSearch(); };
+$('#histSearch').oninput = () => { clearTimeout(searchTimer); if (!/\w+:/.test($('#histSearch').value)) searchTimer = setTimeout(runSearch, 450); };
+function runSearch(){
+  const box = $('#histSearch'), hadTokens = /\w+:\S/.test(box.value);
+  applySearch(box.value);
+  if (hadTokens) box.value = F.text;     // tokens now show as chips
+  loadHistory();
+}
+
+const rangeLabel = {'':'Any time', today:'Today', '7 days ago':'Last 7 days', '30 days ago':'Last 30 days'};
+$('#rangeSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-range]'); if (!b) return;
+  F.range = b.dataset.range; F.since = ''; F.until = '';
+  loadHistory();
+});
+$('#moreFilters').onclick = () => toggleFilters();
+function toggleFilters(open = $('#filterPanel').hidden){
+  const p = $('#filterPanel');
+  if (open){ p.author.value = F.author; p.account.value = F.account; p.since.value = /^\d{4}-\d\d-\d\d$/.test(F.since) ? F.since : '';
+    p.until.value = /^\d{4}-\d\d-\d\d$/.test(F.until) ? F.until : ''; p.flagged.checked = F.flagged; p.local.checked = F.local; }
+  p.hidden = !open; $('#moreFilters').setAttribute('aria-expanded', String(open));
+  if (open) p.author.focus();
+}
+$('#filterPanel').onsubmit = e => {
+  e.preventDefault(); const p = e.target;
+  Object.assign(F, {author:p.author.value.trim(), account:p.account.value, flagged:p.flagged.checked, local:p.local.checked});
+  if (p.since.value || p.until.value){ F.since = p.since.value; F.until = p.until.value; F.range = ''; }
+  else if (/^\d{4}-/.test(F.since + F.until)){ F.since = ''; F.until = ''; }
+  toggleFilters(false); loadHistory();
+};
+$('#filterReset').onclick = () => { const p = $('#filterPanel'); p.reset(); p.account.value = ''; };
+function clearFilters(){ Object.assign(F, {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false}); $('#histSearch').value = ''; loadHistory(); }
+
+function renderChips(){
+  const chips = [];
+  if (F.text) chips.push(['text', `Message: “${F.text}”`]);
+  if (F.author) chips.push(['author', 'Author: ' + F.author]);
+  if (F.account) chips.push(['account', 'Account: ' + F.account]);
+  if (F.since) chips.push(['since', 'From ' + F.since]);
+  if (F.until) chips.push(['until', 'To ' + F.until]);
+  if (F.flagged) chips.push(['flagged', 'Wrong account only']);
+  if (F.local) chips.push(['local', 'Not pushed only']);
+  $('#chips').innerHTML = chips.map(([k, t]) => `<span class="fchip">${esc(t)}<button type="button" data-chip="${k}" aria-label="Remove filter: ${esc(t)}">✕</button></span>`).join('')
+    + (chips.length > 1 ? '<button type="button" class="btn ghost" data-chip="*">Clear all</button>' : '');
+  const n = [F.author, F.account, F.since, F.until, F.flagged, F.local].filter(Boolean).length;
+  $('#filterCount').innerHTML = n ? `<span class="count">${n}</span>` : '';
+  document.querySelectorAll('#rangeSeg button').forEach(b => b.setAttribute('aria-pressed', String(!F.since && !F.until && b.dataset.range === F.range)));
+  $('#histSearch').value = F.text;
+}
+$('#chips').addEventListener('click', e => {
+  const k = e.target.closest('[data-chip]')?.dataset.chip; if (!k) return;
+  if (k === '*') return clearFilters();
+  F[k] = typeof F[k] === 'boolean' ? false : '';
+  k === 'flagged' || k === 'local' ? (renderChips(), renderHistory()) : loadHistory();
+});
+
+function query(gd){
+  const q = new URLSearchParams({n:400, gitDir:gd});
+  if (F.text) q.set('text', F.text);
+  if (F.author) q.set('author', F.author);
+  if (F.account) q.set('account', F.account);
+  if (F.since || F.range) q.set('since', F.since || F.range);
+  if (F.until) q.set('until', F.until);
+  return q;
+}
+const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range);
+
 async function loadHistory(){
   const gd = $('#histRepo').value; if (!gd) return;
-  $('#history').innerHTML = '<p class="hint">Reading history…</p>';
-  H = await act(() => api('GET', '/api/history?n=400&gitDir=' + encodeURIComponent(gd)));
+  if (!H) $('#history').innerHTML = '<p class="hint">Reading history…</p>';
+  renderChips();
+  const [h, r] = await Promise.all([act(() => api('GET', '/api/history?' + query(gd))), act(() => api('GET', '/api/refs?gitDir=' + encodeURIComponent(gd)))]);
   $('#history').dataset.loaded = '1';
-  if (H) renderHistory();
+  H = h; R = r;
+  if (H) for (const x of [...picked]) if (!H.commits.some(c => c.hash === x)) picked.delete(x);
+  renderToolbar(); renderHistory();
 }
+
+// ---- toolbar: branch, sync, update ----
+function renderToolbar(){
+  const h = R?.head, ub = $('#updateBtn');
+  $('#branchName').textContent = !h ? '…' : h.branch || (h.hash ? 'detached HEAD' : 'no branch');
+  let sync = '';
+  if (h && h.upstream){
+    const parts = [h.ahead && `<b>↑${h.ahead}</b> to push`, h.behind && `<b>↓${h.behind}</b> to pull`].filter(Boolean);
+    sync = parts.length ? parts.join(' · ') : 'Up to date with ' + esc(h.upstream);
+  } else if (h && h.branch) sync = 'Not on a remote yet';
+  $('#syncState').innerHTML = sync;
+  const canUpdate = !!(h && h.branch && h.upstream);
+  ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)' : 'This branch is not on a remote yet';
+  ub.className = 'btn' + (h?.behind ? ' primary' : '');
+  ub.textContent = h?.behind ? `Update (${h.behind} new)` : 'Update';
+}
+$('#updateBtn').onclick = async e => {
+  const gd = $('#histRepo').value, b = e.currentTarget;
+  b.disabled = true; b.textContent = 'Updating…';
+  const r = await act(() => api('POST','/api/repo/update',{gitDir:gd}));
+  if (r) toast('Up to date with ' + r.upstream);
+  loadHistory();
+};
+$('#browseRepo').onclick = () => act(() => api('POST','/api/commit/browse',{gitDir:$('#histRepo').value, hash:''}));
+
+// Branch menu: local branches first, then remote ones not checked out yet.
+$('#branchBtn').onclick = () => toggleBranches();
+function toggleBranches(open = $('#branchPop').hidden){
+  $('#branchPop').hidden = !open; $('#branchBtn').setAttribute('aria-expanded', String(open));
+  if (open){ $('#branchFind').value = ''; renderBranches(); $('#branchFind').focus(); }
+}
+function renderBranches(){
+  if (!R) return;
+  const q = $('#branchFind').value.trim().toLowerCase(), has = n => !q || n.toLowerCase().includes(q);
+  const local = R.branches.filter(b => !b.remote), names = new Set(local.map(b => b.name));
+  const remote = R.branches.filter(b => b.remote && !names.has(b.name.slice(b.name.indexOf('/') + 1)));
+  const item = b => `<button role="option" data-branch="${esc(b.name)}" aria-current="${b.current}">${b.current ? '✓ ' : ''}${esc(b.name)}${b.upstream ? `<span class="up">→ ${esc(b.upstream)}</span>` : ''}</button>`;
+  const l = local.filter(b => has(b.name)), r = remote.filter(b => has(b.name));
+  $('#branchList').innerHTML = (l.length ? '<h4>On this computer</h4>' + l.map(item).join('') : '')
+    + (r.length ? '<h4>On the remote</h4>' + r.map(item).join('') : '') || '<p class="hint" style="margin:4px">No branch matches.</p>';
+}
+$('#branchFind').oninput = renderBranches;
+$('#branchFind').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); $('#branchList button')?.click(); } if (e.key === 'ArrowDown'){ e.preventDefault(); $('#branchList button')?.focus(); } };
+$('#branchList').addEventListener('keydown', e => {
+  const items = [...$('#branchList').querySelectorAll('button')], i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown'){ e.preventDefault(); items[Math.min(i + 1, items.length - 1)]?.focus(); }
+  if (e.key === 'ArrowUp'){ e.preventDefault(); i <= 0 ? $('#branchFind').focus() : items[i - 1].focus(); }
+});
+$('#branchList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-branch]')?.dataset.branch; if (!b) return;
+  toggleBranches(false);
+  if (b === R?.head.branch) return;
+  const r = await act(() => api('POST','/api/repo/switch',{gitDir:$('#histRepo').value, branch:b}));
+  if (r){ toast('Switched to ' + r.branch); picked.clear(); loadHistory(); }
+});
+document.addEventListener('click', e => {
+  if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
+});
+
+// ---- the commit list ----
 const ago = t => { const s = Date.now()/1000 - t; const u = [[31536000,'year'],[2592000,'month'],[604800,'week'],[86400,'day'],[3600,'hour'],[60,'minute']];
   for (const [n, w] of u) if (s >= n){ const v = Math.floor(s/n); return `${v} ${w}${v > 1 ? 's' : ''} ago`; } return 'just now'; };
 function renderHistory(){
-  const r = H.repo, only = $('#onlyFlagged').checked;
-  const unpushedBad = H.commits.filter(c => c.flagged && c.unpushed).length;
-  $('#histSummary').innerHTML = `<span>Repo account: <strong style="color:${colorOf(r.account)}">${esc(r.account || 'not set')}</strong></span>
-    <span class="${H.flagged ? 'status-bad' : 'status-ok'}">${H.flagged ? H.flagged + ' wrong-account commit' + (H.flagged > 1 ? 's' : '') : 'No wrong-account commits'}</span>
-    <span class="hint">${H.unpushed} not pushed</span>
-    ${unpushedBad ? `<button class="btn primary" id="fixBtn">Fix ${unpushedBad} not-pushed commit${unpushedBad > 1 ? 's' : ''}</button>` : ''}`;
+  const box = $('#history');
+  if (!H){ box.innerHTML = '<div class="empty">Could not read this repo’s history.</div>'; $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = ''; return renderDetails(); }
+  const r = H.repo, h = R?.head;
+  const shown = H.commits.filter(c => (!F.flagged || c.flagged) && (!F.local || c.unpushed));
+  const filtered = gitFiltered() || F.flagged || F.local;
+  // Alerts: only when something needs attention.
+  const fixable = H.commits.filter(c => c.flagged && c.unpushed).length;
+  $('#histAlert').innerHTML = (h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
+    + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
   $('#fixBtn')?.addEventListener('click', async () => {
     if (!await ask('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.', {ok:'Rewrite'})) return;
     const res = await act(() => api('POST','/api/repo/fix',{gitDir:r.gitDir}));
-    if (res) { toast(`Fixed ${res.fixed} commit${res.fixed === 1 ? '' : 's'}`); loadHistory(); }
+    if (res){ toast(`Fixed ${res.fixed} commit${res.fixed === 1 ? '' : 's'}`); loadHistory(); }
   });
-  if (!H.commits.length){ $('#history').innerHTML = '<div class="empty">This repo has no commits yet.</div>'; return; }
-  const L = 18, W = Math.max(2, H.lanes) * L + 14, RH = 32;
-  const x = c => 12 + c * L;
-  const rows = H.commits.map((c, i) => ({c, i})).filter(o => !only || o.c.flagged);
-  $('#history').innerHTML = `<div class="history" style="--gw:${W}px">` + rows.map(({c, i}) => {
-    const col = c.account ? colorOf(c.account) : 'var(--muted)';
+  $('#histMeta').innerHTML = `<span>Repo account: <strong style="color:${colorOf(r.account)}">${esc(r.account || 'not set')}</strong></span>
+    <span>${filtered ? `<strong>${shown.length}</strong> matching commit${shown.length === 1 ? '' : 's'}` : `${H.commits.length} commit${H.commits.length === 1 ? '' : 's'}`}</span>
+    ${H.unpushed ? `<span>${H.unpushed} not pushed</span>` : ''}${H.flagged ? `<span class="status-bad">${H.flagged} wrong-account</span>` : ''}`;
+  if (!shown.length){
+    box.innerHTML = filtered ? '<div class="empty">No commits match these filters. <button class="btn" data-chip="*" id="emptyClear">Clear filters</button></div>' : '<div class="empty">This repo has no commits yet.</div>';
+    $('#emptyClear')?.addEventListener('click', clearFilters);
+    return renderDetails();
+  }
+  const graph = !filtered, L = 18, W = graph ? Math.max(2, H.lanes) * L + 14 : 30, RH = 32;
+  const x = c => 12 + (graph ? c : 0) * L;
+  const idx = new Map(H.commits.map((c, i) => [c.hash, i]));
+  box.innerHTML = `<div class="history" style="--gw:${W}px" role="listbox" aria-multiselectable="true" aria-label="Commits">` + shown.map(c => {
+    const i = idx.get(c.hash), col = c.account ? colorOf(c.account) : 'var(--muted)';
     let lines = '';
-    if (!only) for (const [f, t] of c.edges || []){
-      const x1 = x(f), x2 = x(t);
-      lines += x1 === x2 ? `<line x1="${x1}" y1="${RH/2}" x2="${x2}" y2="${RH + 1}" />`
-        : `<path d="M${x1} ${RH/2} C${x1} ${RH*0.85} ${x2} ${RH*0.75} ${x2} ${RH + 1}" fill="none"/>`;
+    if (graph){
+      for (const [f, t] of c.edges || []){
+        const x1 = x(f), x2 = x(t);
+        lines += x1 === x2 ? `<line x1="${x1}" y1="${RH/2}" x2="${x2}" y2="${RH + 1}" />`
+          : `<path d="M${x1} ${RH/2} C${x1} ${RH*0.85} ${x2} ${RH*0.75} ${x2} ${RH + 1}" fill="none"/>`;
+      }
+      if (i > 0) for (const t of new Set((H.commits[i-1].edges || []).map(e => e[1])))
+        lines += `<line x1="${x(t)}" y1="-1" x2="${x(t)}" y2="${RH/2}" />`;
     }
-    // top half of every lane arriving from the row above
-    if (!only && i > 0) for (const t of new Set((H.commits[i-1].edges || []).map(e => e[1])))
-      lines += `<line x1="${x(t)}" y1="-1" x2="${x(t)}" y2="${RH/2}" />`;
     const svg = `<svg width="${W}" height="${RH}" aria-hidden="true"><g stroke="var(--muted)" stroke-opacity=".55" stroke-width="2" fill="none">${lines}</g>
       <circle cx="${x(c.col)}" cy="${RH/2}" r="5.5" fill="${c.flagged ? 'var(--bad)' : col}" ${c.unpushed ? 'stroke="var(--panel)" stroke-width="2"' : ''}/>
       ${c.unpushed ? `<circle cx="${x(c.col)}" cy="${RH/2}" r="8" fill="none" stroke="${c.flagged ? 'var(--bad)' : col}" stroke-width="1.2" stroke-dasharray="2 2"/>` : ''}</svg>`;
     const chip = `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>`;
     const refs = c.refs ? `<span class="refs">${esc(c.refs)}</span>` : '';
-    return `<div class="hrow${c.flagged ? ' flag' : ''}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
+    const sel = picked.has(c.hash);
+    return `<div class="hrow${c.flagged ? ' flag' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
       <div class="subj">${refs}${esc(c.subject)}</div><div class="em">${esc(c.email)}</div>
       <div class="when">${c.unpushed ? 'not pushed' : ago(c.time)}</div></div>`;
-  }).join('') + '</div>' + (H.commits.length >= 400 ? '<p class="hint">Showing the latest 400 commits.</p>' : '');
+  }).join('') + '</div>' + (H.commits.length >= 400 ? '<p class="hint">Showing the latest 400 commits. Narrow it down with the search or the time range.</p>' : '');
+  renderDetails();
 }
+
+function pick(hash, multi){
+  if (multi) picked.has(hash) ? picked.delete(hash) : picked.add(hash);
+  else if (picked.size === 1 && picked.has(hash)) picked.clear();
+  else { picked.clear(); picked.add(hash); }
+  document.querySelectorAll('.hrow').forEach(r => { const s = picked.has(r.dataset.hash); r.classList.toggle('sel', s); r.setAttribute('aria-selected', String(s)); });
+  renderDetails();
+}
+$('#history').addEventListener('click', e => { const r = e.target.closest('.hrow'); if (r) pick(r.dataset.hash, e.metaKey || e.ctrlKey || e.shiftKey); });
+$('#history').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('hrow')){ e.preventDefault(); pick(e.target.dataset.hash, e.key === ' ' || e.metaKey || e.ctrlKey); }
+});
+
+// ---- details panel and selection bar ----
+function actionRow(id, label, why, opts = {}){
+  return `<div class="action"><button class="btn${opts.danger ? ' danger' : ''}" data-ca="${id}"${opts.disabled ? ` disabled title="${esc(opts.disabled)}"` : ''}>${label}</button><span class="why">${why}</span></div>`;
+}
+function renderDetails(){
+  const d = $('#details'), sb = $('#selbar'), cs = H ? H.commits.filter(c => picked.has(c.hash)) : [];
+  const branch = R?.head.branch ? esc(R.head.branch) : 'this branch';
+  sb.hidden = cs.length < 2;
+  if (cs.length >= 2) sb.innerHTML = `<strong>${cs.length} commits selected</strong><button class="btn" data-ca="pick">Cherry-pick ${cs.length} onto ${branch}</button><button class="btn ghost" data-ca="clear">Clear</button>`;
+  $('#histMain').classList.toggle('open', cs.length === 1);
+  if (cs.length !== 1){ d.hidden = true; return; }
+  const c = cs[0], pushed = !c.unpushed, col = c.account ? colorOf(c.account) : 'var(--muted)';
+  const pushedWhy = 'Already pushed: rewriting it would break other people’s copies. Use Revert instead.';
+  d.innerHTML = `<div class="dhead"><code>${esc(c.short)}</code><button class="btn ghost" data-ca="copy">Copy hash</button>
+      <span class="spacer"></span><button class="btn ghost" data-ca="close" aria-label="Close details" title="Close (Esc)">✕</button></div>
+    <h2>${esc(c.subject)}</h2>
+    <dl><dt>Author</dt><dd>${esc(c.author)}<br><span class="hint">${esc(c.email)}</span></dd>
+      <dt>Account</dt><dd><span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>${c.flagged ? ' <span class="status-bad">wrong account for this repo</span>' : ''}</dd>
+      <dt>Date</dt><dd>${esc(new Date(c.time * 1000).toLocaleString())}<br><span class="hint">${ago(c.time)}</span></dd>
+      ${c.refs ? `<dt>Refs</dt><dd>${esc(c.refs)}</dd>` : ''}
+      <dt>State</dt><dd>${pushed ? '<span class="state">Pushed</span>' : '<span class="state local">Not pushed</span> <span class="hint">only on this computer</span>'}</dd></dl>
+    <div class="agroup"><h3>Safe</h3>
+      ${actionRow('revert', 'Revert', 'Adds a new commit that undoes this one. History is kept, so it is safe after pushing.')}
+      ${actionRow('pick', 'Cherry-pick', `Copies this commit from another branch onto ${branch} as a new commit.`)}
+      ${actionRow('browse', 'View on web ↗', pushed ? 'Opens this commit on GitHub, GitLab, …' : 'Push it first: the server does not have it yet.', {disabled: pushed ? '' : 'Not pushed yet'})}
+    </div>
+    <div class="agroup"><h3>Rewrite history</h3>
+      ${actionRow('drop', 'Drop', 'Removes this commit and its changes. Later commits stay.', {danger:true, disabled: pushed ? pushedWhy : ''})}
+      ${actionRow('rollback', 'Roll back here', 'Undoes the commits after this one. Their changes stay in your files, uncommitted, so no work is lost.', {danger:true})}
+      ${pushed ? '<p class="hint">Only commits that are not pushed can be rewritten.</p>' : ''}
+    </div>
+    <p class="hint">Ctrl/⌘-click more commits to cherry-pick several at once.</p>`;
+  d.hidden = false;
+}
+for (const el of ['#details', '#selbar']) $(el).addEventListener('click', e => { const a = e.target.closest('[data-ca]')?.dataset.ca; if (a) commitAction(a); });
+async function commitAction(a){
+  if (!H) return;
+  const gd = $('#histRepo').value, cs = H.commits.filter(c => picked.has(c.hash)), c = cs[0], branch = R?.head.branch || 'this branch';
+  if (a === 'close' || a === 'clear'){ picked.clear(); renderHistory(); return; }
+  if (!c) return;
+  if (a === 'copy'){ try { await navigator.clipboard.writeText(c.hash); toast('Hash copied'); } catch { await act(() => api('POST','/api/copy',{text:c.hash}), 'Hash copied'); } return; }
+  if (a === 'browse'){ act(() => api('POST','/api/commit/browse',{gitDir:gd, hash:c.hash})); return; }
+  const n = cs.length, s = n > 1 ? 's' : '', name = `${c.short} “${c.subject}”`;
+  const q = {
+    pick: [`Cherry-pick ${n > 1 ? n + ' commits' : name} onto ${branch}${n > 1 ? ', oldest first' : ''}? Each becomes a new commit on ${branch}. If one does not apply cleanly, nothing changes.`, 'Cherry-pick'],
+    revert: [`Revert ${name}? A new commit undoes its changes. History is not rewritten, so this is safe for pushed commits.`, 'Revert'],
+    drop: [`Drop ${name} from ${branch}? Its changes are removed; the commits after it are kept.`, 'Drop', true],
+    rollback: [`Roll ${branch} back to ${name}? The commits after it are undone, and their changes stay in your files as uncommitted changes. Only not-pushed commits can be undone.`, 'Roll back', true],
+  }[a];
+  if (!q || !await ask(q[0], {ok:q[1], danger:q[2]})) return;
+  const path = {pick:'/api/commit/cherry-pick', revert:'/api/commit/revert', drop:'/api/commit/drop', rollback:'/api/commit/rollback'}[a];
+  const res = await act(() => api('POST', path, {gitDir:gd, hash:c.hash, hashes:cs.map(x => x.hash)}));
+  if (!res) return;
+  toast({pick:`Cherry-picked ${res.picked} commit${res.picked > 1 ? 's' : ''} onto ${branch}`, revert:'Reverted ' + res.commit,
+    drop:'Dropped ' + res.commit, rollback:`Rolled back; ${res.undone} commit${res.undone > 1 ? 's are' : ' is'} now uncommitted changes`}[a]);
+  picked.clear(); loadHistory();
+}
+
+// ---- keyboard ----
+document.addEventListener('keydown', e => {
+  if (!histVisible() || $('#dlg').open || e.altKey) return;
+  const typing = e.target.closest('input, select, textarea');
+  if (e.key === 'Escape'){
+    if (!$('#branchPop').hidden){ toggleBranches(false); $('#branchBtn').focus(); return; }
+    if (!$('#filterPanel').hidden){ toggleFilters(false); return; }
+    if (typing){ e.target.blur(); return; }
+    if (picked.size){ picked.clear(); renderHistory(); }
+    return;
+  }
+  if (typing || e.metaKey || e.ctrlKey) return;
+  const rows = [...document.querySelectorAll('.hrow')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
+  if (e.key === '/'){ e.preventDefault(); $('#histSearch').focus(); }
+  else if (e.key === 'j' || e.key === 'k'){
+    e.preventDefault();
+    const next = rows[Math.max(0, Math.min(rows.length - 1, cur < 0 ? 0 : cur + (e.key === 'j' ? 1 : -1)))];
+    if (next){ next.focus(); picked.clear(); pick(next.dataset.hash, true); next.scrollIntoView({block:'nearest'}); }
+  }
+  else if (e.key === 'b'){ e.preventDefault(); toggleBranches(true); }
+  else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
+  else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }
+});
 
 // ---- rules ----
 function renderRules(){

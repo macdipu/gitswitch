@@ -83,3 +83,32 @@ func RepoName(u string) string {
 	_, p := Parse(u)
 	return strings.TrimSuffix(path.Base(strings.TrimSuffix(p, "/")), ".git")
 }
+
+// WebURL is the web page of the repo a remote points at, e.g.
+// https://github.com/acme/api; "" when the remote is not on a server.
+func WebURL(remoteURL string) string {
+	host, p := Parse(remoteURL)
+	p = strings.TrimSuffix(strings.Trim(p, "/"), ".git")
+	if host == "" || p == "" || strings.ContainsAny(host, " /\\") {
+		return ""
+	}
+	return "https://" + CanonicalHost(host) + "/" + p
+}
+
+// CommitURL is the web page of one commit on the remote's host; "" when
+// the remote is not on a server. GitLab and Bitbucket use their own paths;
+// GitHub's is also used by Gitea, Forgejo and most others.
+func CommitURL(remoteURL, hash string) string {
+	base := WebURL(remoteURL)
+	if base == "" {
+		return ""
+	}
+	host, _ := Parse(remoteURL)
+	switch h := CanonicalHost(host); {
+	case strings.Contains(h, "gitlab"):
+		return base + "/-/commit/" + hash
+	case strings.Contains(h, "bitbucket"):
+		return base + "/commits/" + hash
+	}
+	return base + "/commit/" + hash
+}

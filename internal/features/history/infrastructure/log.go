@@ -19,10 +19,12 @@ type Log struct {
 	Git *gitinfra.Runner
 }
 
-func (l *Log) Commits(gitDir string, limit int) ([]history.Commit, error) {
+func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Commit, error) {
 	git := l.Git
-	out, err := git.Run("--git-dir="+gitDir, "log", "--all", "--topo-order", "-n", strconv.Itoa(limit),
-		"--format=%H%x1f%P%x1f%ae%x1f%an%x1f%at%x1f%D%x1f%s%x1e")
+	args := []string{"--git-dir=" + gitDir, "log", "--all", "--topo-order", "-n", strconv.Itoa(limit),
+		"--format=%H%x1f%P%x1f%ae%x1f%an%x1f%at%x1f%D%x1f%s%x1e"}
+	args = append(args, filterArgs(f)...)
+	out, err := git.Run(args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not have any commits") {
 			return nil, nil
@@ -50,6 +52,28 @@ func (l *Log) Commits(gitDir string, limit int) ([]history.Commit, error) {
 		cs = append(cs, c)
 	}
 	return cs, nil
+}
+
+// filterArgs turns a filter into git log options. Values are passed as
+// --opt=value, so they can never be read as other options.
+func filterArgs(f history.Filter) []string {
+	var args []string
+	if f.Author != "" || f.Text != "" {
+		args = append(args, "--regexp-ignore-case", "--fixed-strings")
+	}
+	if f.Author != "" {
+		args = append(args, "--author="+f.Author)
+	}
+	if f.Text != "" {
+		args = append(args, "--grep="+f.Text)
+	}
+	if f.Since != "" {
+		args = append(args, "--since="+f.Since)
+	}
+	if f.Until != "" {
+		args = append(args, "--until="+f.Until)
+	}
+	return args
 }
 
 func (l *Log) Unpushed(gitDir string) map[string]bool {
@@ -113,6 +137,103 @@ func (l *Log) RewriteAuthor(wt, name, email, first string) error {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		_, _ = git.Run("-C", wt, "rebase", "--abort")
 		return fmt.Errorf("rewrite failed, nothing changed: %s", strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+func (l *Log) Resolve(wt, rev string) (history.Target, error) {
+	out, err := l.Git.Run("-C", wt, "log", "-1", "--format=%H%x1f%P%x1f%s", rev+"^{commit}", "--")
+	if err != nil {
+		return history.Target{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	f := strings.SplitN(out, "\x1f", 3)
+	if len(f) < 3 {
+		return history.Target{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	t := history.Target{Hash: f[0], Subject: f[2], Parents: strings.Fields(f[1])}
+	if len(t.Hash) >= 7 {
+		t.Short = t.Hash[:7]
+	}
+	return t, nil
+}
+
+func (l *Log) Branch(wt string) string {
+	b, _ := l.Git.Run("-C", wt, "symbolic-ref", "-q", "--short", "HEAD")
+	return b
+}
+
+func (l *Log) InProgress(gitDir string) string { return gitinfra.InProgress(gitDir) }
+
+func (l *Log) OnBranch(wt, hash string) bool {
+	_, err := l.Git.Run("-C", wt, "merge-base", "--is-ancestor", hash, "HEAD")
+	return err == nil
+}
+
+func (l *Log) After(wt, hash string) ([]string, error) {
+	out, err := l.Git.Run("-C", wt, "rev-list", hash+"..HEAD")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(out), nil
+}
+
+func (l *Log) Revert(wt string, t history.Target) error {
+	args := []string{"revert", "--no-edit"}
+	if t.IsMerge() {
+		args = append(args, "-m", "1") // undo what the merge brought in
+	}
+	if err := l.Git.Change(wt, append(args, t.Hash)...); err != nil {
+		if gitinfra.InProgress(l.Git.GitDirFor(wt)) == "revert" {
+			_ = l.Git.Change(wt, "revert", "--abort")
+		}
+		return fmt.Errorf("revert failed, nothing changed: %v", err)
+	}
+	return nil
+}
+
+func (l *Log) Drop(wt string, t history.Target) error {
+	err := l.Git.Change(wt, "rebase", "--rebase-merges", "--autostash", "--onto", t.Hash+"^", t.Hash)
+	if err != nil {
+		if gitinfra.InProgress(l.Git.GitDirFor(wt)) == "rebase" {
+			_ = l.Git.Change(wt, "rebase", "--abort")
+		}
+		return fmt.Errorf("drop failed, nothing changed: %v", err)
+	}
+	return nil
+}
+
+func (l *Log) Reset(wt, hash string) error {
+	return l.Git.Change(wt, "reset", "--mixed", "-q", hash)
+}
+
+func (l *Log) Order(wt string, hashes []string) ([]string, error) {
+	want := map[string]bool{}
+	for _, h := range hashes {
+		want[h] = true
+	}
+	out, err := l.Git.Run(append(append([]string{"-C", wt, "rev-list", "--topo-order", "--reverse"}, hashes...), "^HEAD", "--")...)
+	if err != nil {
+		return nil, err
+	}
+	var sorted []string
+	for _, h := range strings.Fields(out) {
+		if want[h] {
+			sorted = append(sorted, h)
+		}
+	}
+	return sorted, nil
+}
+
+func (l *Log) CherryPick(wt string, ts []history.Target) error {
+	args := []string{"cherry-pick"}
+	for _, t := range ts {
+		args = append(args, t.Hash)
+	}
+	if err := l.Git.Change(wt, args...); err != nil {
+		if gitinfra.InProgress(l.Git.GitDirFor(wt)) == "cherry-pick" {
+			_ = l.Git.Change(wt, "cherry-pick", "--abort")
+		}
+		return fmt.Errorf("cherry-pick failed, nothing changed: %v", err)
 	}
 	return nil
 }

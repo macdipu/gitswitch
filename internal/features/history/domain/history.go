@@ -7,7 +7,9 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
@@ -206,36 +208,217 @@ func paint(color bool, code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
+// Filter narrows the history. Author, Text, Since and Until are passed to
+// git, so they search the whole history, not only the latest commits.
+type Filter struct {
+	Author  string `json:"author"`  // part of the author's name or email
+	Text    string `json:"text"`    // part of the commit message
+	Since   string `json:"since"`   // e.g. 2024-05-01 or "2 weeks ago"
+	Until   string `json:"until"`   // e.g. 2024-06-30
+	Account string `json:"account"` // gitswitch account that made the commit
+}
+
+// Active reports whether the filter narrows anything.
+func (f Filter) Active() bool { return f != Filter{} }
+
+// Keep applies the account part of the filter, which git cannot know.
+func (f Filter) Keep(cs []Commit) []Commit {
+	if f.Account == "" {
+		return cs
+	}
+	var out []Commit
+	for _, c := range cs {
+		if strings.EqualFold(c.Account, f.Account) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Describe is a short summary, e.g. `author "ana", since 2024-05-01`.
+func (f Filter) Describe() string {
+	var parts []string
+	for _, p := range [][2]string{{"author", f.Author}, {"text", f.Text}, {"since", f.Since}, {"until", f.Until}, {"account", f.Account}} {
+		if p[1] != "" {
+			parts = append(parts, fmt.Sprintf("%s %q", p[0], p[1]))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ParseDate reads a filter date: 2024-05-01, 2024-05-01 14:30, today,
+// yesterday, or "3 weeks ago" (seconds, minutes, hours, days, weeks,
+// months, years). A day without a time means its first second, or with
+// endOfDay its last, so both ends of a range are included.
+func ParseDate(s string, now time.Time, endOfDay bool) (time.Time, error) {
+	s = strings.ToLower(strings.Join(strings.Fields(s), " "))
+	day := func(t time.Time) time.Time {
+		y, m, d := t.Date()
+		start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+		if endOfDay {
+			return start.Add(24*time.Hour - time.Second)
+		}
+		return start
+	}
+	bad := fmt.Errorf("cannot read the date %q; use 2024-05-01, 2024-05-01 14:30, yesterday or 2 weeks ago", s)
+	var t time.Time
+	switch {
+	case s == "today":
+		return day(now), nil
+	case s == "yesterday":
+		return day(now.AddDate(0, 0, -1)), nil
+	case strings.HasSuffix(s, " ago"):
+		f := strings.Fields(strings.TrimSuffix(s, " ago"))
+		if len(f) != 2 {
+			return t, bad
+		}
+		n, err := strconv.Atoi(f[0])
+		if err != nil || n < 0 {
+			return t, bad
+		}
+		switch strings.TrimSuffix(f[1], "s") {
+		case "second":
+			return now.Add(-time.Duration(n) * time.Second), nil
+		case "minute":
+			return now.Add(-time.Duration(n) * time.Minute), nil
+		case "hour":
+			return now.Add(-time.Duration(n) * time.Hour), nil
+		case "day":
+			return now.AddDate(0, 0, -n), nil
+		case "week":
+			return now.AddDate(0, 0, -7*n), nil
+		case "month":
+			return now.AddDate(0, -n, 0), nil
+		case "year":
+			return now.AddDate(-n, 0, 0), nil
+		}
+		return t, bad
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02T15:04:05", "2006-01-02T15:04"} {
+		if v, err := time.ParseInLocation(layout, s, now.Location()); err == nil {
+			t = v
+			break
+		}
+	}
+	if t.IsZero() {
+		v, err := time.ParseInLocation("2006-01-02", s, now.Location())
+		if err != nil {
+			return t, bad
+		}
+		t = day(v)
+	}
+	if t.Year() < 1970 || t.Year() > 2099 {
+		return time.Time{}, fmt.Errorf("the date %q is out of range; use a year from 1970 to 2099", s)
+	}
+	return t, nil
+}
+
+// ForGit checks the filter and turns its dates into exact times for git
+// (@<unix seconds>), because git quietly guesses at dates it cannot read.
+// none is true when no commit can match (the range is in the future).
+func (f Filter) ForGit(now time.Time) (g Filter, none bool, err error) {
+	g = f
+	var since, until time.Time
+	if f.Since != "" {
+		if since, err = ParseDate(f.Since, now, false); err != nil {
+			return g, false, err
+		}
+		g.Since = "@" + strconv.FormatInt(since.Unix(), 10)
+	}
+	if f.Until != "" {
+		if until, err = ParseDate(f.Until, now, true); err != nil {
+			return g, false, err
+		}
+		g.Until = "@" + strconv.FormatInt(until.Unix(), 10)
+	}
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		return g, false, fmt.Errorf("the start date %s is after the end date %s", f.Since, f.Until)
+	}
+	return g, !since.IsZero() && since.After(now), nil
+}
+
+// ListRows lists commits one per line without the graph (used while a
+// filter hides some commits, so graph lines would not connect).
+func ListRows(c *account.Config, hist *History, color bool) []Row {
+	var rows []Row
+	for _, cm := range hist.Commits {
+		label := cm.Account
+		if label == "" {
+			label = "unknown"
+		}
+		tag := paint(color, AccountColor(c, cm.Account), "["+label+"]")
+		if cm.Flagged {
+			tag = paint(color, "1;31", "["+label+" !]")
+		}
+		date := time.Unix(cm.Time, 0).Format("2006-01-02")
+		tail := ""
+		if cm.Unpushed {
+			tail = "  " + paint(color, "2", "(not pushed)")
+		}
+		rows = append(rows, Row{fmt.Sprintf("%s %s %s %s  %s%s", paint(color, "33", cm.Short), date, tag, cm.Subject, paint(color, "2", cm.Author), tail), cm.Hash})
+	}
+	if len(rows) == 0 {
+		rows = append(rows, Row{Text: "No commits match the filter."})
+	}
+	return rows
+}
+
+// Row is one line of a rendered history and the commit on it ("" for a
+// line that only continues the graph).
+type Row struct {
+	Text string
+	Hash string
+}
+
+// Texts returns the rows' text.
+func Texts(rows []Row) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Text
+	}
+	return out
+}
+
 // FlaggedLines lists the wrong-account commits among the last n.
 func FlaggedLines(hist *History, n int, color bool) []string {
-	var lines []string
+	return Texts(FlaggedRows(hist, n, color))
+}
+
+// FlaggedRows is FlaggedLines with the commit of each line.
+func FlaggedRows(hist *History, n int, color bool) []Row {
+	var rows []Row
 	for _, cm := range hist.Commits {
 		if cm.Flagged {
 			state := "pushed"
 			if cm.Unpushed {
 				state = "not pushed"
 			}
-			lines = append(lines, fmt.Sprintf("%s %s  %s  (%s)", paint(color, "33", cm.Short), cm.Subject, paint(color, "31", cm.Email), state))
+			rows = append(rows, Row{fmt.Sprintf("%s %s  %s  (%s)", paint(color, "33", cm.Short), cm.Subject, paint(color, "31", cm.Email), state), cm.Hash})
 		}
 	}
-	if len(lines) == 0 {
-		lines = append(lines, fmt.Sprintf("No wrong-account commits in the last %d commits.", n))
+	if len(rows) == 0 {
+		rows = append(rows, Row{Text: fmt.Sprintf("No wrong-account commits in the last %d commits.", n)})
 	}
-	return lines
+	return rows
 }
 
 // GraphLines adds the account of each commit to git's own graph (`git log
 // --graph` with each line's hash after a \x1f).
 func GraphLines(c *account.Config, hist *History, graph string, color bool) []string {
+	return Texts(GraphRows(c, hist, graph, color))
+}
+
+// GraphRows is GraphLines with the commit of each line.
+func GraphRows(c *account.Config, hist *History, graph string, color bool) []Row {
 	info := map[string]Commit{}
 	for _, cm := range hist.Commits {
 		info[cm.Hash] = cm
 	}
-	var lines []string
+	var rows []Row
 	for _, line := range strings.Split(graph, "\n") {
 		prefix, hash, ok := strings.Cut(line, "\x1f")
 		if !ok {
-			lines = append(lines, line)
+			rows = append(rows, Row{Text: line})
 			continue
 		}
 		hash = strings.TrimSpace(StripANSI(hash))
@@ -259,16 +442,31 @@ func GraphLines(c *account.Config, hist *History, graph string, color bool) []st
 		if cm.Unpushed {
 			tail += "  " + paint(color, "2", "(not pushed)")
 		}
-		lines = append(lines, fmt.Sprintf("%s%s%s %s %s%s", prefix, paint(color, "33", cm.Short), refs, tag, cm.Subject, tail))
+		rows = append(rows, Row{fmt.Sprintf("%s%s%s %s %s%s", prefix, paint(color, "33", cm.Short), refs, tag, cm.Subject, tail), hash})
 	}
-	return lines
+	return rows
 }
+
+// Target is a commit picked for an action (revert, drop, roll back,
+// cherry-pick).
+type Target struct {
+	Hash    string
+	Short   string
+	Subject string
+	Parents []string
+}
+
+// IsMerge reports whether the commit joins two or more branches.
+func (t Target) IsMerge() bool { return len(t.Parents) > 1 }
+
+// Label is the short hash and subject, e.g. "1a2b3c4 Fix login".
+func (t Target) Label() string { return t.Short + " " + t.Subject }
 
 // Log reads commits from git and rewrites authors.
 type Log interface {
 	// Commits loads the latest commits of all branches in topological
 	// order; none for a repo without commits.
-	Commits(gitDir string, limit int) ([]Commit, error)
+	Commits(gitDir string, limit int, f Filter) ([]Commit, error)
 	// Unpushed is the set of commits on a branch but on no remote.
 	Unpushed(gitDir string) map[string]bool
 	// Graph is git's own graph of the last n commits, each line's hash
@@ -283,4 +481,31 @@ type Log interface {
 	// commits from first on that used another email. Nothing changes on
 	// failure.
 	RewriteAuthor(worktree, name, email, first string) error
+
+	// Resolve finds the commit a hash (or other revision) names.
+	Resolve(worktree, rev string) (Target, error)
+	// Branch is the checked-out branch; "" when HEAD is detached.
+	Branch(worktree string) string
+	// InProgress names an operation git is in the middle of ("rebase",
+	// "merge", ...), or "".
+	InProgress(gitDir string) string
+	// OnBranch reports whether a commit is part of the current branch.
+	OnBranch(worktree, hash string) bool
+	// After lists the commits on the current branch made after hash.
+	After(worktree, hash string) ([]string, error)
+	// Revert adds a commit that undoes the commit's changes. Nothing
+	// changes on failure.
+	Revert(worktree string, t Target) error
+	// Drop removes a commit from the current branch, replaying the commits
+	// after it. Uncommitted changes are kept. Nothing changes on failure.
+	Drop(worktree string, t Target) error
+	// Reset moves the current branch back to the commit, keeping the
+	// changes made after it as uncommitted changes.
+	Reset(worktree, hash string) error
+	// Order sorts commits that are not on the current branch oldest first:
+	// parents before their children.
+	Order(worktree string, hashes []string) ([]string, error)
+	// CherryPick copies commits, in the given order, onto the current
+	// branch. Nothing changes on failure.
+	CherryPick(worktree string, ts []Target) error
 }

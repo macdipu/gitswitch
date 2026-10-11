@@ -17,6 +17,7 @@ import (
 	"github.com/macdipu/gitswitch/internal/features/doctor"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
 	"github.com/macdipu/gitswitch/internal/platform/process"
@@ -82,8 +83,12 @@ type tui struct {
 
 	histDir   string
 	histLines []string
+	histRows  []history.Row // the commit on each line
 	hist      *history.History
+	head      *refs.Head
+	marked    map[string]bool // commits marked for cherry-pick
 	flagged   bool
+	filter    history.Filter
 
 	msg    string
 	msgErr bool
@@ -471,6 +476,8 @@ Repos
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
 History
   o other repo   f only wrong-account commits   x fix not-pushed commits   r reload
+  b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
+  on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
 Settings
@@ -874,13 +881,26 @@ func (t *tui) loadHistory() {
 		t.histLines = []string{}
 		return
 	}
-	lines, h, err := t.app.History.Lines(t.histDir, 300, t.flagged, true)
+	t.head = nil
+	if h, err := t.app.Refs.Head(t.histDir); err == nil {
+		t.head = &h
+	}
+	rows, h, err := t.app.History.Rows(t.histDir, 300, t.flagged, true, t.filter)
 	if err != nil {
-		t.histLines = []string{}
+		t.histLines, t.histRows = []string{}, nil
 		t.say(err, "")
 		return
 	}
-	t.histLines, t.hist = lines, h
+	t.histRows, t.histLines, t.hist = rows, history.Texts(rows), h
+	t.marked = map[string]bool{}
+}
+
+// selectedCommit is the commit on the selected history line, or "".
+func (t *tui) selectedCommit() string {
+	if i := t.sel[tabHistory]; i < len(t.histRows) {
+		return t.histRows[i].Hash
+	}
+	return ""
 }
 
 func (t *tui) keyHistory(k string) {
@@ -922,7 +942,189 @@ func (t *tui) keyHistory(k string) {
 				}
 				return err
 			}}}
+	case "b":
+		t.pickBranch()
+	case "u":
+		t.update()
+	case "v", "d", "z":
+		t.commitAction(k)
+	case " ":
+		if h := t.selectedCommit(); h != "" {
+			t.marked[h] = !t.marked[h]
+			if !t.marked[h] {
+				delete(t.marked, h)
+			}
+			if t.sel[tabHistory] < len(t.histLines)-1 {
+				t.sel[tabHistory]++
+			}
+		}
+	case "/":
+		t.editFilter()
+	case "c":
+		t.cherryPick()
+	case "w":
+		hash := t.selectedCommit()
+		if t.histDir == "" {
+			return
+		}
+		u, err := t.app.History.WebURL(t.histDir, hash)
+		if err == nil {
+			err = process.OpenBrowser(u)
+		}
+		t.say(err, "Opened "+u)
 	}
+}
+
+// editFilter asks for a commit filter; leaving every field empty clears it.
+func (t *tui) editFilter() {
+	accts := append([]string{"any"}, t.cfg.SortedIDs()...)
+	acct := t.filter.Account
+	if acct == "" {
+		acct = "any"
+	}
+	f := t.filter
+	t.form = &form{title: "Filter commits (empty = show all)", fields: []field{
+		{label: "Author name or email contains", value: f.Author},
+		{label: "Message contains", value: f.Text},
+		{label: "Since", value: f.Since, hint: "e.g. 2024-05-01 or 2 weeks ago"},
+		{label: "Until", value: f.Until, hint: "e.g. 2024-06-30"},
+		{label: "Account", value: acct, options: accts, hint: "←→ to change"},
+	}, submit: func(v []string) error {
+		if v[4] == "any" {
+			v[4] = ""
+		}
+		t.filter = history.Filter{Author: strings.TrimSpace(v[0]), Text: strings.TrimSpace(v[1]),
+			Since: strings.TrimSpace(v[2]), Until: strings.TrimSpace(v[3]), Account: v[4]}
+		t.loadHistory()
+		return nil
+	}}
+}
+
+// cherryPick copies the marked commits (or the selected one) onto the
+// current branch, after asking.
+func (t *tui) cherryPick() {
+	var hashes []string
+	for h := range t.marked { // the use case puts them in order
+		hashes = append(hashes, h)
+	}
+	if len(hashes) == 0 {
+		if h := t.selectedCommit(); h != "" {
+			hashes = []string{h}
+		}
+	}
+	if len(hashes) == 0 {
+		t.say(fmt.Errorf("select a commit line, or mark several with Space"), "")
+		return
+	}
+	branch := "the current branch"
+	if t.head != nil && t.head.Branch != "" {
+		branch = t.head.Branch
+	}
+	gd := t.histDir
+	t.confirm = &confirmBox{fmt.Sprintf("Cherry-pick %d commit(s) onto %s, oldest first? If one does not apply cleanly, nothing changes. (y/n)", len(hashes), branch),
+		map[string]func() error{"y": func() error {
+			ts, err := t.app.History.CherryPick(gd, hashes)
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, fmt.Sprintf("Cherry-picked %d commit(s) onto %s.", len(ts), branch))
+			return nil
+		}}}
+}
+
+// pickBranch lists the branches and switches to the chosen one.
+func (t *tui) pickBranch() {
+	if t.histDir == "" {
+		return
+	}
+	bs, err := t.app.Refs.Branches(t.histDir)
+	if err != nil || len(bs) == 0 {
+		t.say(err, "This repo has no branches yet.")
+		return
+	}
+	var opts []string
+	for _, b := range bs {
+		o := b.Name
+		if b.Current {
+			o += "  (current)"
+		}
+		opts = append(opts, o)
+	}
+	gd := t.histDir
+	t.picker = &picker{title: "Switch to branch", options: opts, pick: func(i int) error {
+		name, err := t.app.Refs.Switch(gd, bs[i].Name)
+		if err != nil {
+			return err
+		}
+		t.loadHistory()
+		t.say(nil, "Switched to "+name+".")
+		return nil
+	}}
+}
+
+// update pulls the current branch. It leaves the TUI while git runs, so
+// git's progress and any account question show in the terminal.
+func (t *tui) update() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	var h refs.Head
+	var err error
+	t.suspend(func() {
+		fmt.Println("Updating from the remote ...")
+		h, err = t.app.Refs.Update(gd, func(l string) { fmt.Print("\r\x1b[K  " + l) })
+		fmt.Println()
+		if err != nil {
+			fmt.Println("gitswitch:", err)
+		}
+	})
+	t.loadHistory()
+	t.say(err, "Updated: "+h.Describe())
+}
+
+// commitAction reverts (v), drops (d) or rolls back to (z) the selected
+// commit, after asking.
+func (t *tui) commitAction(k string) {
+	hash := t.selectedCommit()
+	if hash == "" {
+		t.say(fmt.Errorf("select a commit line first (↑↓)"), "")
+		return
+	}
+	short := hash[:min(7, len(hash))]
+	gd := t.histDir
+	var q string
+	var do func() (string, error)
+	switch k {
+	case "v":
+		q = "Revert " + short + "? A new commit undoes its changes; history is not rewritten, so this is safe for pushed commits. (y/n)"
+		do = func() (string, error) {
+			c, err := t.app.History.Revert(gd, hash)
+			return "Reverted " + c.Label() + ". Push when ready.", err
+		}
+	case "d":
+		q = "Drop " + short + " from this branch? Its changes are removed; later commits are kept. Only not-pushed commits can be dropped. (y/n)"
+		do = func() (string, error) {
+			c, err := t.app.History.Drop(gd, hash)
+			return "Dropped " + c.Label() + ".", err
+		}
+	case "z":
+		q = "Roll this branch back to " + short + "? The later commits are undone and their changes stay in your files, uncommitted. Only not-pushed commits can be undone. (y/n)"
+		do = func() (string, error) {
+			n, c, err := t.app.History.Rollback(gd, hash)
+			return fmt.Sprintf("Rolled back to %s; %d commit(s) are now uncommitted changes.", c.Label(), n), err
+		}
+	}
+	t.confirm = &confirmBox{q, map[string]func() error{"y": func() error {
+		msg, err := do()
+		if err != nil {
+			return err
+		}
+		t.loadHistory()
+		t.say(nil, msg)
+		return nil
+	}}}
 }
 
 // ---------------- rules ----------------
@@ -1111,7 +1313,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "o other repo · f wrong-account only · x fix · r reload · ? help · q quit"
+		return "/ filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · ? help · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}
@@ -1224,14 +1426,25 @@ func (t *tui) drawHistory() ([]string, int) {
 		if t.flagged {
 			filter = cDim + "  [showing wrong-account only]" + cReset
 		}
-		l = append(l, "\x00 "+cBold+h.Repo.Path+cReset+"  account: "+acct+"  "+flag+cDim+fmt.Sprintf("  %d not pushed", h.Unpushed)+cReset+filter, "\x00")
+		l = append(l, "\x00 "+cBold+h.Repo.Path+cReset+"  account: "+acct+"  "+flag+cDim+fmt.Sprintf("  %d not pushed", h.Unpushed)+cReset+filter)
+		if t.head != nil {
+			l = append(l, "\x00 branch: "+cBold+t.head.Describe()+cReset)
+		}
+		if t.filter.Active() {
+			l = append(l, "\x00 "+cYellow+"filter: "+t.filter.Describe()+cReset+cDim+fmt.Sprintf("  %d commit(s) · / to change", len(h.Commits))+cReset)
+		}
+		l = append(l, "\x00")
 	}
 	sel := t.sel[tabHistory]
 	for i, x := range t.histLines {
+		lead := " "
+		if i < len(t.histRows) && t.marked[t.histRows[i].Hash] {
+			lead = cGreen + "+" + cReset
+		}
 		if i == sel {
-			l = append(l, cRev+" "+cReset+x)
+			l = append(l, cRev+lead+cReset+x)
 		} else {
-			l = append(l, " "+x)
+			l = append(l, lead+x)
 		}
 	}
 	return l, sel

@@ -784,3 +784,163 @@ func TestTerminalPromptSavesAnswer(t *testing.T) {
 		t.Fatalf("email %q", got)
 	}
 }
+
+// commitFile writes a file and commits it with the repo's identity.
+func (e *env) commitFile(dir, file, text, msg string) string {
+	e.t.Helper()
+	must(e.t, os.WriteFile(filepath.Join(dir, file), []byte(text), 0o644))
+	e.gitIn(dir, "add", file)
+	e.gitIn(dir, "commit", "-q", "-m", msg)
+	return e.gitIn(dir, "rev-parse", "HEAD")
+}
+
+func (e *env) subjects(dir, rev string, n int) string {
+	e.t.Helper()
+	return strings.ReplaceAll(e.gitIn(dir, "log", "-n", fmt.Sprint(n), "--format=%s", rev), "\n", ",")
+}
+
+// gsErr runs gitswitch and expects it to fail with want in its output.
+func (e *env) gsErr(dir, want string, args ...string) {
+	e.t.Helper()
+	out, err := e.run(dir, gsBin, args...)
+	if err == nil || !strings.Contains(out, want) {
+		e.t.Fatalf("gitswitch %v: err=%v, want an error with %q\n%s", args, err, want, out)
+	}
+}
+
+// Branch, update, revert, drop, roll back, cherry-pick and browse, with
+// real git. Pushed history is never rewritten.
+func TestHistoryAndBranchActions(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	pushed := e.commitFile(api, "a.txt", "a\n", "pushed a")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	local1 := e.commitFile(api, "b.txt", "b\n", "local b")
+	e.commitFile(api, "c.txt", "c\n", "local c")
+
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, "main → origin/main, 2 to push") || !strings.Contains(out, "* main") {
+		t.Fatalf("branch:\n%s", out)
+	}
+	if out := e.gsIn(api, "log"); !strings.Contains(out, "branch: main → origin/main") {
+		t.Fatalf("log header:\n%s", out)
+	}
+
+	// Drop: pushed commits are refused, a not-pushed one is removed.
+	e.gsErr(api, "already pushed", "drop", pushed[:7], "-y")
+	e.gsErr(api, "add -y", "drop", local1[:7])
+	e.gsIn(api, "drop", local1[:7], "-y")
+	if got := e.subjects(api, "HEAD", 3); got != "local c,pushed a,Initial acme-corp/api" {
+		t.Fatalf("after drop: %s", got)
+	}
+	if _, err := os.Stat(filepath.Join(api, "b.txt")); !os.IsNotExist(err) {
+		t.Fatal("the dropped commit's file is still there")
+	}
+
+	// Roll back: not over pushed commits; the undone changes stay as files.
+	e.gsErr(api, "already pushed", "rollback", "HEAD~2", "-y")
+	e.gsIn(api, "rollback", pushed[:7], "-y")
+	if got := e.gitIn(api, "rev-parse", "HEAD"); got != pushed {
+		t.Fatalf("HEAD after rollback = %s, want %s", got, pushed)
+	}
+	if st := e.gitIn(api, "status", "--porcelain"); !strings.Contains(st, "c.txt") {
+		t.Fatalf("rolled-back changes should be uncommitted, status:\n%s", st)
+	}
+	must(t, os.Remove(filepath.Join(api, "c.txt")))
+
+	// Revert works on pushed commits, with the repo's account.
+	e.gsIn(api, "revert", pushed[:7])
+	if got := e.gitIn(api, "log", "-1", "--format=%ae %s"); !strings.HasPrefix(got, "dipu@client.example Revert \"pushed a\"") {
+		t.Fatalf("revert commit: %q", got)
+	}
+	if got := e.gitIn(api, "rev-parse", "origin/main"); got != pushed {
+		t.Fatal("pushed history changed")
+	}
+
+	// Cherry-pick several commits from another branch, oldest first, given in any order.
+	e.gitIn(api, "switch", "-q", "-c", "side", pushed)
+	s1 := e.commitFile(api, "s1.txt", "1\n", "side one")
+	s2 := e.commitFile(api, "s2.txt", "2\n", "side two")
+	e.gitIn(api, "push", "-q", "origin", "side")
+	e.gsIn(api, "switch", "main")
+	e.gsIn(api, "cherry-pick", s2[:7], s1[:7])
+	if got := e.subjects(api, "HEAD", 3); got != "side two,side one,Revert \"pushed a\"" {
+		t.Fatalf("after cherry-pick: %s", got)
+	}
+	e.gsErr(api, "already on the current branch", "cherry-pick", pushed[:7])
+
+	// A conflicting cherry-pick changes nothing.
+	e.gitIn(api, "switch", "-q", "side")
+	clash := e.commitFile(api, "s1.txt", "clash\n", "side clash")
+	e.gitIn(api, "switch", "-q", "main")
+	e.commitFile(api, "s1.txt", "main\n", "main edit")
+	head := e.gitIn(api, "rev-parse", "HEAD")
+	e.gsErr(api, "nothing changed", "cherry-pick", clash[:7])
+	if got := e.gitIn(api, "rev-parse", "HEAD"); got != head || e.gitIn(api, "status", "--porcelain") != "" {
+		t.Fatal("a failed cherry-pick left changes behind")
+	}
+
+	// Switching to a remote-only branch creates a local branch that tracks it.
+	e.gitIn(api, "branch", "-q", "-D", "side")
+	e.gsIn(api, "switch", "origin/side")
+	if got := e.gitIn(api, "rev-parse", "--abbrev-ref", "side@{upstream}"); got != "origin/side" {
+		t.Fatalf("side tracks %q", got)
+	}
+
+	// Update fast-forwards with the repo's account, and explains a divergence.
+	other := filepath.Join(e.root, "other")
+	e.clone("git@github.com:acme-corp/api.git", "other")
+	e.gitIn(other, "switch", "-q", "side")
+	e.commitFile(other, "new.txt", "new\n", "from elsewhere")
+	e.gitIn(other, "push", "-q", "origin", "side")
+	e.resetLog()
+	if out := e.gsIn(api, "update"); !strings.Contains(out, "up to date") {
+		t.Fatalf("update:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[0] != "client" {
+		t.Fatalf("update used keys %v, want client", k)
+	}
+	if got := e.subjects(api, "HEAD", 1); got != "from elsewhere" {
+		t.Fatalf("not updated: %s", got)
+	}
+	e.commitFile(other, "new2.txt", "x\n", "elsewhere again")
+	e.gitIn(other, "push", "-q", "origin", "side")
+	e.commitFile(api, "mine.txt", "x\n", "mine")
+	e.gsErr(api, "both have new commits", "update")
+
+	// browse prints the commit's page (the browser is not opened in tests).
+	if out := e.gsIn(api, "browse", pushed[:7]); !strings.Contains(out, "https://github.com/acme-corp/api/commit/"+pushed) {
+		t.Fatalf("browse:\n%s", out)
+	}
+	e.gsErr(api, "not pushed yet", "browse", "HEAD")
+
+	// Filters: author, message, dates and account; a filtered log is a flat list.
+	if out := e.gsIn(api, "log", "--grep", "SIDE", "-n", "50"); !strings.Contains(out, "side one") || !strings.Contains(out, "side two") || strings.Contains(out, "main edit") || !strings.Contains(out, `filter: text "SIDE"`) {
+		t.Fatalf("log --grep:\n%s", out)
+	}
+	if out := e.gsIn(api, "log", "--author=seed@other"); !strings.Contains(out, "Initial acme-corp/api") || strings.Contains(out, "pushed a") {
+		t.Fatalf("log --author:\n%s", out)
+	}
+	if out := e.gsIn(api, "log", "--account", "client", "-n", "50"); !strings.Contains(out, "[client]") || strings.Contains(out, "Initial acme-corp") {
+		t.Fatalf("log --account:\n%s", out)
+	}
+	e.gsErr(api, "cannot read the date", "log", "--since", "bogus")
+	if out := e.gsIn(api, "log", "--since", "2098-01-01"); !strings.Contains(out, "No commits match the filter.") {
+		t.Fatalf("log --since in the future:\n%s", out)
+	}
+	if out := e.gsIn(api, "log", "--until", "1990-01-01", "--grep", "x"); !strings.Contains(out, "No commits match") {
+		t.Fatalf("log --until in the past:\n%s", out)
+	}
+	if out := e.gsIn(api, "log", "--since", "yesterday", "--until", "today", "--grep", "side one"); !strings.Contains(out, "side one") {
+		t.Fatalf("today's commits (both ends included):\n%s", out)
+	}
+
+	// --dry-run changes nothing.
+	head = e.gitIn(api, "rev-parse", "HEAD")
+	e.gsIn(api, "--dry-run", "rollback", "HEAD~1")
+	e.gsIn(api, "--dry-run", "switch", "main")
+	if e.gitIn(api, "rev-parse", "HEAD") != head || e.gitIn(api, "branch", "--show-current") != "side" {
+		t.Fatal("dry run changed the repo")
+	}
+}

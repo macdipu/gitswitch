@@ -43,3 +43,22 @@ func TestCheckCloneURL(t *testing.T) {
 		t.Errorf("RepoName = %q", n)
 	}
 }
+
+func TestWebAndCommitURL(t *testing.T) {
+	cases := []struct{ remote, web, commit string }{
+		{"git@github.com:acme/api.git", "https://github.com/acme/api", "https://github.com/acme/api/commit/abc"},
+		{"ssh://git@ssh.github.com:443/acme/api.git", "https://github.com/acme/api", "https://github.com/acme/api/commit/abc"},
+		{"https://user@gitlab.com/group/sub/app.git", "https://gitlab.com/group/sub/app", "https://gitlab.com/group/sub/app/-/commit/abc"},
+		{"git@bitbucket.org:team/site.git", "https://bitbucket.org/team/site", "https://bitbucket.org/team/site/commits/abc"},
+		{"/srv/git/local.git", "", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := WebURL(c.remote); got != c.web {
+			t.Errorf("WebURL(%q) = %q, want %q", c.remote, got, c.web)
+		}
+		if got := CommitURL(c.remote, "abc"); got != c.commit {
+			t.Errorf("CommitURL(%q) = %q, want %q", c.remote, got, c.commit)
+		}
+	}
+}
