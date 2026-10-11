@@ -24,6 +24,11 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a browser app (`gitswitch ui`).
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-history-dark.png">
+  <img alt="GitSwitch browser app: commit history with the account behind every commit, wrong-account commits highlighted" src="docs/images/web-history-light.png">
+</picture>
+
 ## Contents
 
 - [Install](#install)
@@ -84,6 +89,15 @@ Answer a few questions:
 gitswitch setup
 ```
 
+<p align="center"><img alt="gitswitch setup: adding a work and a personal account, creating keys, testing the login and adding an owner rule" src="docs/images/setup.gif" width="820"></p>
+
+The wizard connects GitSwitch to git, then for each account:
+
+1. Asks for a short name, the commit name and email.
+2. Creates a new SSH key (or uses one you already have) and shows the public key with a link to GitHub's **New SSH key** page.
+3. Waits while you add the key, then logs in to check it (`Connected: work is alex-acme on github.com`).
+4. Lets you pick the default account and add rules, so most repos never need to ask.
+
 Or script it, one command per account:
 
 ```sh
@@ -119,6 +133,43 @@ It also sets the repo's `user.name` and `user.email` to the chosen account.
 ## Terminal app and browser app
 
 Both edit the same settings. A change in one shows up in the other.
+
+**Terminal app** (`gitswitch`)
+
+<p align="center"><img alt="GitSwitch terminal app: Accounts, Repos, History, Rules and Settings pages" src="docs/images/tui.gif" width="820"></p>
+
+**Browser app** (`gitswitch ui`), light and dark to match your system:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-accounts-dark.png">
+  <img alt="Browser app: Accounts page with three accounts, each signed in" src="docs/images/web-accounts-light.png">
+</picture>
+
+<details>
+<summary>More browser app pages</summary>
+
+**Repos:** the account for each repo, and what decided it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-repos-dark.png">
+  <img alt="Browser app: Repos page" src="docs/images/web-repos-light.png">
+</picture>
+
+**Rules**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-rules-dark.png">
+  <img alt="Browser app: Rules page" src="docs/images/web-rules-light.png">
+</picture>
+
+**Settings and health check**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-settings-dark.png">
+  <img alt="Browser app: Settings page with health check" src="docs/images/web-settings-light.png">
+</picture>
+
+</details>
 
 | | Terminal app | Browser app |
 | --- | --- | --- |
