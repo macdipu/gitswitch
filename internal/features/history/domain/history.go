@@ -233,7 +233,7 @@ func GraphLines(c *account.Config, hist *History, graph string, color bool) []st
 	}
 	var lines []string
 	for _, line := range strings.Split(graph, "\n") {
-		graph, hash, ok := strings.Cut(line, "\x1f")
+		prefix, hash, ok := strings.Cut(line, "\x1f")
 		if !ok {
 			lines = append(lines, line)
 			continue
@@ -259,7 +259,7 @@ func GraphLines(c *account.Config, hist *History, graph string, color bool) []st
 		if cm.Unpushed {
 			tail += "  " + paint(color, "2", "(not pushed)")
 		}
-		lines = append(lines, fmt.Sprintf("%s%s%s %s %s%s", graph, paint(color, "33", cm.Short), refs, tag, cm.Subject, tail))
+		lines = append(lines, fmt.Sprintf("%s%s%s %s %s%s", prefix, paint(color, "33", cm.Short), refs, tag, cm.Subject, tail))
 	}
 	return lines
 }
