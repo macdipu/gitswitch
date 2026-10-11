@@ -14,15 +14,17 @@ go vet ./... && gofmt -l .       # must be clean
 
 ## Try changes safely
 
-Two sandboxes. Use the throwaway home folder for everyday work and the Linux
-desktop to check Linux behavior before a release.
+Test with real accounts without touching your own git setup. Pick a way:
 
-| Sandbox | CLI, setup, terminal app | Browser app, popups, clipboard, app menu |
+| | Native | Docker |
 |---|---|---|
-| Throwaway home folder | yes | your own desktop |
-| Docker Linux desktop (Webtop) | yes | yes |
+| Needs | Go | Docker (Go optional) |
+| Runs on | your own OS, in a throwaway home folder | a Linux desktop in your browser (Webtop) |
+| CLI, setup, terminal app | yes | yes |
+| Browser app, popups, clipboard, app menu | yes, on your own desktop | yes, on Linux |
+| Best for | everyday work | Linux behavior, or no Go installed |
 
-### Throwaway home folder (macOS, Linux, WSL)
+### Native: throwaway home folder (macOS, Linux, WSL)
 
 Build first: Go keeps its caches under `$HOME`, so building after the switch
 downloads everything again. The switch only affects that one terminal.
@@ -36,41 +38,63 @@ gitswitch install && gitswitch setup
 ```
 
 `~` now means the sandbox, so pass existing keys by full path
-(`--key /Users/you/.ssh/id_ed25519`). Clean up with `rm -rf /tmp/gs-sandbox`.
+(`--key /Users/you/.ssh/id_ed25519`). After a code change, run the `go build`
+line again. Clean up by closing the terminal and `rm -rf /tmp/gs-sandbox`.
 
-### Docker Linux desktop (Webtop)
+### Docker: Linux desktop (Webtop)
 
 `sandbox/compose.yaml` runs an Ubuntu desktop at http://localhost:3000 (only
 reachable from your machine). The desktop user's home is `sandbox/config/`,
 which git ignores because it holds SSH private keys. The repo's `dist/` is
-mounted read-only at `/opt/gitswitch`, so you build on the host and run the
-result on the desktop.
+mounted read-only at `/opt/gitswitch`: you build on the host and run the
+result on the desktop. Run these from the repo root.
 
-```
-docker compose -f sandbox/compose.yaml up -d
-GOOS=linux GOARCH=arm64 go build -o dist/gitswitch-linux ./cmd/gitswitch   # amd64 on Intel
-```
+1. Start the desktop:
 
-In a terminal on the desktop, once:
+   ```
+   docker compose -f sandbox/compose.yaml up -d
+   ```
 
-```
-sudo apt-get update && sudo apt-get install -y git openssh-client zenity xclip
-```
+2. Build for Linux. Use `GOARCH=arm64` on Apple Silicon or ARM, `amd64` on
+   Intel or AMD. With Go installed:
 
-After each build:
+   ```
+   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/gitswitch-linux ./cmd/gitswitch
+   ```
 
-```
-/opt/gitswitch/gitswitch-linux install
-```
+   Without Go, build in a container:
 
-Stop it with `docker compose -f sandbox/compose.yaml down`; start over by
-deleting `sandbox/config/`.
+   ```
+   docker run --rm -v "$PWD":/src -w /src -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=arm64 \
+     golang:1.22-bookworm go build -buildvcs=false -o dist/gitswitch-linux ./cmd/gitswitch
+   ```
+
+3. Add the tools gitswitch uses (ssh, and zenity for popups):
+
+   ```
+   docker exec gitswitch-desktop bash -c 'apt-get update && apt-get install -y openssh-client zenity'
+   ```
+
+4. Install gitswitch for the desktop user:
+
+   ```
+   docker exec -u abc -e HOME=/config gitswitch-desktop /opt/gitswitch/gitswitch-linux install
+   ```
+
+5. Open http://localhost:3000, open a terminal from the app menu and run
+   `gitswitch setup`, then `gitswitch` (terminal app) or `gitswitch ui`
+   (browser app, opens in Chromium on the desktop).
+
+After a code change, repeat steps 2 and 4. Stop the desktop with
+`docker compose -f sandbox/compose.yaml down`. That removes the container, so
+repeat step 3 after the next `up`; accounts and keys stay in
+`sandbox/config/`. Start over by deleting `sandbox/config/`.
 
 ### What a sandbox does not isolate
 
 - **GitHub.** SSH keys you add to your GitHub accounts are real. Remove them
   when you are done.
-- **`~/.ssh/known_hosts` on macOS and Linux** in the throwaway-home sandbox:
+- **`~/.ssh/known_hosts` on macOS and Linux** in the native sandbox:
   ssh finds it from your user account, not `$HOME`, so a first connection may
   add a host entry there. This is harmless.
 
