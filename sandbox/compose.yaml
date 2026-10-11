@@ -1,0 +1,18 @@
+# Linux desktop in the browser for testing gitswitch's desktop features
+# (browser app, popups, clipboard, applications menu). See CONTRIBUTING.md.
+#   docker compose -f sandbox/compose.yaml up -d    then open http://localhost:3000
+services:
+  desktop:
+    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    container_name: gitswitch-desktop
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Dhaka
+    ports:
+      - "127.0.0.1:3000:3000"
+    shm_size: "1gb"
+    volumes:
+      - ./config:/config                # desktop user's home: accounts, keys, settings
+      - ../dist:/opt/gitswitch:ro       # binaries built on the host
+    restart: unless-stopped

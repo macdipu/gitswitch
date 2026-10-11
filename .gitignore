@@ -17,3 +17,6 @@ coverage.*
 # OS
 .DS_Store
 Thumbs.db
+
+# Webtop sandbox home (holds SSH private keys)
+/sandbox/config/
