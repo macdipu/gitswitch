@@ -3,6 +3,11 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/macdipu/gitswitch/internal/account"
+	"github.com/macdipu/gitswitch/internal/app"
+	"github.com/macdipu/gitswitch/internal/history"
 )
 
 func TestParseKeys(t *testing.T) {
@@ -21,5 +26,32 @@ func TestFitKeepsColoursAndWidth(t *testing.T) {
 	}
 	if visibleLen(padANSI("\x1b[1mab\x1b[0m", 5)) != 5 {
 		t.Fatal("padANSI width")
+	}
+}
+
+func TestAccountColumnsLineUp(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", home+"/.gitconfig")
+	t.Setenv("GITSWITCH_TEST_NO_SYSTEM", "1")
+	x := &tui{app: app.New(false, nil), cfg: &account.Config{Default: "personal", Accounts: []account.Account{
+		{ID: "personal", Email: "me@example.com", Host: "github.com"},
+		{ID: "a-much-longer-account-id", Email: "a.very.long.address@company.example.com", Host: "gitlab.company.example"},
+		{ID: "work", Email: "me@work.example", Host: "github.com"},
+	}}}
+	lines, _ := x.drawAccounts()
+	col := -1
+	for _, l := range lines {
+		plain := history.StripANSI(l)
+		i := strings.Index(plain, "no key file")
+		if i < 0 {
+			continue
+		}
+		i = utf8.RuneCountInString(plain[:i]) // screen columns, not bytes
+		if col >= 0 && i != col {
+			t.Fatalf("key column at %d, want %d:\n%s", i, col, strings.Join(lines, "\n"))
+		}
+		col = i
 	}
 }

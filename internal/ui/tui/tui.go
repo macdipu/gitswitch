@@ -1054,8 +1054,16 @@ func (t *tui) drawAccounts() ([]string, int) {
 	if len(c.Accounts) == 0 {
 		return append(l, " No accounts yet. Press a to add your first one."), -1
 	}
+	// Columns are as wide as their longest value, and every row keeps room
+	// for " (default)", so the default account does not push its row right.
+	wID, wEmail, wHost := 14, 30, 14
+	for _, a := range c.Accounts {
+		wID = max(wID, utf8.RuneCountInString(a.ID))
+		wEmail = max(wEmail, utf8.RuneCountInString(a.Email))
+		wHost = max(wHost, utf8.RuneCountInString(a.Host))
+	}
 	for i, a := range c.Accounts {
-		def := ""
+		def := strings.Repeat(" ", 10)
 		if strings.EqualFold(a.ID, c.Default) {
 			def = cDim + " (default)" + cReset
 		}
@@ -1068,7 +1076,7 @@ func (t *tui) drawAccounts() ([]string, int) {
 			user = cDim + "  signed in as " + a.User + cReset
 		}
 		on := i == t.sel[tabAccounts]
-		l = append(l, fmt.Sprintf("%s%s█%s %s%-14s%s%s  %-30s %-14s %s%s", mark(on), t.color(a.ID), cReset, boldIf(on), a.ID, cReset, def, a.Email, a.Host, key, user))
+		l = append(l, fmt.Sprintf("%s%s█%s %s%-*s%s%s  %-*s %-*s %s%s", mark(on), t.color(a.ID), cReset, boldIf(on), wID, a.ID, cReset, def, wEmail, a.Email, wHost, a.Host, key, user))
 	}
 	return l, t.sel[tabAccounts]
 }
