@@ -48,3 +48,19 @@ func TestCanonicalHost(t *testing.T) {
 		t.Fatal("canonical host mapping wrong")
 	}
 }
+
+func TestCheckCloneURL(t *testing.T) {
+	for _, u := range []string{"git@github.com:acme/api.git", "ssh://git@github.com/acme/api", "https://github.com/acme/api", "https://gitlab.example.com/group/sub/repo.git"} {
+		if err := CheckCloneURL(u); err != nil {
+			t.Errorf("%s: %v", u, err)
+		}
+	}
+	for _, u := range []string{"", "-uploadpack=x", "ext::sh -c id", "file:///tmp/repo", "/tmp/repo", "github.com", "https://github.com/", "git@github.com:"} {
+		if CheckCloneURL(u) == nil {
+			t.Errorf("%q should be refused", u)
+		}
+	}
+	if n := RepoName("git@github.com:acme/api.git"); n != "api" {
+		t.Errorf("RepoName = %q", n)
+	}
+}

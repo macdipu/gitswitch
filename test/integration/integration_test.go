@@ -659,6 +659,54 @@ func TestRepoRegistry(t *testing.T) {
 	}
 }
 
+// `gitswitch repo clone` uses the chosen account from the very first fetch,
+// saves it with its identity, and puts the repo on the list.
+func TestCloneByURL(t *testing.T) {
+	e := newEnv(t)
+	e.resetLog()
+	out := e.gs("repo", "clone", "git@github.com:acme-corp/web.git", "--account", "client")
+	web := filepath.Join(e.root, "web")
+	if k := e.keysUsed(); len(k) != 1 || k[0] != "client" {
+		t.Fatalf("keys used %v, want [client]\n%s", k, out)
+	}
+	if got := e.cfg(web, "gitswitch.account"); got != "client" {
+		t.Fatalf("saved account %q", got)
+	}
+	if got := e.cfg(web, "user.email"); got != "dipu@client.example" {
+		t.Fatalf("email %q", got)
+	}
+	if r := e.repoList()["web"]; !r.Added {
+		t.Fatalf("cloned repo not on the list: %+v", e.repoList())
+	}
+
+	// Without --account, rules decide; a folder that does not exist yet is created.
+	e.gs("rule", "add", "owner:acme-corp", "me")
+	e.resetLog()
+	e.gs("repo", "clone", "ssh://git@github.com/acme-corp/api.git", filepath.Join("nested", "deeper", "api-copy"))
+	if k := e.keysUsed(); len(k) != 1 || k[0] != "me" {
+		t.Fatalf("keys used %v, want [me] from the owner rule", k)
+	}
+	if got := e.cfg(filepath.Join(e.root, "nested", "deeper", "api-copy"), "user.email"); got != "dipu@me.example" {
+		t.Fatalf("email %q", got)
+	}
+
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"git@github.com:acme-corp/web.git"}, "already exists and is not empty"},
+		{[]string{"ext::sh -c touch% /tmp/pwned"}, "not a repo URL"},
+		{[]string{"file:///etc"}, "not supported"},
+		{[]string{"git@github.com:acme-corp/web.git", "web2", "--account", "nobody"}, "nobody"},
+		{[]string{"git@github.com:acme-corp/missing.git"}, "does not exist, or"},
+	} {
+		got, err := e.run(e.root, gsBin, append([]string{"repo", "clone"}, c.args...)...)
+		if err == nil || !strings.Contains(got, c.want) {
+			t.Errorf("repo clone %v: err=%v, want %q in:\n%s", c.args, err, c.want, got)
+		}
+	}
+}
+
 // The test binary is built without -tags desktop: `gitswitch ui` must explain
 // that instead of failing obscurely (the window itself serves no network port).
 func TestUIWithoutWindowExplains(t *testing.T) {

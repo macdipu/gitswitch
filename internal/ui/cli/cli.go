@@ -46,6 +46,7 @@ Repos and rules
   gitswitch rule add folder:<path> <id>   e.g. folder:~/work polygon
   gitswitch rule list | remove <n>
   gitswitch repo list [--pinned] [--json]   repos in your project folders plus ones you added
+  gitswitch repo clone <url> [folder] [--account <id>]   clone with the right account from the start
   gitswitch repo add [path]         add an existing repo to the list (nothing in it changes)
   gitswitch repo remove [path]      take a repo off the list (its files are not touched)
   gitswitch repo show [path] [--json]     folder, branch, remotes, account

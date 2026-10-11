@@ -128,6 +128,86 @@ func (a *App) AddRepo(path string) (repo.Info, error) {
 	return a.RepoInfo(gd), nil
 }
 
+// CloneRepo clones url into dir (which must not exist, or be empty) and
+// adds it to the repo list. With accountID the clone uses that account
+// from the first fetch: the account is saved in the new repo before git
+// downloads anything. Without one, rules decide, then git asks as usual.
+// Git's progress lines go to progress.
+func (a *App) CloneRepo(url, dir, accountID string, progress func(string)) (repo.Info, error) {
+	url = strings.TrimSpace(url)
+	if err := gitcli.CheckCloneURL(url); err != nil {
+		return repo.Info{}, err
+	}
+	var acc *account.Account
+	if accountID != "" {
+		var err error
+		if acc, err = a.Account(accountID); err != nil {
+			return repo.Info{}, err
+		}
+		if host, _ := gitcli.ParseRemote(url); !gitcli.SameHost(host, acc.Host) {
+			return repo.Info{}, fmt.Errorf("%s is an account on %s, but this repo is on %s", acc.ID, acc.Host, host)
+		}
+	}
+	if dir = strings.TrimSpace(dir); dir == "" {
+		return repo.Info{}, errors.New("choose a folder to clone into")
+	}
+	dir, err := filepath.Abs(sys.ExpandHome(dir))
+	if err != nil {
+		return repo.Info{}, err
+	}
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+		return repo.Info{}, fmt.Errorf("%s already exists and is not empty; choose another folder", dir)
+	} else if err != nil && !os.IsNotExist(err) {
+		return repo.Info{}, fmt.Errorf("cannot use %s: %v", dir, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return repo.Info{}, err
+	}
+	args := []string{"clone", "--progress"}
+	if acc != nil {
+		args = append(args, "-c", "gitswitch.account="+acc.ID)
+	}
+	// Run from the parent folder, like a person typing `git clone`, so the
+	// ssh hook can find the new repo while it is being cloned.
+	args = append(args, "--", url, filepath.Base(dir))
+	if err := a.Git.Stream(filepath.Dir(dir), progress, args...); err != nil {
+		return repo.Info{}, cloneError(err, acc)
+	}
+	if a.DryRun() {
+		return repo.Info{Path: dir}, nil
+	}
+	gd := a.RepoAt(dir)
+	if gd == "" {
+		return repo.Info{}, fmt.Errorf("git finished, but %s is not a repo", dir)
+	}
+	if acc != nil {
+		if _, err := a.SetRepoAccount(gd, acc.ID); err != nil {
+			return repo.Info{}, err
+		}
+	}
+	return a.AddRepo(dir)
+}
+
+// RepoName is the folder name git clone would create for a URL.
+func RepoName(url string) string { return gitcli.RepoName(url) }
+
+// cloneError adds a hint to git's message for the usual failures.
+func cloneError(err error, acc *account.Account) error {
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	switch {
+	case strings.Contains(low, "permission denied") || strings.Contains(low, "repository not found") || strings.Contains(low, "could not read from remote"):
+		who := "the chosen account"
+		if acc != nil {
+			who = acc.ID
+		}
+		return fmt.Errorf("%s\n\nThe repo does not exist, or %s cannot access it. Check the URL, and that the key works: gitswitch test", msg, who)
+	case strings.Contains(low, "could not resolve host") || strings.Contains(low, "network is unreachable") || strings.Contains(low, "timed out"):
+		return fmt.Errorf("%s\n\nCould not reach the server. Check your network connection.", msg)
+	}
+	return err
+}
+
 // RemoveRepo takes a repo off the list without touching its files, remotes
 // or settings. A repo found in a project folder is hidden from the list.
 func (a *App) RemoveRepo(path string) error {

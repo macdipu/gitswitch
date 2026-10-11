@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/macdipu/gitswitch/internal/app"
 	"github.com/macdipu/gitswitch/internal/repo"
 )
 
-const repoUsage = "gitswitch repo list [--pinned] [--json] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path]"
+const repoUsage = "gitswitch repo list [--pinned] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path]"
 
 // cmdRepo manages the repo list. Paths default to the current folder.
 func (x *CLI) cmdRepo(args []string) error {
@@ -25,6 +26,8 @@ func (x *CLI) cmdRepo(args []string) error {
 		}
 	}
 	switch sub {
+	case "clone":
+		return x.cmdClone(rest)
 	case "list", "ls":
 		var list []repo.Info
 		for _, r := range x.app.Repos() {
@@ -101,6 +104,42 @@ func (x *CLI) cmdRepo(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown repo command %q\nusage: %s", sub, repoUsage)
+}
+
+// cmdClone clones a repo by URL, like `git clone`, with the account chosen
+// from the start. Without a folder it clones into ./<repo name>.
+func (x *CLI) cmdClone(args []string) error {
+	var pos []string
+	accountID := ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--account" && i+1 < len(args):
+			accountID = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--account="):
+			accountID = strings.TrimPrefix(a, "--account=")
+		case strings.HasPrefix(a, "--"):
+			return fmt.Errorf("unknown option %s\nusage: gitswitch repo clone <url> [folder] [--account <id>]", a)
+		default:
+			pos = append(pos, a)
+		}
+	}
+	if len(pos) < 1 || len(pos) > 2 {
+		return usageErr("gitswitch repo clone <url> [folder] [--account <id>]")
+	}
+	dir := app.RepoName(pos[0])
+	if len(pos) == 2 {
+		dir = pos[1]
+	}
+	r, err := x.app.CloneRepo(pos[0], dir, accountID, func(l string) { x.say(" ", l) })
+	if err != nil {
+		return err
+	}
+	if r.GitDir == "" { // dry run
+		return nil
+	}
+	x.sayf("\nCloned into %s (%s). It is on your repo list.\n", r.Path, repoAccount(r))
+	return nil
 }
 
 func (x *CLI) inList(path string) bool {

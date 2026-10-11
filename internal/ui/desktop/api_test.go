@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/macdipu/gitswitch/internal/app"
 )
@@ -40,6 +41,21 @@ func TestHandler(t *testing.T) {
 	}
 	if w, m := call(t, h, "POST", "/api/open", `{"url":"file:///etc/passwd"}`); w.Code != 400 || m["error"] == nil {
 		t.Fatalf("open file:// = %d %v, want an error", w.Code, m)
+	}
+	// A clone runs in the background; a bad URL ends the job with an error.
+	if w, _ := call(t, h, "POST", "/api/repo/clone", `{"url":"ext::sh -c id","parent":"`+home+`","name":"x"}`); w.Code != 200 {
+		t.Fatalf("start clone = %d", w.Code)
+	}
+	var job map[string]any
+	for i := 0; i < 100; i++ {
+		_, m := call(t, h, "GET", "/api/repo/clone", "")
+		if job, _ = m["data"].(map[string]any); job["running"] == false {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if e, _ := job["error"].(string); !strings.Contains(e, "not a repo URL") {
+		t.Fatalf("clone job = %v, want a URL error", job)
 	}
 	w, m := call(t, h, "GET", "/api/state", "")
 	data, _ := m["data"].(map[string]any)

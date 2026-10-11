@@ -38,20 +38,20 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 | 1 | **Multi-account GitHub integration**: repos from every account and organization, private ones included | planned | Needs a per-account API token, stored in the OS keychain, never in git config. |
 | 2 | **Remote repository browser**: name, owner, description, visibility, language, default branch | planned | |
 | 3 | **Search and filters** by account, organization, visibility, language, clone status | planned | |
-| 4 | **Clone repository** over SSH or HTTPS, with folder choice and progress | planned | Clone through gitswitch so the right account is used from the first fetch. |
-| 5 | **Clone via URL** | planned | Can come before the browser: needs no API. |
+| 4 | **Clone repository** over SSH or HTTPS, with folder choice and progress | partly | Cloning, folder choice and progress are done (see #5); picking the repo from a list needs the browser (#2). |
+| 5 | **Clone via URL** | done | `gitswitch repo clone <url> [folder] [--account id]`, "Clone from URL…" in the desktop app, `c` in the terminal app. The account is saved in the new repo before the first fetch (`git clone -c gitswitch.account=<id>`). HTTPS uses git's own credentials for now (see #23). |
 | 13 | **Clone status detection**: which remote repos are already cloned, and where | planned | Match registry remotes against API results. |
 | 17 | **Refresh and sync metadata** | planned | Cache API results; never block the UI on the network. |
 | 23 | **Secure authentication**: account-specific credentials, SSH and HTTPS, nothing exposed | planned | Tokens in the OS keychain; HTTPS through a git credential helper per account. |
-| 18 | **Error handling**: auth failures, inaccessible repos, invalid folders, network issues, clone conflicts | planned | |
+| 18 | **Error handling**: auth failures, inaccessible repos, invalid folders, network issues, clone conflicts | partly | Clone explains bad URLs, non-empty folders, wrong-host accounts, access and network failures. API errors come with the browser. |
 
 ### Front ends
 
 | # | Feature | Status | Notes |
 | --- | --- | --- | --- |
-| 19 | **GUI**: browsing, native folder picker, contextual actions, clone progress | partly | Folder picker, add, remove, pin and open are done. |
-| 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | partly | Add, pin, remove and open are done (Repos page: a, p, x, o). |
-| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | partly | All but clone are done (`gitswitch repo ...`, `--json`). |
+| 19 | **GUI**: browsing, native folder picker, contextual actions, clone progress | partly | Folder picker, clone with progress, add, remove, pin and open are done. Browsing needs #2. |
+| 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | partly | Clone, add, pin, remove and open are done (Repos page: c, a, p, x, o). Browsing needs #2. |
+| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin`, `--json`. |
 
 ## A full git client
 

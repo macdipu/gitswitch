@@ -172,7 +172,16 @@ dialog .row-actions{justify-content:flex-end}
       <button class="btn primary" type="submit">Add folder</button>
       <div class="full hint" id="folders"></div>
     </form>
-    <div class="repo-bar"><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span></div>
+    <div class="repo-bar"><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span></div>
+    <form class="card" id="cloneForm" hidden>
+      <label class="full">Repo URL<input name="url" placeholder="git@github.com:owner/repo.git or https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></label>
+      <label>Clone into folder<span style="display:flex;gap:8px"><input name="parent" required style="flex:1"><button class="btn" type="button" id="cloneBrowse">Browse…</button></span></label>
+      <label>Folder name<input name="dirname" required spellcheck="false"></label>
+      <label>Account<select name="account" id="cloneAccount"></select></label>
+      <div class="hint" style="align-self:end">The account is used from the first download and saved for the repo.</div>
+      <div class="full hint mono" id="cloneProgress" aria-live="polite"></div>
+      <div class="full row-actions"><button class="btn primary" type="submit" id="cloneGo">Clone</button><button class="btn" type="button" id="cloneCancel">Close</button></div>
+    </form>
     <div id="repos"></div>
   </section>
 
@@ -417,6 +426,35 @@ $('#repos').addEventListener('click', async e => {
     if (await act(() => api('POST','/api/repo/remove',{path:r.path}), 'Removed from the list') !== undefined){ await refresh(); loadRepos(); }
   }
 });
+// clone from URL: the clone runs in the background and this polls its progress
+const repoNameOf = u => (u.trim().replace(/\/+$/, '').split(/[\/:]/).pop() || '').replace(/\.git$/, '');
+$('#cloneOpen').onclick = () => {
+  const f = $('#cloneForm'); f.hidden = false;
+  if (!f.parent.value) f.parent.value = S.config.scanFolders[0] || S.home;
+  $('#cloneAccount').innerHTML = '<option value="">Automatic (rules, then ask)</option>' + S.config.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.id)} · ${esc(a.email)} · ${esc(a.host)}</option>`).join('');
+  f.url.focus();
+};
+$('#cloneCancel').onclick = () => { $('#cloneForm').hidden = true; };
+$('#cloneBrowse').onclick = async () => { const p = await pickFolder('Clone into which folder?'); if (p) $('#cloneForm').parent.value = p; };
+$('#cloneForm').url.oninput = e => { const n = $('#cloneForm').dirname; if (!n.dataset.edited) n.value = repoNameOf(e.target.value); };
+$('#cloneForm').dirname.oninput = e => { e.target.dataset.edited = e.target.value ? '1' : ''; };
+$('#cloneForm').onsubmit = async e => {
+  e.preventDefault(); const f = e.target;
+  const job = await act(() => api('POST','/api/repo/clone',{url:f.url.value, parent:f.parent.value, name:f.dirname.value, account:f.account.value}));
+  if (!job) return;
+  $('#cloneGo').disabled = true; $('#cloneProgress').className = 'full hint mono'; $('#cloneProgress').textContent = job.line;
+  const poll = async () => {
+    const j = await api('GET','/api/repo/clone').catch(err => ({running:false, error:err.message}));
+    $('#cloneProgress').textContent = j.error || j.line;
+    if (j.running) return setTimeout(poll, 400);
+    $('#cloneGo').disabled = false;
+    if (j.error){ $('#cloneProgress').className = 'full status-bad mono'; $('#cloneProgress').style.whiteSpace = 'pre-wrap'; return; }
+    toast('Cloned ' + j.repo.path + (j.repo.account ? ' with ' + j.repo.account : ''));
+    f.reset(); delete f.dirname.dataset.edited; f.hidden = true; $('#cloneProgress').textContent = '';
+    await refresh(); loadRepos();
+  };
+  poll();
+};
 $('#addRepo').onclick = async () => {
   const p = await pickFolder('Choose a git repo'); if (!p) return;
   const r = await act(() => api('POST','/api/repo/add',{path:p}));

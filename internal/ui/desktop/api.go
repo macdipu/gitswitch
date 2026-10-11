@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/macdipu/gitswitch/internal/account"
 	"github.com/macdipu/gitswitch/internal/app"
 	"github.com/macdipu/gitswitch/internal/keys"
+	"github.com/macdipu/gitswitch/internal/repo"
 	"github.com/macdipu/gitswitch/internal/sys"
 )
 
@@ -23,6 +26,17 @@ var indexHTML []byte
 type server struct {
 	app        *app.App
 	pickFolder func(title string) (string, error)
+
+	mu    sync.Mutex
+	clone *cloneJob // the latest clone; one runs at a time
+}
+
+// cloneJob is a clone running in the background; the page polls it.
+type cloneJob struct {
+	Running bool       `json:"running"`
+	Line    string     `json:"line"` // git's latest progress line
+	Error   string     `json:"error"`
+	Repo    *repo.Info `json:"repo"`
 }
 
 // Handler serves the page at / and its JSON API under /api/. pickFolder
@@ -106,6 +120,15 @@ func (s *server) routes() map[string]handler {
 			ed, _ := b["editor"].(bool)
 			return nil, a.OpenRepo(str(b, "path"), ed)
 		},
+		"POST /api/repo/clone": s.startClone,
+		"GET /api/repo/clone": func(r *http.Request) (any, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if s.clone == nil {
+				return cloneJob{}, nil
+			}
+			return *s.clone, nil
+		},
 		"POST /api/pick-folder": func(r *http.Request) (any, error) {
 			if s.pickFolder == nil {
 				return map[string]any{"supported": false}, nil
@@ -187,6 +210,39 @@ func (s *server) saveAccount(r *http.Request) (any, error) {
 		_ = s.app.SetDefault(acc.ID)
 	}
 	return acc, nil
+}
+
+// startClone starts cloning in the background and returns at once.
+func (s *server) startClone(r *http.Request) (any, error) {
+	b := body(r)
+	url, account := str(b, "url"), str(b, "account")
+	dir := str(b, "parent")
+	if name := str(b, "name"); dir != "" && name != "" {
+		dir = filepath.Join(sys.ExpandHome(dir), name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.clone != nil && s.clone.Running {
+		return nil, errors.New("a clone is already running; wait for it to finish")
+	}
+	job := &cloneJob{Running: true, Line: "Starting…"}
+	s.clone = job
+	go func() {
+		info, err := s.app.CloneRepo(url, dir, account, func(l string) {
+			s.mu.Lock()
+			job.Line = l
+			s.mu.Unlock()
+		})
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		job.Running = false
+		if err != nil {
+			job.Error = err.Error()
+		} else {
+			job.Repo = &info
+		}
+	}()
+	return *job, nil
 }
 
 func (s *server) removeAccount(r *http.Request) (any, error) {

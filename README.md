@@ -220,6 +220,7 @@ The apps' History page shows the same graph.
 The Repos page in both apps, and `gitswitch repo`, show one shared list: repos found in your project folders plus repos you add by hand.
 
 ```sh
+gitswitch repo clone git@github.com:acme/api.git --account work   # clone as work from the first download
 gitswitch repo add ~/code/side-project   # an existing repo outside your project folders
 gitswitch repo list                      # * pinned, + added by hand, ! folder gone
 gitswitch repo show                      # folder, branch, remotes, account (--json too)
@@ -227,6 +228,8 @@ gitswitch repo pin                       # keep the current repo at the top
 gitswitch repo open --editor             # open in your editor (gitswitch set editor code)
 gitswitch repo remove ~/code/old-thing   # take it off the list
 ```
+
+`repo clone` saves the account in the new repo before git downloads anything, so the right key is used from the start and the repo gets that account's name and email. Without `--account`, your rules decide, then GitSwitch asks as usual. The desktop app has the same as "Clone from URL…", with progress, and the terminal app has it on the Repos page (`c`).
 
 Adding or removing a repo changes only GitSwitch's list. The repo's files, remotes, branches and git settings are never touched. In the desktop app, "Add an existing repo…" uses the system folder picker.
 
@@ -250,7 +253,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Apps | `tui`, `ui` |
 | Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default`, `test` |
 | Keys | `key new\|show\|pick\|agent` |
-| Repos | `use`, `forget`, `status`, `repo list\|add\|remove\|show\|open\|pin\|unpin` |
+| Repos | `use`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin` |
 | Rules | `rule add\|list\|remove` |
 | History | `log`, `fix-author` |
 | Diagnostics | `doctor [--fix]` |

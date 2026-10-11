@@ -465,7 +465,7 @@ Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default
   p passphrase to agent   x remove (then d to also delete key files)
 Repos
-  Enter choose account   h history   f add folder   a add one repo   r rescan
+  Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
 History
   o other repo   f only wrong-account commits   x fix not-pushed commits   r reload
@@ -773,6 +773,37 @@ func (t *tui) keyRepos(k string) {
 			t.loadHistory()
 			t.tab = tabHistory
 		}
+	case "c":
+		t.form = &form{title: "Clone a repo by URL", fields: []field{
+			{label: "URL", hint: "git@github.com:owner/repo.git or https://..."},
+			{label: "Folder", hint: "empty = ./<repo name> here"},
+			{label: "Account", value: "automatic", options: append([]string{"automatic"}, t.cfg.SortedIDs()...), hint: "←/→ · automatic = rules, then ask"},
+		}, submit: func(v []string) error {
+			if v[2] == "automatic" {
+				v[2] = ""
+			}
+			dir := v[1]
+			if dir == "" {
+				dir = app.RepoName(v[0])
+			}
+			var ri repo.Info
+			var err error
+			t.suspend(func() { // git prints its progress straight to the terminal
+				fmt.Println("Cloning " + v[0] + " ...")
+				ri, err = t.app.CloneRepo(v[0], dir, v[2], func(l string) { fmt.Print("\r\x1b[K  " + l) })
+				fmt.Println()
+				if err != nil {
+					fmt.Println("gitswitch:", err)
+				}
+			})
+			if err != nil {
+				return err
+			}
+			t.reload()
+			t.scanRepos()
+			t.say(nil, "Cloned into "+ri.Path+".")
+			return nil
+		}}
 	case "a":
 		t.form = &form{title: "Add an existing repo (nothing in it changes)", fields: []field{{label: "Repo folder", hint: "e.g. ~/code/my-app"}},
 			submit: func(v []string) error {
@@ -1076,7 +1107,7 @@ func (t *tui) footer() string {
 	case tabAccounts:
 		return "a add · e edit · R rename · t test · k public key · K pick key · d default · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "o other repo · f wrong-account only · x fix · r reload · ? help · q quit"
 	case tabRules:
