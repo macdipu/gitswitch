@@ -1,8 +1,8 @@
 # Architecture
 
 GitSwitch is built in layers. Each layer may use only the layers below it, so
-the account core never depends on a screen, and new front ends (a desktop
-window, for example) are just another layer on top. The rule is enforced by
+the account core never depends on a screen, and new front ends are just
+another layer on top. The rule is enforced by
 `test/architecture`, which fails the build when an import points upward.
 
 ```mermaid
@@ -10,8 +10,7 @@ flowchart TB
   subgraph FE["Front ends — no logic, only display"]
     cli["ui/cli<br/>commands, setup wizard"]
     tui["ui/tui<br/>terminal app"]
-    web["ui/web<br/>browser app"]
-    desk["ui/desktop (future)<br/>Wails or Tauri window"]
+    desk["ui/desktop<br/>desktop window (Wails)"]
   end
   app["app<br/>the single API every front end calls"]
   subgraph F["Features — one job each"]
@@ -27,8 +26,8 @@ flowchart TB
   account["account<br/>accounts, rules, settings (in git config)"]
   gitcli["gitcli<br/>the only code that runs git"]
   sys["sys<br/>OS details: paths, terminal, programs"]
-  cli --> tui & web
-  cli & tui & web & desk --> app
+  cli --> tui & desk
+  cli & tui & desk --> app
   app --> doctor & history & repo & keys & setup
   cli -. "git calls `gitswitch ssh`" .-> sshhook
   doctor --> repo & keys & setup
@@ -54,6 +53,23 @@ flowchart TB
 | 6 | `internal/doctor` | Health checks and repairs. |
 | 7 | `internal/app` | The single API for front ends. Returns values and errors; never prints. |
 | 8–9 | `internal/ui/*` | Front ends: parse input, call `app`, display results. |
+
+## Desktop window
+
+`ui/desktop` shows one HTML page (`assets/index.html`) in the system web view
+through [Wails](https://wails.io): WebView2 on Windows, WebKit on macOS,
+WebKitGTK 4.1 on Linux. The page calls a small JSON API (`api.go`) with
+`fetch`. Wails passes those requests straight to the Go handler inside the
+process, so there is no network port, token or background server. Two
+consequences:
+
+- The Wails code is behind the `desktop` build tag (`window.go`). A plain
+  `go build` leaves it out (`nowindow.go`) and stays static and
+  cross-compilable; release builds add `-tags desktop,production` (plus
+  `webkit2_41` on Linux). `api.go` builds either way, so its tests need no cgo.
+- On Linux the window links WebKitGTK. Linux releases also ship a static
+  `-cli` build without the window, which `install.sh` picks when WebKitGTK is
+  missing, because git runs this same binary on every clone, pull and push.
 | 10 | `cmd/gitswitch` | `main`: one line that calls `ui/cli`. |
 
 ## Rules
@@ -90,7 +106,6 @@ layer. The account core does not change.
 | Merge, rebase, conflict editor, cherry-pick, undo | A `merge` package (3-way conflict model) and an `undo` package over the reflog. |
 | Pull requests and issues | A `hosting` package (GitHub/GitLab APIs) that uses `account` so each repo talks to its host as the right account. |
 | File watching (live refresh) | `sys` (file events) + a `watch` package that tells `app` what changed. |
-| Desktop window | `ui/desktop` (Wails), or a Tauri app that runs `gitswitch` as a sidecar and talks to an `app`-backed JSON API like `ui/web`. |
 
 Performance rule for the client: never load or render a whole history or
 diff. Stream from `git`, page in the `app` layer, and render only what is on

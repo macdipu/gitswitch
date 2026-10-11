@@ -3,10 +3,8 @@
 package integration
 
 import (
-	"bufio"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -572,51 +570,15 @@ func TestCompletionsAndAccountsList(t *testing.T) {
 	}
 }
 
-func TestBrowserAppSecurity(t *testing.T) {
+// The test binary is built without -tags desktop: `gitswitch ui` must explain
+// that instead of failing obscurely (the window itself serves no network port).
+func TestUIWithoutWindowExplains(t *testing.T) {
 	e := newEnv(t)
-	cmd := exec.Command(gsBin, "ui", "--no-open")
+	cmd := exec.Command(gsBin, "ui")
 	cmd.Env = e.vars
-	stdout, _ := cmd.StdoutPipe()
-	must(t, cmd.Start())
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	line, err := bufio.NewReader(stdout).ReadString('\n')
-	must(t, err)
-	i := strings.Index(line, "http://")
-	if i < 0 {
-		t.Fatalf("no URL in %q", line)
-	}
-	url := strings.TrimSpace(line[i:])
-	base, token, _ := strings.Cut(url, "/#")
-	get := func(path, tok, host string) int {
-		req, _ := http.NewRequest("GET", base+path, nil)
-		if tok != "" {
-			req.Header.Set("X-Token", tok)
-		}
-		if host != "" {
-			req.Host = host
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-		return resp.StatusCode
-	}
-	if c := get("/api/state", "", ""); c != 403 {
-		t.Errorf("no token: %d, want 403", c)
-	}
-	if c := get("/api/state", "wrong", ""); c != 403 {
-		t.Errorf("wrong token: %d, want 403", c)
-	}
-	if c := get("/", "", "evil.example"); c != 403 {
-		t.Errorf("foreign Host header: %d, want 403", c)
-	}
-	if c := get("/api/state", token, ""); c != 200 {
-		t.Errorf("valid token: %d, want 200", c)
-	}
-	if !strings.HasPrefix(strings.TrimPrefix(base, "http://"), "127.0.0.1:") {
-		t.Errorf("must listen on 127.0.0.1 only: %s", base)
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "without the desktop window") {
+		t.Fatalf("gitswitch ui = %v, %q", err, out)
 	}
 }
 

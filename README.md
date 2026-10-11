@@ -21,12 +21,12 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 
 - **One file, one-time install.** A single binary for Windows, macOS and Linux. Keeps working after restarts and updates.
 - **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (~15 ms, ~10 MB), then it exits.
-- **Two front ends, same settings:** a terminal app (`gitswitch`) and a browser app (`gitswitch ui`).
+- **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-history-dark.png">
-  <img alt="GitSwitch browser app: commit history with the account behind every commit, wrong-account commits highlighted" src="docs/images/web-history-light.png">
+  <img alt="GitSwitch desktop app: commit history with the account behind every commit, wrong-account commits highlighted" src="docs/images/web-history-light.png">
 </picture>
 
 ## Contents
@@ -34,7 +34,7 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 - [Install](#install)
 - [Quick start](#quick-start)
 - [How an account is chosen](#how-an-account-is-chosen)
-- [Terminal app and browser app](#terminal-app-and-browser-app)
+- [Terminal app and desktop app](#terminal-app-and-desktop-app)
 - [IDE notes](#ide-notes)
 - [Commit history](#commit-history)
 - [Health check](#health-check)
@@ -130,7 +130,7 @@ For each repo, GitSwitch checks in this order and uses the first match:
 
 It also sets the repo's `user.name` and `user.email` to the chosen account.
 
-## Terminal app and browser app
+## Terminal app and desktop app
 
 Both edit the same settings. A change in one shows up in the other.
 
@@ -138,46 +138,48 @@ Both edit the same settings. A change in one shows up in the other.
 
 <p align="center"><img alt="GitSwitch terminal app: Accounts, Repos, History, Rules and Settings pages" src="docs/images/tui.gif" width="820"></p>
 
-**Browser app** (`gitswitch ui`), light and dark to match your system:
+**Desktop app** (`gitswitch ui`), a native window, light and dark to match your system:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-accounts-dark.png">
-  <img alt="Browser app: Accounts page with three accounts, each signed in" src="docs/images/web-accounts-light.png">
+  <img alt="Desktop app: Accounts page with three accounts, each signed in" src="docs/images/web-accounts-light.png">
 </picture>
 
 <details>
-<summary>More browser app pages</summary>
+<summary>More desktop app pages</summary>
 
 **Repos:** the account for each repo, and what decided it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-repos-dark.png">
-  <img alt="Browser app: Repos page" src="docs/images/web-repos-light.png">
+  <img alt="Desktop app: Repos page" src="docs/images/web-repos-light.png">
 </picture>
 
 **Rules**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-rules-dark.png">
-  <img alt="Browser app: Rules page" src="docs/images/web-rules-light.png">
+  <img alt="Desktop app: Rules page" src="docs/images/web-rules-light.png">
 </picture>
 
 **Settings and health check**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-settings-dark.png">
-  <img alt="Browser app: Settings page with health check" src="docs/images/web-settings-light.png">
+  <img alt="Desktop app: Settings page with health check" src="docs/images/web-settings-light.png">
 </picture>
 
 </details>
 
-| | Terminal app | Browser app |
+| | Terminal app | Desktop app |
 | --- | --- | --- |
 | Open | `gitswitch` (or `gitswitch tui`) | `gitswitch ui`, or GitSwitch in the Start / app menu |
 | Best for | IDE terminals, SSH sessions, WSL, servers | Mouse users, the visual history graph |
 | Pages | Accounts, Repos, History, Rules, Settings | Accounts, Repos, History, Rules, Settings |
-| Memory | a few MB | ~8 MB plus the browser tab |
-| Closes | press `q` | ~30 s after you close the tab |
+| Runs in | the terminal | the system web view (WebView2, WebKit, WebKitGTK) |
+| Closes | press `q` | close the window |
+
+On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora). The installer picks a build without the window when it is missing, so servers need nothing extra.
 
 <details>
 <summary>Terminal app keys</summary>
@@ -261,14 +263,14 @@ gitswitch completions powershell | Out-String | Invoke-Expression      # $PROFIL
 - Sets git's global `core.sshCommand` to GitSwitch. Every program that runs git reads this setting, which is why it works in every terminal and IDE without per-app setup.
 - Sets `user.useConfigOnly = true` and moves your global `user.email` aside, so a commit can never silently use the wrong email.
 
-All settings live in git config, so the terminal, the browser app and git always agree:
+All settings live in git config, so the terminal, the desktop app and git always agree:
 
 | Scope | File | Keys |
 | --- | --- | --- |
 | Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default`, `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder` |
 | Per repo | `.git/config` | `gitswitch.account` |
 
-**Security:** GitSwitch never stores passphrases or tokens. The browser app listens only on `127.0.0.1` with a random one-time token.
+**Security:** GitSwitch never stores passphrases or tokens. The desktop app serves its page inside the process: it opens no network port.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is organised.
 
@@ -281,15 +283,19 @@ gitswitch uninstall --purge   # also deletes your saved accounts
 
 ## Development
 
-Requires Go 1.22 or newer. No other dependencies.
+Requires Go 1.25 or newer. The desktop window uses [Wails](https://wails.io) and needs cgo on macOS and Linux (Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev`).
 
 ```sh
-go build -o gitswitch ./cmd/gitswitch
+go build -o gitswitch ./cmd/gitswitch                                 # no window, no cgo
+go build -tags desktop,production -o gitswitch ./cmd/gitswitch        # with the window (macOS, Windows)
+go build -tags desktop,production,webkit2_41 -o gitswitch ./cmd/gitswitch   # with the window (Linux)
 go test ./...
-./build.sh v1.0.0             # all platforms + SHA256SUMS into dist/
+./build.sh v1.0.0             # every target this machine can build + SHA256SUMS into dist/
 ```
 
-The tests build the real binary and run real `git clone`, `pull` and `push` through it against local repos (no network). They cover install and uninstall, every way an account is chosen, clones inside other repos, submodules, port-443 hosts, renames, duplicate keys, dry runs, health checks, history and author fixes, the browser app's security, and the terminal prompt. [GitHub Actions](https://github.com/macdipu/gitswitch/actions) runs them on Linux, macOS and Windows for every push.
+Releases build macOS and Linux on their own runners, since the window needs cgo there (see `.github/workflows/release.yml`).
+
+The tests build the real binary and run real `git clone`, `pull` and `push` through it against local repos (no network). They cover install and uninstall, every way an account is chosen, clones inside other repos, submodules, port-443 hosts, renames, duplicate keys, dry runs, health checks, history and author fixes, the desktop app's API, and the terminal prompt. [GitHub Actions](https://github.com/macdipu/gitswitch/actions) runs them on Linux, macOS and Windows for every push.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 

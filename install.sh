@@ -4,6 +4,7 @@
 # Options (environment variables):
 #   GITSWITCH_VERSION=v1.2.0   install a specific release instead of the latest
 #   GITSWITCH_REPO=owner/repo  install from a fork
+#   GITSWITCH_CLI_ONLY=1       Linux: install the build without the desktop window
 set -eu
 
 REPO="${GITSWITCH_REPO:-macdipu/gitswitch}"
@@ -33,6 +34,19 @@ fi
 
 EXT=""; [ "$OS" = windows ] && EXT=".exe"
 ASSET="gitswitch-$OS-$ARCH$EXT"
+# On Linux the desktop window needs WebKitGTK, and a program linked to a
+# missing library cannot start at all (git runs gitswitch for every pull and
+# push). Without WebKitGTK, install the static build that has no window.
+has_webkit() {
+  { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so\.0'; } ||
+    for f in /usr/lib/libwebkit2gtk-4.1.so.0 /usr/lib*/libwebkit2gtk-4.1.so.0 /usr/lib/*/libwebkit2gtk-4.1.so.0; do
+      [ -e "$f" ] && return 0
+    done
+  return 1
+}
+if [ "$OS" = linux ] && { [ -n "${GITSWITCH_CLI_ONLY:-}" ] || ! has_webkit; }; then
+  ASSET="$ASSET-cli"
+fi
 
 if [ -n "${GITSWITCH_BASE_URL:-}" ]; then
   BASE="$GITSWITCH_BASE_URL"                                   # testing / mirrors
@@ -84,5 +98,8 @@ fi
 say ""
 say "Done. Open a new terminal, then run:"
 say "  gitswitch        terminal app"
-say "  gitswitch ui     browser app"
+case "$ASSET" in
+  *-cli) say "  (no desktop window: install libwebkit2gtk-4.1-0 and run this again for \`gitswitch ui\`)" ;;
+  *)     say "  gitswitch ui     desktop app" ;;
+esac
 say "  gitswitch setup  step-by-step setup"

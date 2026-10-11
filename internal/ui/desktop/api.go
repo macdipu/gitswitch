@@ -1,20 +1,15 @@
-// Package web is the browser front end: a small local server for one page.
-// It is not a background service: it starts when opened and exits about
-// 30 seconds after the page closes.
-package web
+// Package desktop is the desktop window: the app page in a native OS
+// webview (Wails). The page talks to the app through the JSON API in this
+// file, which the window serves in-process: there is no network port.
+package desktop
 
 import (
-	"crypto/rand"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/macdipu/gitswitch/internal/account"
 	"github.com/macdipu/gitswitch/internal/app"
@@ -27,93 +22,29 @@ var indexHTML []byte
 
 type server struct{ app *app.App }
 
-// Run serves the app on 127.0.0.1 with a one-time token until the page closes.
-func Run(a *app.App, noOpen bool) error {
-	tok := make([]byte, 16)
-	_, _ = rand.Read(tok)
-	token := hex.EncodeToString(tok)
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	addr := ln.Addr().String()
-	var mu sync.Mutex
-	lastPing := time.Now().Add(2 * time.Minute) // grace period while the browser opens
-	done := make(chan struct{})
-	var once sync.Once
+// Handler serves the page at / and its JSON API under /api/.
+func Handler(a *app.App) http.Handler {
 	s := &server{app: a}
 	routes := s.routes()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != addr {
-			http.Error(w, "forbidden", http.StatusForbidden) // blocks DNS rebinding
-			return
-		}
-		if r.URL.Path == "/" {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:")
 			_, _ = w.Write(indexHTML)
 			return
 		}
-		if r.Header.Get("X-Token") != token {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		mu.Lock()
-		lastPing = time.Now()
-		mu.Unlock()
-		key := r.Method + " " + r.URL.Path
-		switch key {
-		case "POST /api/ping":
-			writeJSON(w, map[string]string{"version": app.Version}, nil)
-			return
-		case "POST /api/quit":
-			writeJSON(w, nil, nil)
-			once.Do(func() { close(done) })
-			return
-		}
-		h, ok := routes[key]
+		h, ok := routes[r.Method+" "+r.URL.Path]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		func() {
-			defer func() {
-				if p := recover(); p != nil {
-					writeJSON(w, nil, fmt.Errorf("bad request: %v", p))
-				}
-			}()
-			v, err := h(r)
-			writeJSON(w, v, err)
-		}()
-	})
-
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() { _ = srv.Serve(ln) }()
-	url := "http://" + addr + "/#" + token
-	fmt.Println("GitSwitch is open at", url)
-	fmt.Println("It closes by itself shortly after you close the browser tab (or press Ctrl+C).")
-	if !noOpen {
-		_ = sys.OpenBrowser(url)
-	}
-	tick := time.NewTicker(5 * time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-done:
-			return srv.Close()
-		case <-tick.C:
-			mu.Lock()
-			idle := time.Since(lastPing)
-			mu.Unlock()
-			if idle > 30*time.Second {
-				fmt.Println("Page closed; GitSwitch app stopped.")
-				return srv.Close()
+		defer func() {
+			if p := recover(); p != nil {
+				writeJSON(w, nil, fmt.Errorf("bad request: %v", p))
 			}
-		}
-	}
+		}()
+		v, err := h(r)
+		writeJSON(w, v, err)
+	})
 }
 
 type handler func(r *http.Request) (any, error)
@@ -271,7 +202,9 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 
 func body(r *http.Request) map[string]any {
 	m := map[string]any{}
-	_ = json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&m)
+	if r.Body != nil {
+		_ = json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&m)
+	}
 	return m
 }
 

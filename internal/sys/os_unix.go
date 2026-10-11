@@ -44,3 +44,6 @@ func ExecReplace(bin string, args []string) int {
 }
 
 func HideWindow(cmd *exec.Cmd) {}
+
+// DetachConsole does nothing: Unix GUI launches have no console window.
+func DetachConsole() {}

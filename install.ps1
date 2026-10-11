@@ -48,7 +48,7 @@ try {
   Write-Host ''
   Write-Host 'Done. Open a new terminal, then run:' -ForegroundColor Green
   Write-Host '  gitswitch        terminal app'
-  Write-Host '  gitswitch ui     browser app (or GitSwitch in the Start menu)'
+  Write-Host '  gitswitch ui     desktop app (or GitSwitch in the Start menu)'
   Write-Host '  gitswitch setup  step-by-step setup'
 }
 finally {

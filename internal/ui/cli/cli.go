@@ -13,8 +13,8 @@ import (
 	"github.com/macdipu/gitswitch/internal/app"
 	"github.com/macdipu/gitswitch/internal/sshhook"
 	"github.com/macdipu/gitswitch/internal/sys"
+	"github.com/macdipu/gitswitch/internal/ui/desktop"
 	"github.com/macdipu/gitswitch/internal/ui/tui"
-	"github.com/macdipu/gitswitch/internal/ui/web"
 )
 
 const usage = `gitswitch - use several git accounts on one computer
@@ -23,7 +23,7 @@ Setup
   gitswitch install                 one-time: hook gitswitch into git for every terminal and IDE
   gitswitch setup                   step-by-step setup in the terminal
   gitswitch                         open the app in this terminal (same as: gitswitch tui)
-  gitswitch ui                      open the app in your browser
+  gitswitch ui                      open the app in a desktop window
   gitswitch uninstall [--purge]     stop using gitswitch (--purge also deletes accounts)
 
 Accounts
@@ -108,7 +108,10 @@ func (x *CLI) dispatch(args []string) error {
 			if err := x.app.Install(x.report()); err != nil {
 				return err
 			}
-			return web.Run(x.app, false)
+			if desktop.Available {
+				return desktop.Run(x.app)
+			}
+			return tui.Run(x.app)
 		}
 		if interactive() {
 			return tui.Run(x.app)
@@ -128,8 +131,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.app.Uninstall(hasFlag(rest, "--purge"), x.report())
 	case "setup":
 		return x.wizard()
-	case "ui", "web":
-		return web.Run(x.app, hasFlag(rest, "--no-open"))
+	case "ui", "gui":
+		return desktop.Run(x.app)
 	case "tui":
 		return tui.Run(x.app)
 	case "account":

@@ -101,7 +101,7 @@ type tui struct {
 func Run(a *app.App) error {
 	st, err := sys.MakeRaw()
 	if err != nil {
-		return fmt.Errorf("%v (try `gitswitch ui` for the browser app)", err)
+		return fmt.Errorf("%v (try `gitswitch ui` for the desktop app)", err)
 	}
 	t := &tui{tty: st, app: a}
 	fmt.Print("\x1b[?1049h\x1b[?25l") // alternate screen, hide cursor

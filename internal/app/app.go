@@ -1,5 +1,5 @@
 // Package app is the single API used by every front end (command line,
-// terminal app, browser app, and later a desktop window). Front ends hold
+// terminal app and desktop window). Front ends hold
 // no logic of their own: they call App methods and display the results.
 //
 // App methods return values and errors; they never print. Progress

@@ -17,30 +17,30 @@ const module = "github.com/macdipu/gitswitch/"
 // layer of each internal package: a package may import only packages in
 // strictly lower layers (or the allowed same-layer pairs below).
 var layer = map[string]int{
-	"internal/sys":     0,
-	"internal/gitcli":  1,
-	"internal/account": 2,
-	"internal/resolve": 3,
-	"internal/keys":    3,
-	"internal/setup":   3,
-	"internal/repo":    4,
-	"internal/prompt":  4,
-	"internal/history": 5,
-	"internal/sshhook": 5,
-	"internal/doctor":  6,
-	"internal/app":     7,
-	"internal/ui/tui":  8,
-	"internal/ui/web":  8,
-	"internal/ui/cli":  9, // composes the other front ends
-	"cmd/gitswitch":    10,
+	"internal/sys":        0,
+	"internal/gitcli":     1,
+	"internal/account":    2,
+	"internal/resolve":    3,
+	"internal/keys":       3,
+	"internal/setup":      3,
+	"internal/repo":       4,
+	"internal/prompt":     4,
+	"internal/history":    5,
+	"internal/sshhook":    5,
+	"internal/doctor":     6,
+	"internal/app":        7,
+	"internal/ui/tui":     8,
+	"internal/ui/desktop": 8,
+	"internal/ui/cli":     9, // composes the other front ends
+	"cmd/gitswitch":       10,
 }
 
 // Front ends talk to git only through the app layer.
 var forbidden = map[string][]string{
-	"internal/ui/cli": {"internal/gitcli"},
-	"internal/ui/tui": {"internal/gitcli"},
-	"internal/ui/web": {"internal/gitcli"},
-	"cmd/gitswitch":   {"internal/gitcli", "internal/app"},
+	"internal/ui/cli":     {"internal/gitcli"},
+	"internal/ui/tui":     {"internal/gitcli"},
+	"internal/ui/desktop": {"internal/gitcli"},
+	"cmd/gitswitch":       {"internal/gitcli", "internal/app"},
 }
 
 func TestLayers(t *testing.T) {

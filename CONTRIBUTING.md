@@ -21,7 +21,7 @@ Test with real accounts without touching your own git setup. Pick a way:
 | Needs | Go | Docker (Go optional) |
 | Runs on | your own OS, in a throwaway home folder | a Linux desktop in your browser (Webtop) |
 | CLI, setup, terminal app | yes | yes |
-| Browser app, popups, clipboard, app menu | yes, on your own desktop | yes, on Linux |
+| Desktop app, popups, clipboard, app menu | yes, on your own desktop | yes, on Linux |
 | Best for | everyday work | Linux behavior, or no Go installed |
 
 ### Native: throwaway home folder (macOS, Linux, WSL)
@@ -31,7 +31,7 @@ downloads everything again. The switch only affects that one terminal.
 
 ```
 mkdir -p /tmp/gs-sandbox/bin
-go build -o /tmp/gs-sandbox/bin/gitswitch ./cmd/gitswitch
+go build -tags desktop,production -o /tmp/gs-sandbox/bin/gitswitch ./cmd/gitswitch
 export HOME=/tmp/gs-sandbox; unset XDG_CONFIG_HOME
 export PATH=/tmp/gs-sandbox/bin:$PATH
 gitswitch install && gitswitch setup
@@ -39,7 +39,9 @@ gitswitch install && gitswitch setup
 
 `~` now means the sandbox, so pass existing keys by full path
 (`--key /Users/you/.ssh/id_ed25519`). After a code change, run the `go build`
-line again. Clean up by closing the terminal and `rm -rf /tmp/gs-sandbox`.
+line again. On Linux add `,webkit2_41` to the tags and install
+`libgtk-3-dev libwebkit2gtk-4.1-dev`; drop `-tags ...` to build without the
+window. Clean up by closing the terminal and `rm -rf /tmp/gs-sandbox`.
 
 ### Docker: Linux desktop (Webtop)
 
@@ -55,24 +57,25 @@ result on the desktop. Run these from the repo root.
    docker compose -f sandbox/compose.yaml up -d
    ```
 
-2. Build for Linux. Use `GOARCH=arm64` on Apple Silicon or ARM, `amd64` on
-   Intel or AMD. With Go installed:
+2. Build for Linux with the desktop window. The window needs cgo and
+   WebKitGTK, so build in a Linux container (it matches your CPU: arm64 on
+   Apple Silicon, amd64 on Intel or AMD). The `gomodcache` volume keeps
+   downloads between builds:
 
    ```
-   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/gitswitch-linux ./cmd/gitswitch
+   docker run --rm -v "$PWD":/src -v gomodcache:/go/pkg/mod -w /src golang:1.27 sh -c \
+     'apt-get update -qq && apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.1-dev >/dev/null &&
+      go build -buildvcs=false -tags desktop,production,webkit2_41 -o dist/gitswitch-linux ./cmd/gitswitch'
    ```
 
-   Without Go, build in a container:
+   For the CLI only (no window, no cgo), `CGO_ENABLED=0 GOOS=linux GOARCH=arm64
+   go build -o dist/gitswitch-linux ./cmd/gitswitch` also works from macOS.
+
+3. Add the tools gitswitch uses (ssh, zenity for popups, WebKitGTK for the
+   window):
 
    ```
-   docker run --rm -v "$PWD":/src -w /src -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=arm64 \
-     golang:1.22-bookworm go build -buildvcs=false -o dist/gitswitch-linux ./cmd/gitswitch
-   ```
-
-3. Add the tools gitswitch uses (ssh, and zenity for popups):
-
-   ```
-   docker exec gitswitch-desktop bash -c 'apt-get update && apt-get install -y openssh-client zenity'
+   docker exec gitswitch-desktop bash -c 'apt-get update && apt-get install -y openssh-client zenity libwebkit2gtk-4.1-0'
    ```
 
 4. Install gitswitch for the desktop user:
@@ -83,7 +86,9 @@ result on the desktop. Run these from the repo root.
 
 5. Open http://localhost:3000, open a terminal from the app menu and run
    `gitswitch setup`, then `gitswitch` (terminal app) or `gitswitch ui`
-   (browser app, opens in Chromium on the desktop).
+   (desktop app, opens a window on the desktop). Opening it from the app
+   menu works too, and a second `gitswitch ui` brings the open window to
+   the front.
 
 After a code change, repeat steps 2 and 4. Stop the desktop with
 `docker compose -f sandbox/compose.yaml down`. That removes the container, so
