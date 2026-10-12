@@ -4,15 +4,15 @@
 services:
   desktop:
     image: lscr.io/linuxserver/webtop:ubuntu-xfce
-    container_name: gitswitch-desktop
+    container_name: linux-desktop
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Asia/Dhaka
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
+      - "3001:3001"
     shm_size: "1gb"
     volumes:
-      - ./config:/config                # desktop user's home: accounts, keys, settings
-      - ../dist:/opt/gitswitch:ro       # binaries built on the host
-    restart: unless-stopped
+      - ./config:/config
+      - ./workspace:/workspace
