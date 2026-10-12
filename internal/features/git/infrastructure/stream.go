@@ -18,7 +18,7 @@ func (r *Runner) Stream(dir string, progress func(string), args ...string) error
 		progress("[dry-run] git " + ShellQuote(args))
 		return nil
 	}
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(Program(), args...)
 	cmd.Dir = dir
 	process.HideWindow(cmd)
 	stderr, err := cmd.StderrPipe()
@@ -31,6 +31,7 @@ func (r *Runner) Stream(dir string, progress func(string), args ...string) error
 	}
 	var last []string
 	sc := bufio.NewScanner(stderr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	sc.Split(splitProgress)
 	for sc.Scan() {
 		l := strings.TrimSpace(sc.Text())
@@ -42,6 +43,9 @@ func (r *Runner) Stream(dir string, progress func(string), args ...string) error
 			last = last[1:]
 		}
 	}
+	// The scanner stops early on a line longer than its buffer. Keep reading
+	// so git never blocks on a full pipe and Wait returns.
+	_, _ = io.Copy(io.Discard, stderr)
 	if err := cmd.Wait(); err != nil {
 		if len(last) == 0 {
 			return err

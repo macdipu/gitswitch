@@ -11,6 +11,11 @@ func TestParseRemote(t *testing.T) {
 		"https://github.com/acme/api.git":       {"github.com", "acme/api.git"},
 		"https://user@GitHub.com/acme/api":      {"github.com", "acme/api"},
 		"alias-host:acme/api.git":               {"alias-host", "acme/api.git"},
+		"git@[::1]:acme/api.git":                {"::1", "acme/api.git"},
+		"[git@Host.example:2222]:acme/api":      {"host.example", "acme/api"},
+		"[alias]:acme/api":                      {"alias", "acme/api"},
+		`C:\src\repo`:                           {"", ""},
+		"c:/src/repo":                           {"", ""},
 		"/local/path/repo.git":                  {"", ""},
 		"":                                      {"", ""},
 	}
@@ -29,12 +34,14 @@ func TestCanonicalHost(t *testing.T) {
 }
 
 func TestCheckCloneURL(t *testing.T) {
-	for _, u := range []string{"git@github.com:acme/api.git", "ssh://git@github.com/acme/api", "https://github.com/acme/api", "https://gitlab.example.com/group/sub/repo.git"} {
+	for _, u := range []string{"git@github.com:acme/api.git", "ssh://git@github.com/acme/api", "https://github.com/acme/api", "https://gitlab.example.com/group/sub/repo.git",
+		"git@[::1]:acme/api.git", "[git@example.com:2222]:acme/api.git"} {
 		if err := CheckCloneURL(u); err != nil {
 			t.Errorf("%s: %v", u, err)
 		}
 	}
-	for _, u := range []string{"", "-uploadpack=x", "ext::sh -c id", "file:///tmp/repo", "/tmp/repo", "github.com", "https://github.com/", "git@github.com:"} {
+	for _, u := range []string{"", "-uploadpack=x", "ext::sh -c id", "file:///tmp/repo", "/tmp/repo", "github.com", "https://github.com/", "git@github.com:",
+		`C:\src\repo`, "c:/src/repo", "c:src/repo", `D:\x`, "x:owner/repo", "[git@github.com:acme/api", "fd::17", "ext::git@github.com:a/b"} {
 		if CheckCloneURL(u) == nil {
 			t.Errorf("%q should be refused", u)
 		}

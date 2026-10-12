@@ -24,15 +24,63 @@ func Parse(u string) (host, path string) {
 		}
 		return strings.ToLower(pu.Hostname()), strings.Trim(pu.Path, "/")
 	}
-	// scp-like: git@host:owner/repo.git
-	if i := strings.Index(u, ":"); i > 0 && !strings.Contains(u[:i], "/") {
-		h := u[:i]
-		if j := strings.LastIndex(h, "@"); j >= 0 {
-			h = h[j+1:]
-		}
-		return strings.ToLower(h), strings.Trim(u[i+1:], "/")
+	if isDrivePath(u) {
+		return // C:\src\repo or c:/src/repo is a folder, not host "c"
 	}
-	return
+	// scp-like: git@host:owner/repo.git. Like git, a host in brackets may
+	// hold colons: git@[::1]:owner/repo or [git@host:2222]:owner/repo.
+	from := 0
+	if b := strings.Index(u, "@["); b >= 0 {
+		from = b + 1
+	}
+	bracketed := false
+	if u[from] == '[' {
+		e := strings.Index(u[from:], "]")
+		if e < 0 {
+			return
+		}
+		bracketed = true
+		from += e
+	}
+	i := strings.Index(u[from:], ":")
+	if i < 0 {
+		return
+	}
+	i += from
+	if i == 0 || strings.Contains(u[:i], "/") {
+		return
+	}
+	h := u[:i]
+	if bracketed {
+		h = strings.Replace(strings.Replace(h, "[", "", 1), "]", "", 1)
+	}
+	if j := strings.LastIndex(h, "@"); j >= 0 {
+		h = h[j+1:]
+	}
+	if bracketed && strings.Count(h, ":") == 1 {
+		if name, port, _ := strings.Cut(h, ":"); isPort(port) {
+			h = name // [host:2222]
+		}
+	}
+	return strings.ToLower(h), strings.Trim(u[i+1:], "/")
+}
+
+// isDrivePath reports a Windows path that starts with a drive letter.
+func isDrivePath(u string) bool {
+	return len(u) >= 3 && u[1] == ':' && (u[2] == '\\' || u[2] == '/') &&
+		(u[0] >= 'a' && u[0] <= 'z' || u[0] >= 'A' && u[0] <= 'Z')
+}
+
+func isPort(s string) bool {
+	if s == "" || len(s) > 5 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // CanonicalHost maps the "SSH over port 443" hosts to their main host.
@@ -58,7 +106,12 @@ func SameHost(a, b string) bool { return CanonicalHost(a) == CanonicalHost(b) }
 func CheckCloneURL(u string) error {
 	u = strings.TrimSpace(u)
 	bad := fmt.Errorf("not a repo URL: %q (use git@github.com:owner/repo.git or https://github.com/owner/repo)", u)
-	if u == "" || strings.HasPrefix(u, "-") || strings.Contains(u, "::") || strings.ContainsAny(u, " \t\n") {
+	if u == "" || strings.HasPrefix(u, "-") || strings.ContainsAny(u, " \t\n") {
+		return bad
+	}
+	// git's <transport>::<address> form (ext::, fd::, ...). A bracketed
+	// IPv6 host like git@[::1]:o/r has "@[" before its "::".
+	if i := strings.Index(u, "::"); i >= 0 && !strings.ContainsAny(u[:i], "@[") {
 		return bad
 	}
 	if strings.Contains(u, "://") {
@@ -72,7 +125,12 @@ func CheckCloneURL(u string) error {
 			return fmt.Errorf("%s:// links are not supported; use an SSH or HTTPS URL", pu.Scheme)
 		}
 	}
-	if host, p := Parse(u); host == "" || p == "" {
+	host, p := Parse(u)
+	if host == "" || p == "" {
+		return bad
+	}
+	// Git on Windows reads c:repo as a folder on drive C, not host "c".
+	if !strings.Contains(u, "://") && len(host) == 1 {
 		return bad
 	}
 	return nil
