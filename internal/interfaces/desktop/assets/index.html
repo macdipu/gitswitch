@@ -704,10 +704,13 @@ function renderToolbar(){
   if (h && h.upstream){
     const parts = [h.ahead && `<b>↑${h.ahead}</b> to push`, h.behind && `<b>↓${h.behind}</b> to pull`].filter(Boolean);
     sync = parts.length ? parts.join(' · ') : 'Up to date with ' + esc(h.upstream);
-  } else if (h && h.branch) sync = 'Not on a remote yet';
+  } else if (h && h.gone) sync = esc(h.gone) + ' is missing from this clone';
+  else if (h && h.branch) sync = 'Not on a remote yet';
   $('#syncState').innerHTML = sync;
   const canUpdate = !!(h && h.branch && h.upstream);
-  ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)' : 'This branch is not on a remote yet';
+  ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)'
+    : h?.gone ? h.gone + ' was deleted on the server, or this is a single-branch clone; fetch it or push the branch again'
+    : 'This branch is not on a remote yet';
   ub.className = 'btn' + (h?.behind ? ' primary' : '');
   ub.textContent = h?.behind ? `Update (${h.behind} new)` : 'Update';
 }
