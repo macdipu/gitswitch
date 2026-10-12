@@ -152,14 +152,8 @@ func cloneError(err error, acc *account.Account) error {
 // Remove takes a repo off the list without touching its files, remotes or
 // settings. A repo found in a project folder is hidden from the list.
 func (s *Service) Remove(path string) error {
-	root := s.root(path)
+	root, listed := s.listed(path)
 	c := s.Lists.Load()
-	listed := false
-	for _, r := range s.List() {
-		if filesystem.SamePath(r.Path, root) {
-			listed = true
-		}
-	}
 	if !listed {
 		return fmt.Errorf("not in the repo list: %s", root)
 	}
@@ -170,7 +164,7 @@ func (s *Service) Remove(path string) error {
 		return err
 	}
 	for _, r := range s.Reader.Scan(c, c.ScanFolders) {
-		if filesystem.SamePath(r.Path, root) {
+		if samePlace(r.Path, root) {
 			return s.Lists.AddRepoPath(repo.ListHidden, root)
 		}
 	}
@@ -179,14 +173,12 @@ func (s *Service) Remove(path string) error {
 
 // Pin pins a listed repo to the top of the list, or unpins it.
 func (s *Service) Pin(path string, on bool) error {
-	root := s.root(path)
+	root, listed := s.listed(path)
 	if !on {
 		return s.Lists.RemoveRepoPath(repo.ListPinned, root)
 	}
-	for _, r := range s.List() {
-		if filesystem.SamePath(r.Path, root) {
-			return s.Lists.AddRepoPath(repo.ListPinned, root)
-		}
+	if listed {
+		return s.Lists.AddRepoPath(repo.ListPinned, root)
 	}
 	return fmt.Errorf("not in the repo list: %s (add it first: gitswitch repo add)", root)
 }
@@ -211,6 +203,25 @@ func (s *Service) Open(path string, editor bool) error {
 		return errors.New("no editor set; choose one with: gitswitch set editor <command> (e.g. code)")
 	}
 	return process.StartProgram(cmd, root)
+}
+
+// listed finds the repo holding path in the list. It returns the path as
+// the list shows it, which can differ from git's when a project folder is
+// reached through a symlink (/var and /private/var on macOS).
+func (s *Service) listed(path string) (string, bool) {
+	root := s.root(path)
+	for _, r := range s.List() {
+		if samePlace(r.Path, root) {
+			return r.Path, true
+		}
+	}
+	return root, false
+}
+
+// samePlace reports whether two paths name the same folder, following
+// symlinks only when the paths differ.
+func samePlace(a, b string) bool {
+	return filesystem.SamePath(a, b) || filesystem.SamePath(filesystem.RealPath(a), filesystem.RealPath(b))
 }
 
 // root turns a folder inside a repo into the repo's working folder. A

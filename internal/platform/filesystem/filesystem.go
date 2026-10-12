@@ -50,10 +50,15 @@ func CacheDir() string {
 	return filepath.Join(d, "gitswitch")
 }
 
-// RealPath resolves symlinks, or returns p unchanged.
+// RealPath resolves symlinks. When p no longer exists, it resolves the
+// nearest folder above it that does, so a deleted folder still compares
+// equal to the same path reached through a symlink.
 func RealPath(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
+	}
+	if parent := filepath.Dir(p); parent != p && parent != "." {
+		return filepath.Join(RealPath(parent), filepath.Base(p))
 	}
 	return p
 }
