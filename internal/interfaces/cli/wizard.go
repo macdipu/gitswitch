@@ -105,9 +105,13 @@ func (x *CLI) wizard() error {
 	c := x.app.Accounts.Config()
 	if len(c.Accounts) > 1 {
 		x.say("\nAccounts:", strings.Join(c.SortedIDs(), ", "))
-		x.say("A default account is used when a repo has no saved account or rule and nobody can be asked.")
-		x.say("Type none to have no default: repos with nothing saved ask each time (answer 2! to save it for the repo).")
-		if d := ask("Default account", c.Default); d != "" {
+		x.say("A default account is optional: it is used only when nothing else decides and nobody answers.")
+		x.say("Without one, GitSwitch asks (answer 2! to save it for the repo) and never guesses.")
+		prompt := "Default account, or Enter for none"
+		if c.Default != "" {
+			prompt = "Default account (none to remove it)"
+		}
+		if d := ask(prompt, c.Default); d != "" && !strings.EqualFold(d, c.Default) {
 			if strings.EqualFold(d, "none") {
 				d = ""
 			}
@@ -115,10 +119,15 @@ func (x *CLI) wizard() error {
 				x.say("Error:", err)
 			}
 		}
+		c = x.app.Accounts.Config()
 		x.say("\nRules pick an account automatically, so most repos never ask.")
 		for yes("Add a rule?", false) {
 			kind := ask("1 = by GitHub owner/org, 2 = by folder on this computer", "1")
-			acct := ask("Account for it", c.Default)
+			acct := ask("Account for it ("+strings.Join(c.SortedIDs(), ", ")+")", c.Default)
+			if acct == "" {
+				x.say("Type one of the account names.")
+				continue
+			}
 			r := account.Rule{Kind: "owner", Account: acct}
 			if kind == "2" {
 				r.Kind, r.Pattern = "folder", ask("Folder, e.g. ~/work", "")

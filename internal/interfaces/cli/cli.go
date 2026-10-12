@@ -37,7 +37,7 @@ Accounts
   gitswitch key show <id> [--open]
   gitswitch key agent <id>          load the key into the OS agent / Keychain once
   gitswitch test [<id>]             check each key logs in, and as whom
-  gitswitch default <id>            account used when nothing else decides
+  gitswitch default <id>            optional: account used when nobody answers (or Enter)
   gitswitch default --none          remove the default: repos with nothing saved always ask
 
 Repos and rules

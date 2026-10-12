@@ -8,7 +8,7 @@
 //	gitswitch.default            optional: account used when a repo has nothing saved, no rule
 //	                             matches and nobody answers. Unset: ask, and save the answer
 //	gitswitch.guiPrompt          ask with a popup when git runs with no terminal
-//	gitswitch.promptTimeout      seconds before a prompt falls back to the default
+//	gitswitch.promptTimeout      seconds a prompt waits; then the default, if set, or no connection
 //	gitswitch.sshPath            optional path to the real ssh program
 //	gitswitch.rule               multi-valued: owner:<prefix>=<id> | folder:<path>=<id>
 //	gitswitch.scanFolder         multi-valued: folders the apps scan for repos

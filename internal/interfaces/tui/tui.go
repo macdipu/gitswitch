@@ -1437,7 +1437,7 @@ func (t *tui) keySettings(k string) {
 	case i == 0:
 		t.say(t.app.Accounts.SetSetting("guiPrompt", fmt.Sprint(!t.cfg.GUIPrompt)), "Saved.")
 	case i == 1:
-		t.form = &form{title: "Prompt timeout", fields: []field{{label: "Seconds to wait before using the default", value: strconv.Itoa(t.cfg.PromptTimeout)}},
+		t.form = &form{title: "Prompt timeout", fields: []field{{label: "Seconds to wait for an answer", value: strconv.Itoa(t.cfg.PromptTimeout)}},
 			submit: func(v []string) error {
 				n, err := strconv.Atoi(v[0])
 				if err != nil || n < 5 {
@@ -1570,8 +1570,11 @@ func (t *tui) footer() string {
 		return "y yes · n or Esc no"
 	}
 	if t.view != nil {
-		if t.view.copy != "" {
+		if t.view.copy != "" && t.view.url != "" {
 			return "c copy · o open link · ↑↓ scroll · Enter close"
+		}
+		if t.view.copy != "" {
+			return "c copy · ↑↓ scroll · Enter close"
 		}
 		return "↑↓ PgUp PgDn scroll · Enter close"
 	}
@@ -1581,7 +1584,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · m more · ? help · q quit"
+		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}
@@ -1745,7 +1748,7 @@ func (t *tui) drawSettings() ([]string, int) {
 	onoff := map[bool]string{true: cGreen + "on" + cReset, false: cDim + "off" + cReset}
 	l := []string{
 		fmt.Sprintf("%sPopup when git runs without a terminal (IDE source control): %s%s", mark(s == 0), onoff[t.cfg.GUIPrompt], cReset),
-		fmt.Sprintf("%sSeconds to wait for an answer before using the default: %d%s", mark(s == 1), t.cfg.PromptTimeout, cReset),
+		fmt.Sprintf("%sSeconds to wait for an answer: %d %s%s", mark(s == 1), t.cfg.PromptTimeout, map[bool]string{true: "(then git does not connect: no default account)", false: "(then the default account, " + t.cfg.Default + ")"}[t.cfg.Default == ""], cReset),
 	}
 	for i, c := range t.checks {
 		st := cGreen + "ok " + cReset
@@ -1767,7 +1770,7 @@ func (t *tui) overlay() []string {
 		for _, b := range body {
 			out = append(out, " │ "+padANSI(b, w-2)+"│")
 		}
-		out = append(out, " └"+strings.Repeat("─", w)+"┘")
+		out = append(out, " └"+strings.Repeat("─", w-1)+"┘") // as wide as the top and the sides
 		return out
 	}
 	switch {

@@ -290,7 +290,7 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-repos" hidden>
     <h1 tabindex="-1">Repos</h1>
-    <p class="lead">Choose an account for each repo. Repos set to "Ask" follow your rules, then ask on the next pull or push. Adding or removing a repo here only changes GitSwitch's list, never the repo.</p>
+    <p class="lead">Choose an account for each repo. "Follow rules and default" uses your rules, then asks on the next pull or push; "Ask every time" always asks. Adding or removing a repo here only changes GitSwitch's list, never the repo.</p>
     <form class="card" id="folderForm" style="grid-template-columns:1fr auto auto;align-items:end">
       <label>Folder with your projects<input name="path" placeholder="~/work or D:\Projects" required></label>
       <button class="btn" type="button" id="browseFolder">Browse…</button>
@@ -312,7 +312,7 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-history" hidden>
     <h1 tabindex="-1">History</h1>
-    <p class="lead">Every commit with the account that made it. Click a commit to see what you can do with it.</p>
+    <p class="lead">Every commit with the account that made it. Click a commit to see its message, the files it changed and what you can do with it.</p>
     <div class="toolbar">
       <select id="histRepo" aria-label="Repo"></select>
       <div class="pop-wrap">
