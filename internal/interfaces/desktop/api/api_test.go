@@ -211,3 +211,19 @@ func TestHistoryActions(t *testing.T) {
 	fails("/api/commit/browse", `{`+gd+`,"hash":""}`, "no remote")
 	fails("/api/commit/drop", `{`+gd+`,"hash":"--force"}`, "not a commit")
 }
+
+// A git or ssh error the server knows comes with a plain-words hint.
+func TestErrorsCarryAHint(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeJSON(rec, nil, fmt.Errorf("git@github.com: Permission denied (publickey)."))
+	var got struct {
+		Error string
+		Hint  *struct{ Problem, Fix, Action string }
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusBadRequest || got.Hint == nil || got.Hint.Action != "pubkey" || got.Hint.Fix == "" {
+		t.Errorf("code=%d body=%+v", rec.Code, got)
+	}
+}

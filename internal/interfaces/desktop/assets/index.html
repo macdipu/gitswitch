@@ -170,7 +170,14 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 
 .toast{position:fixed;bottom:18px;right:18px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:var(--radius);font-size:14px;max-width:420px;opacity:0;transform:translateY(6px);transition:.18s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
-.toast.err{background:var(--bad);color:#fff}
+.toast.err{background:var(--panel);color:var(--ink);border:1px solid var(--bad);border-left-width:4px;pointer-events:auto;max-width:460px;box-shadow:0 8px 24px rgb(0 0 0 / .18)}
+.toast .x{float:right;margin:-4px -6px 0 10px;border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}
+.toast .x:hover{color:var(--ink)}
+.toast b{display:block;color:var(--bad);margin-bottom:4px}
+.toast p,.explain p{margin:0 0 6px;line-height:1.4}
+.toast details,.explain details{font-size:12.5px;color:var(--muted)}
+.toast pre,.explain pre{white-space:pre-wrap;word-break:break-word;margin:4px 0 0;max-height:160px;overflow:auto}
+.explain{border-left:3px solid var(--bad);padding:2px 0 2px 10px;margin-top:6px;font-family:inherit;color:var(--ink)}
 .checks{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
 .check{display:grid;grid-template-columns:18px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:start}
 .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
@@ -348,10 +355,27 @@ let S = null, repos = [], openDetail = {};
 async function api(method, path, data){
   const r = await fetch(path, {method, headers:{'Content-Type':'application/json'}, body: data ? JSON.stringify(data) : undefined});
   const j = await r.json().catch(() => ({error:'No response from GitSwitch. Close this window and run `gitswitch ui` again.'}));
-  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  if (!r.ok || j.error){ const e = new Error(j.error || r.statusText); e.hint = j.hint; throw e; }
   return j.data;
 }
-function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 6000 : 2600); }
+// toast shows a short note. An error stays until it is closed, and when
+// the server could explain it (hint) it says what happened and what to do,
+// with git's own message under Details.
+function toast(msg, err, hint){
+  const t = $('#toast'); clearTimeout(t._h);
+  if (!err){ t.textContent = msg; t.className = 'toast show'; t._h = setTimeout(() => t.className = 'toast', 2600); return; }
+  t.innerHTML = `<button class="x" aria-label="Close">×</button>` + (hint
+    ? `<b>${esc(hint.problem)}</b><p>${esc(hint.fix)}</p><details><summary>Details</summary><pre class="mono">${esc(msg)}</pre></details>`
+    : `<b>Something went wrong</b><p>${esc(msg)}</p>`);
+  t.className = 'toast show err'; t.setAttribute('role', 'alert');
+  t.querySelector('.x').onclick = () => { t.className = 'toast'; t.setAttribute('role', 'status'); };
+}
+// hintHTML explains a failure inline. With buttons (the Accounts page, where
+// they are handled) it offers the next step.
+function hintHTML(h, raw, buttons){
+  const next = !buttons ? '' : {pubkey:'<button class="btn" data-act="key">Show public key</button>', test:'<button class="btn" data-act="test">Test again</button>'}[h.action] || '';
+  return `<div class="explain"><p><strong>${esc(h.problem)}</strong></p><p>${esc(h.fix)}</p>${next ? `<div class="row-actions">${next}</div>` : ''}<details><summary>Details</summary><pre class="mono">${esc(raw)}</pre></details></div>`;
+}
 // ask shows a modal question. With opts.input it returns the typed text (null
 // on cancel); without, true or false. (Native confirm/prompt do not work in
 // every OS webview.)
@@ -368,7 +392,7 @@ $('#dlgInput').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); $(
 // links open in the system browser, not inside the app window
 document.addEventListener('click', e => { const a = e.target.closest('a[href^="http"]'); if (!a) return; e.preventDefault(); act(() => api('POST','/api/open',{url:a.href})); });
 
-async function act(fn, ok){ try { const v = await fn(); if (ok) toast(ok); return v; } catch(e){ toast(e.message, true); } }
+async function act(fn, ok){ try { const v = await fn(); if (ok) toast(ok); return v; } catch(e){ toast(e.message, true, e.hint); } }
 
 const colorOf = id => { if (!S) return 'var(--muted)'; const i = S.config.accounts.findIndex(a => a.id === id); return i < 0 ? 'var(--muted)' : `var(--a${i % 6})`; };
 
@@ -422,7 +446,7 @@ $('#accounts').addEventListener('click', async e => {
   if (b.dataset.act === 'test'){
     b.disabled = true; b.textContent = 'Testing…';
     const r = await act(() => api('POST', '/api/test', {id}));
-    openDetail[id] = r ? (r.ok ? `<span class="status-ok">Connected to ${esc(a.host)} as <strong>${esc(r.user)}</strong>.</span>` : `<span class="status-bad">Could not log in.</span><pre class="mono" style="white-space:pre-wrap;margin:6px 0 0">${esc(r.output)}</pre>Add the public key to this account on ${esc(a.host)}, then test again.`) : '';
+    openDetail[id] = r ? (r.ok ? `<span class="status-ok">Connected to ${esc(a.host)} as <strong>${esc(r.user)}</strong>.</span>` : (r.hint ? `<span class="status-bad">Could not log in to ${esc(a.host)}.</span>${hintHTML(r.hint, r.output, true)}` : `<span class="status-bad">Could not log in.</span><pre class="mono" style="white-space:pre-wrap;margin:6px 0 0">${esc(r.output)}</pre>Add the public key to this account on ${esc(a.host)}, then test again.`)) : '';
     await refresh();
   } else if (b.dataset.act === 'key'){
     const k = await act(() => api('GET', '/api/pubkey?id=' + encodeURIComponent(id))); if (!k) return;
@@ -561,6 +585,7 @@ $('#cloneForm').onsubmit = async e => {
     $('#cloneProgress').textContent = j.error || j.line;
     if (j.running) return setTimeout(poll, 400);
     $('#cloneGo').disabled = false;
+    if (j.error && j.hint){ $('#cloneProgress').className = 'full'; $('#cloneProgress').innerHTML = `<span class="status-bad">The clone failed.</span>${hintHTML(j.hint, j.error)}`; return; }
     if (j.error){ $('#cloneProgress').className = 'full status-bad mono'; $('#cloneProgress').style.whiteSpace = 'pre-wrap'; return; }
     toast('Cloned ' + j.repo.path + (j.repo.account ? ' with ' + j.repo.account : ''));
     f.reset(); delete f.dirname.dataset.edited; f.hidden = true; $('#cloneProgress').textContent = '';
@@ -937,7 +962,7 @@ $('#setForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
   await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:+f.promptTimeout.value}), 'Settings saved'); refresh(); };
 $('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); loadChecks(); });
 
-refresh().catch(e => toast(e.message, true));
+refresh().catch(e => toast(e.message, true, e.hint));
 </script>
 </body>
 </html>

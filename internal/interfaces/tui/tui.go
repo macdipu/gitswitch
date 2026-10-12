@@ -214,9 +214,35 @@ func (t *tui) clampSel() {
 func (t *tui) say(err error, ok string) {
 	if err != nil {
 		t.msg, t.msgErr = err.Error(), true
+		t.explain(err.Error(), "")
 	} else {
 		t.msg, t.msgErr = ok, false
 	}
+}
+
+// explain opens a panel saying, in plain words, what a git or ssh error
+// means and what to do, when it is one we know. id is the account
+// involved, for the keys to suggest. It reports whether it opened.
+func (t *tui) explain(msg, id string) bool {
+	h := remote.Explain(msg)
+	if h == nil {
+		return false
+	}
+	lines := []string{"What happened:", "  " + h.Problem, "", "What to do:", "  " + h.Fix}
+	switch {
+	case h.Action == "pubkey" && id != "":
+		lines = append(lines, "", "Close this, then press k on the Accounts page to see "+id+"'s public key and where to add it.")
+	case h.Action == "test" && id != "":
+		lines = append(lines, "", "Close this, then press t on the Accounts page to test "+id+" again.")
+	}
+	lines = append(lines, "", "Details (git's own message):")
+	for _, l := range strings.Split(strings.TrimSpace(msg), "\n") {
+		if l = history.CleanText(l); strings.TrimSpace(l) != "" {
+			lines = append(lines, "  "+l)
+		}
+	}
+	t.view = &viewer{title: "What went wrong", lines: lines}
+	return true
 }
 
 // suspend leaves the TUI so a command can use the terminal normally
@@ -808,7 +834,8 @@ func (t *tui) keyAccounts(k string) {
 		if r.OK {
 			t.say(nil, acc.ID+" logs in as "+r.User+".")
 		} else {
-			t.say(fmt.Errorf("%s could not log in. Press k to see its public key", acc.ID), "")
+			t.msg, t.msgErr = acc.ID+" could not log in. Press k to see its public key", true
+			t.explain(r.Output, acc.ID)
 		}
 		t.reload()
 	case "p":

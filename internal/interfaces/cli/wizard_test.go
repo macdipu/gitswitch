@@ -30,3 +30,16 @@ func TestWizardStopsAtEndOfInput(t *testing.T) {
 		t.Fatal("wizard kept asking after the input ended")
 	}
 }
+
+func TestWriteHint(t *testing.T) {
+	var b bytes.Buffer
+	writeHint(&b, "Permission denied (publickey).", "work")
+	if out := b.String(); !strings.Contains(out, "What to do:") || !strings.Contains(out, "gitswitch key show work") {
+		t.Errorf("hint:\n%s", out)
+	}
+	b.Reset()
+	writeHint(&b, "something new", "work")
+	if b.Len() != 0 {
+		t.Errorf("an unknown error gets no hint: %q", b.String())
+	}
+}

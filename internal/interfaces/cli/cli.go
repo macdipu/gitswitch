@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	"github.com/macdipu/gitswitch/internal/interfaces/desktop/window"
 	"github.com/macdipu/gitswitch/internal/interfaces/tui"
 	"github.com/macdipu/gitswitch/internal/platform/terminal"
@@ -102,9 +103,26 @@ func Run(args []string) int {
 	x := &CLI{app: bootstrap.New(dry, os.Stdout), in: os.Stdin, out: os.Stdout}
 	if err := x.dispatch(kept); err != nil {
 		fmt.Fprintln(os.Stderr, "gitswitch:", err)
+		writeHint(os.Stderr, err.Error(), "")
 		return 1
 	}
 	return 0
+}
+
+// writeHint explains a git or ssh error in plain words below it, when it
+// is one we know. id is the account involved, for the commands to suggest.
+func writeHint(w io.Writer, msg, id string) {
+	h := remote.Explain(msg)
+	if h == nil {
+		return
+	}
+	fmt.Fprintf(w, "\n  What happened: %s\n  What to do:    %s\n", h.Problem, h.Fix)
+	switch {
+	case h.Action == "pubkey" && id != "":
+		fmt.Fprintf(w, "  Show the key and where to add it: gitswitch key show %s\n", id)
+	case h.Action == "test" && id != "":
+		fmt.Fprintf(w, "  Then test it: gitswitch test %s\n", id)
+	}
 }
 
 func (x *CLI) say(a ...any)                { fmt.Fprintln(x.out, a...) }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -183,5 +184,18 @@ func TestAccountColumnsLineUp(t *testing.T) {
 			t.Fatalf("key column at %d, want %d:\n%s", i, col, strings.Join(lines, "\n"))
 		}
 		col = i
+	}
+}
+
+func TestKnownErrorsAreExplained(t *testing.T) {
+	x := testTUI(t)
+	x.say(errors.New("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository."), "")
+	if x.view == nil || x.view.title != "What went wrong" || !strings.Contains(strings.Join(x.view.lines, "\n"), "What to do:") {
+		t.Fatalf("view = %+v", x.view)
+	}
+	x.view = nil
+	x.say(errors.New("something new"), "")
+	if x.view != nil || x.msg != "something new" || !x.msgErr {
+		t.Errorf("an unknown error stays a status line: view=%v msg=%q", x.view, x.msg)
 	}
 }

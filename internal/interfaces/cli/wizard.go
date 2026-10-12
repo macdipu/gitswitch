@@ -93,6 +93,7 @@ func (x *CLI) wizard() error {
 			x.sayf("Connected: %s is %s on %s.\n", acc.ID, r.User, acc.Host)
 		} else {
 			x.say("Could not log in yet:", firstLine(r.Output))
+			writeHint(x.out, r.Output, acc.ID)
 			x.say("You can retry later with: gitswitch test", acc.ID)
 		}
 		if !yes("Add another account?", len(c.Accounts) == 0) {

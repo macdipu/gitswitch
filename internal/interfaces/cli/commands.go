@@ -243,10 +243,11 @@ func (x *CLI) cmdTest(args []string) error {
 		} else {
 			allOK = false
 			x.sayf("FAIL  %-14s %s\n", a.ID, firstLine(r.Output))
+			writeHint(x.out, r.Output, a.ID)
 		}
 	}
 	if !allOK {
-		return errors.New("some accounts could not log in; add the public key with `gitswitch key show <id>`")
+		return errors.New("some accounts could not log in; see above for what to do")
 	}
 	return nil
 }

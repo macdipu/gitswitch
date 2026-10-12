@@ -16,6 +16,7 @@ import (
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
@@ -35,10 +36,11 @@ type server struct {
 
 // cloneJob is a clone running in the background; the page polls it.
 type cloneJob struct {
-	Running bool       `json:"running"`
-	Line    string     `json:"line"` // git's latest progress line
-	Error   string     `json:"error"`
-	Repo    *repo.Info `json:"repo"`
+	Running bool         `json:"running"`
+	Line    string       `json:"line"` // git's latest progress line
+	Error   string       `json:"error"`
+	Hint    *remote.Hint `json:"hint"` // the error in plain words, when known
+	Repo    *repo.Info   `json:"repo"`
 }
 
 // Handler serves the page at / and its JSON API under /api/. pickFolder
@@ -87,7 +89,17 @@ func (s *server) routes() map[string]handler {
 		},
 		"GET /api/keys":     func(r *http.Request) (any, error) { return a.Keys.Existing(), nil },
 		"POST /api/default": func(r *http.Request) (any, error) { return nil, a.Accounts.SetDefault(str(body(r), "id")) },
-		"POST /api/test":    func(r *http.Request) (any, error) { return a.Keys.Test(str(body(r), "id"), true) },
+		"POST /api/test": func(r *http.Request) (any, error) {
+			res, err := a.Keys.Test(str(body(r), "id"), true)
+			var hint *remote.Hint
+			if !res.OK {
+				hint = remote.Explain(res.Output)
+			}
+			return struct {
+				ssh.TestResult
+				Hint *remote.Hint `json:"hint"`
+			}{res, hint}, err
+		},
 		"GET /api/pubkey": func(r *http.Request) (any, error) {
 			k, help, err := a.Keys.PublicKey(r.URL.Query().Get("id"))
 			return map[string]any{"key": k, "page": help.Page, "steps": help.Steps}, err
@@ -311,6 +323,7 @@ func (s *server) startClone(r *http.Request) (any, error) {
 		job.Running = false
 		if err != nil {
 			job.Error = err.Error()
+			job.Hint = remote.Explain(job.Error)
 		} else {
 			job.Repo = &info
 		}
@@ -359,7 +372,9 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		// hint explains a git or ssh error in plain words; the page shows
+		// it above the raw message.
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "hint": remote.Explain(err.Error())})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": v})
