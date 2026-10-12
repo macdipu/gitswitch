@@ -137,6 +137,13 @@ func TestAdd(t *testing.T) {
 	if _, err := s.Add(account.Account{ID: "other", Email: "o@x.com"}, account.KeyChoice{New: true}); err == nil {
 		t.Error("a key generation failure must be returned")
 	}
+	if st.c.Account("other") != nil {
+		t.Error("a failed key generation must not leave the account behind")
+	}
+	k.fail = nil
+	if _, err := s.Add(account.Account{ID: "other", Email: "o@x.com"}, account.KeyChoice{New: true}); err != nil {
+		t.Errorf("adding again after a failed key generation: %v", err)
+	}
 }
 
 func TestUpdateKeepsIDAndUser(t *testing.T) {

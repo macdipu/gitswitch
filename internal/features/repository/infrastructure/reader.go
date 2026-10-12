@@ -121,34 +121,43 @@ func (r *Reader) Scan(c *account.Config, folders []string) []repo.Info {
 }
 
 // find returns the git dirs of repos in folders, after the given ones,
-// without duplicates.
+// without duplicates (the same repo reached through a symlink counts once).
 func (r *Reader) find(folders, dirs []string) []string {
 	seen := map[string]bool{}
 	var unique []string
 	for _, gd := range dirs {
-		if !seen[gd] {
-			seen[gd] = true
+		if !seen[filesystem.RealPath(gd)] {
+			seen[filesystem.RealPath(gd)] = true
 			unique = append(unique, gd)
 		}
 	}
 	dirs = unique
 	for _, root := range folders {
 		root = filesystem.ExpandHome(root)
-		base := strings.Count(filepath.ToSlash(root), "/")
-		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		// WalkDir does not follow a symlinked root, so walk the folder it
+		// points to and report paths under the folder as it was given.
+		walk := root
+		if rp, err := filepath.EvalSymlinks(root); err == nil {
+			walk = rp
+		}
+		base := strings.Count(filepath.ToSlash(walk), "/")
+		_ = filepath.WalkDir(walk, func(p string, d fs.DirEntry, err error) error {
 			if err != nil || !d.IsDir() {
 				return nil
 			}
-			if strings.Count(filepath.ToSlash(p), "/")-base > 5 || (skipDirs[d.Name()] && p != root) {
+			if strings.Count(filepath.ToSlash(p), "/")-base > 5 || (skipDirs[d.Name()] && p != walk) {
 				return filepath.SkipDir
+			}
+			if rel, err := filepath.Rel(walk, p); err == nil {
+				p = filepath.Join(root, rel)
 			}
 			if fi, err := os.Stat(filepath.Join(p, ".git")); err == nil {
 				gd := filepath.Join(p, ".git")
 				if !fi.IsDir() { // worktree or submodule: .git is a file
 					gd = r.Git.GitDirFor(p)
 				}
-				if gd != "" && !seen[gd] {
-					seen[gd] = true
+				if gd != "" && !seen[filesystem.RealPath(gd)] {
+					seen[filesystem.RealPath(gd)] = true
 					dirs = append(dirs, gd)
 				}
 				return filepath.SkipDir

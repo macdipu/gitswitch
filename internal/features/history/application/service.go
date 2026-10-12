@@ -356,7 +356,9 @@ func (s *Service) WebURL(gitDir, rev string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if s.Log.Unpushed(gitDir)[t.Hash] {
+	// Ask the remotes rather than the not-pushed list: a commit only on a
+	// tag or in the stash is in neither, and the server does not have it.
+	if !s.Log.OnRemote(gitDir, t.Hash) {
 		return "", fmt.Errorf("%s is not pushed yet, so the server does not have it", t.Short)
 	}
 	return remote.CommitURL(remoteURL, t.Hash), nil

@@ -394,6 +394,8 @@ func TestInputValidation(t *testing.T) {
 		{"account", "add", "bad id", "--email", "a@b.example"},
 		{"account", "add", "x1", "--email", "not-an-email"},
 		{"account", "add", "x2", "--email", "a@b.example", "--host", "https://github.com"},
+		{"account", "add", "x3", "--email", "a@b.example", "--name", "Ann\n[core]\n\tsshCommand = evil"},
+		{"account", "add", "x4", "--email", "a@b.example\r"},
 		{"rule", "add", "owner:~/work", "work"},
 		{"rule", "add", "owner:acme", "nobody"},
 		{"default", "nobody"},
@@ -985,5 +987,97 @@ func TestHistoryAndBranchActions(t *testing.T) {
 	e.gsIn(api, "--dry-run", "switch", "main")
 	if e.gitIn(api, "rev-parse", "HEAD") != head || e.gitIn(api, "branch", "--show-current") != "side" {
 		t.Fatal("dry run changed the repo")
+	}
+}
+
+// The stash's commits are saved changes, not history: the log leaves them
+// out and browse refuses them.
+func TestLogLeavesOutTheStash(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "real commit")
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("wip\n"), 0o644))
+	e.gitIn(api, "stash", "push", "-q", "-m", "secret wip")
+	stash := e.gitIn(api, "rev-parse", "refs/stash")
+	if out := e.gsIn(api, "log"); !strings.Contains(out, "real commit") || strings.Contains(out, "secret wip") || strings.Contains(out, "index on") {
+		t.Fatalf("log shows the stash:\n%s", out)
+	}
+	e.gsErr(api, "not pushed yet", "browse", stash[:7])
+}
+
+// When the uncommitted changes clash with the history after a drop, git
+// keeps them in the stash and still succeeds; gitswitch must say so.
+func TestDropExplainsChangesKeptInTheStash(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "g.txt", "x\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	two := e.commitFile(api, "g.txt", "y\n", "two")
+	e.commitFile(api, "f.txt", "3\n", "three")
+	must(t, os.WriteFile(filepath.Join(api, "g.txt"), []byte("z\n"), 0o644))
+	e.gsErr(api, "safe in the stash", "drop", two[:7], "-y")
+	if got := e.subjects(api, "HEAD", 2); got != "three,base" {
+		t.Fatalf("after drop: %s", got)
+	}
+	if got := e.gitIn(api, "stash", "list"); !strings.Contains(got, "autostash") {
+		t.Fatalf("stash list: %q", got)
+	}
+}
+
+// Update on a branch whose remote branch this clone has no copy of
+// explains that, instead of saying the branch is not on a remote.
+func TestUpdateExplainsAMissingRemoteBranch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.git("clone", "-q", "--single-branch", "git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.gitIn(api, "switch", "-q", "-c", "feat")
+	e.commitFile(api, "a.txt", "a\n", "feat a")
+	e.gitIn(api, "push", "-q", "-u", "origin", "feat")
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, "feat → origin/feat (not in this clone)") {
+		t.Fatalf("branch:\n%s", out)
+	}
+	e.gsErr(api, "has no copy of that remote branch", "update")
+}
+
+// Repos under a scan folder that is a symlink are found.
+func TestScanFolderThroughSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need extra rights on Windows")
+	}
+	e := newEnv(t)
+	real := filepath.Join(e.root, "real")
+	must(t, os.MkdirAll(real, 0o755))
+	e.gitIn(real, "clone", "-q", "git@github.com:dipu/notes.git", "notes")
+	link := filepath.Join(e.root, "projects")
+	must(t, os.Symlink(real, link))
+	e.git("config", "--global", "--add", "gitswitch.scanFolder", link)
+	if _, ok := e.repoList()["notes"]; !ok {
+		t.Fatal("the repo under the symlinked scan folder was not found")
+	}
+}
+
+// Renaming an account moves its folder rule and the includeIf that gives
+// repos there its identity, without losing either.
+func TestRenameMovesFolderRuleAndIdentity(t *testing.T) {
+	e := newEnv(t)
+	work := filepath.Join(e.root, "work")
+	e.gs("rule", "add", "folder:"+work, "client")
+	e.gs("account", "rename", "client", "acme")
+	if rules := e.gs("rule", "list"); !strings.Contains(rules, "-> acme") || strings.Contains(rules, "-> client") {
+		t.Fatalf("rules after rename:\n%s", rules)
+	}
+	repo := filepath.Join(work, "p")
+	must(t, os.MkdirAll(repo, 0o755))
+	e.gitIn(repo, "init", "-q")
+	if got := e.cfg(repo, "user.email"); got != "dipu@client.example" {
+		t.Fatalf("identity in the rule's folder after rename: %q", got)
+	}
+	if strings.Contains(e.git("config", "--global", "--get-regexp", `^includeif\.`), "client") {
+		t.Fatal("an includeIf still points at the old identity file")
 	}
 }

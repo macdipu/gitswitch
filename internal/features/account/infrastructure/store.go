@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
@@ -114,6 +115,13 @@ func (s *Store) Load() *account.Config {
 func (s *Store) Save(a account.Account) error {
 	if !account.ValidID(a.ID) {
 		return fmt.Errorf("account id %q: use letters, digits, - or _ (max 32)", a.ID)
+	}
+	// A line break would end the value early in the identity file, and the
+	// rest of it would be read as more git settings.
+	for _, f := range [][2]string{{"host", a.Host}, {"name", a.Name}, {"email", a.Email}, {"key", a.Key}, {"user", a.User}} {
+		if strings.IndexFunc(f[1], unicode.IsControl) >= 0 {
+			return fmt.Errorf("the %s %q contains a line break or other control character", f[0], f[1])
+		}
 	}
 	if a.Host == "" {
 		a.Host = "github.com"
@@ -397,39 +405,78 @@ func (s *Store) Rename(oldID, newID string) error {
 	if _, err := s.Git.Global("--rename-section", "gitswitch-account."+oldID, "gitswitch-account."+newID); err != nil {
 		return err
 	}
+	// From here on each step is tried even when an earlier one failed, and
+	// every failure is reported. The rename record comes first: with it,
+	// anything still naming the old id keeps finding the account.
+	var errs []error
+	keep := func(err error) {
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	_, err := s.Git.Global("--add", "gitswitch.renamed", oldID+"="+newID)
+	keep(err)
 	if a.Key != "" && filepath.Clean(filesystem.ExpandHome(a.Key)) == filepath.Clean(DefaultKeyPath(oldID)) {
-		nk := DefaultKeyPath(newID)
-		if _, err := os.Stat(nk); os.IsNotExist(err) && s.FS.Rename(DefaultKeyPath(oldID), nk) == nil {
-			_ = s.FS.Rename(DefaultKeyPath(oldID)+".pub", nk+".pub")
-			_, _ = s.Git.Global("gitswitch-account."+newID+".key", nk)
-		}
-	}
-	oldFile, newFile := IdentityFile(oldID), IdentityFile(newID)
-	if _, err := os.Stat(oldFile); err == nil {
-		_ = s.FS.Rename(oldFile, newFile)
-	}
-	out, _ := s.Git.Run("config", "--global", "--get-regexp", `^includeif\..*\.path$`)
-	for _, line := range strings.Split(out, "\n") {
-		k, v, ok := strings.Cut(line, " ")
-		if ok && filepath.ToSlash(v) == filepath.ToSlash(oldFile) {
-			_, _ = s.Git.Global(k, filepath.ToSlash(newFile))
-		}
-	}
-	for _, r := range c.Rules {
-		if strings.EqualFold(r.Account, oldID) {
-			_ = s.RemoveRule(r)
-			r.Account = newID
-			_, _ = s.Git.Global("--add", "gitswitch.rule", r.String())
-			if r.Kind == "folder" {
-				_ = s.writeFolderIncludes(r.Pattern, newID)
+		ok, nk := DefaultKeyPath(oldID), DefaultKeyPath(newID)
+		_, errOld := os.Stat(ok)
+		if _, errNew := os.Stat(nk); errOld == nil && os.IsNotExist(errNew) {
+			if err := s.FS.Rename(ok, nk); err != nil {
+				keep(fmt.Errorf("move the key file: %w", err))
+			} else {
+				if _, err := os.Stat(ok + ".pub"); err == nil {
+					keep(s.FS.Rename(ok+".pub", nk+".pub"))
+				}
+				_, err := s.Git.Global("gitswitch-account."+newID+".key", nk)
+				keep(err)
 			}
 		}
 	}
-	if strings.EqualFold(c.Default, oldID) {
-		_, _ = s.Git.Global("gitswitch.default", newID)
+	// Write the new identity file before pointing anything at it.
+	oldFile, newFile := IdentityFile(oldID), IdentityFile(newID)
+	na := *a
+	na.ID = newID
+	if err := s.writeIdentityFile(na); err != nil {
+		keep(fmt.Errorf("write the identity file: %w", err))
+	} else {
+		out, _ := s.Git.Run("config", "--global", "--get-regexp", `^includeif\..*\.path$`)
+		for _, line := range strings.Split(out, "\n") {
+			k, v, ok := strings.Cut(line, " ")
+			if ok && filepath.ToSlash(v) == filepath.ToSlash(oldFile) {
+				_, err := s.Git.Global(k, filepath.ToSlash(newFile))
+				keep(err)
+			}
+		}
 	}
-	_, err := s.Git.Global("--add", "gitswitch.renamed", oldID+"="+newID)
-	return err
+	for _, r := range c.Rules {
+		if !strings.EqualFold(r.Account, oldID) {
+			continue
+		}
+		// Add the new rule before removing the old one, so a failure never
+		// leaves the folder or owner without a rule.
+		nr := r
+		nr.Account = newID
+		if _, err := s.Git.Global("--add", "gitswitch.rule", nr.String()); err != nil {
+			keep(fmt.Errorf("move the rule %s: %w", r, err))
+			continue
+		}
+		keep(s.RemoveRule(r))
+		if r.Kind == "folder" { // RemoveRule also removed the folder's includeIf
+			keep(s.writeFolderIncludes(r.Pattern, newID))
+		}
+	}
+	if strings.EqualFold(c.Default, oldID) {
+		_, err := s.Git.Global("gitswitch.default", newID)
+		keep(err)
+	}
+	if len(errs) == 0 {
+		if _, err := os.Stat(oldFile); err == nil {
+			keep(s.FS.Remove(oldFile))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("renamed %s to %s, but some settings could not be updated: %w", oldID, newID, errors.Join(errs...))
+	}
+	return nil
 }
 
 func (s *Store) writeIdentityFile(a account.Account) error {

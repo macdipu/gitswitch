@@ -19,9 +19,14 @@ type Log struct {
 	Git *gitinfra.Runner
 }
 
+// allRefs is every branch, remote branch and tag, but not the stash: its
+// commits are saved uncommitted changes, not history. --exclude only
+// applies to the --all after it.
+var allRefs = [2]string{"--exclude=refs/stash", "--all"}
+
 func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Commit, error) {
 	git := l.Git
-	args := []string{"--git-dir=" + gitDir, "log", "--all", "--topo-order", "-n", strconv.Itoa(limit),
+	args := []string{"--git-dir=" + gitDir, "log", allRefs[0], allRefs[1], "--topo-order", "-n", strconv.Itoa(limit),
 		"--format=%H%x1f%P%x1f%ae%x1f%an%x1f%at%x1f%D%x1f%s%x1e"}
 	args = append(args, filterArgs(f)...)
 	out, err := git.Run(args...)
@@ -89,8 +94,13 @@ func (l *Log) Unpushed(gitDir string) map[string]bool {
 	return set
 }
 
+func (l *Log) OnRemote(gitDir, hash string) bool {
+	out, err := l.Git.Run("--git-dir="+gitDir, "for-each-ref", "--count=1", "--format=%(refname)", "--contains", hash, "refs/remotes")
+	return err == nil && out != ""
+}
+
 func (l *Log) Graph(gitDir string, n int, color bool) (string, error) {
-	gargs := []string{"--git-dir=" + gitDir, "log", "--graph", "--all", "-n", strconv.Itoa(n), "--format=%x1f%H"}
+	gargs := []string{"--git-dir=" + gitDir, "log", "--graph", allRefs[0], allRefs[1], "-n", strconv.Itoa(n), "--format=%x1f%H"}
 	if color {
 		gargs = append(gargs, "--color=always")
 	}
@@ -175,6 +185,7 @@ func (l *Log) RewriteAuthor(wt, name, email, first string, wrong []string) error
 	} else {
 		args = append(args, "--root")
 	}
+	stash := l.stashTop(wt)
 	cmd := exec.Command("git", args...)
 	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=:", "GIT_EDITOR=:")
 	process.HideWindow(cmd)
@@ -182,7 +193,7 @@ func (l *Log) RewriteAuthor(wt, name, email, first string, wrong []string) error
 		_, _ = git.Run("-C", wt, "rebase", "--abort")
 		return fmt.Errorf("rewrite failed, nothing changed: %s", strings.TrimSpace(string(b)))
 	}
-	return nil
+	return l.autostashKept(wt, stash, "fixed the author")
 }
 
 func (l *Log) Resolve(wt, rev string) (history.Target, error) {
@@ -236,6 +247,7 @@ func (l *Log) Revert(wt string, t history.Target) error {
 }
 
 func (l *Log) Drop(wt string, t history.Target) error {
+	stash := l.stashTop(wt)
 	err := l.Git.Change(wt, "rebase", "--rebase-merges", "--autostash", "--onto", t.Hash+"^", t.Hash)
 	if err != nil {
 		if gitinfra.InProgress(l.Git.GitDirFor(wt)) == "rebase" {
@@ -243,7 +255,24 @@ func (l *Log) Drop(wt string, t history.Target) error {
 		}
 		return fmt.Errorf("drop failed, nothing changed: %v", err)
 	}
-	return nil
+	return l.autostashKept(wt, stash, "dropped "+t.Short)
+}
+
+// stashTop is the newest stash entry, "" when there is none.
+func (l *Log) stashTop(wt string) string {
+	h, _ := l.Git.Run("-C", wt, "rev-parse", "-q", "--verify", "refs/stash")
+	return h
+}
+
+// autostashKept explains what happened when a rebase with --autostash
+// could not put the uncommitted changes back cleanly. Git still reports
+// success then: it leaves conflict markers in the files and keeps the
+// changes as a new stash entry. done says what the rebase did.
+func (l *Log) autostashKept(wt, before, done string) error {
+	if after := l.stashTop(wt); after == "" || after == before {
+		return nil
+	}
+	return fmt.Errorf("%s, but your uncommitted changes clash with the new history. They are safe in the stash (the newest entry in `git stash list`, named autostash), and the files that clash now have conflict markers. Either fix those files and run `git stash drop`, or discard the half-applied changes with `git reset --hard` and get them back later with `git stash pop`", done)
 }
 
 func (l *Log) Reset(wt, hash string) error {

@@ -63,6 +63,15 @@ func TestSwitch(t *testing.T) {
 			t.Errorf("Switch(%q): err=%v ran=%v, want %q", name, err, r.ran, want)
 		}
 	}
+	// The local main pulls from origin/main, so upstream/main must not
+	// quietly switch to it (nor report "already on main").
+	r.branches = append(r.branches, refs.Branch{Name: "upstream/main", Remote: true})
+	r.ran = nil
+	if _, err := s.Switch("/r/.git", "upstream/main"); err == nil || !strings.Contains(err.Error(), "pulls from origin/main") ||
+		!strings.Contains(err.Error(), "git switch -c upstream-main --track upstream/main") || len(r.ran) != 0 {
+		t.Errorf("Switch(upstream/main): err=%v ran=%v", err, r.ran)
+	}
+
 	r.ran = nil
 	r.head.Busy = "merge"
 	if _, err := s.Switch("/r/.git", "fix"); err == nil || len(r.ran) != 0 {
@@ -90,6 +99,7 @@ func TestUpdate(t *testing.T) {
 	}{
 		{refs.Head{Hash: "abc"}, "detached"},
 		{refs.Head{Branch: "fix", Hash: "abc"}, "not on a remote"},
+		{refs.Head{Branch: "fix", Hash: "abc", Gone: "origin/fix"}, "git fetch origin fix:refs/remotes/origin/fix"},
 		{refs.Head{Branch: "main", Upstream: "origin/main", Busy: "rebase"}, "middle of a rebase"},
 	} {
 		r.head = c.head

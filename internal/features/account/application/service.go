@@ -40,16 +40,21 @@ func (s *Service) Add(acc account.Account, k account.KeyChoice) (account.Account
 	if acc.Name == "" {
 		acc.Name = s.SuggestedName()
 	}
+	// Save first: it validates the id the key file is named after.
 	if err := s.Store.Save(acc); err != nil {
 		return acc, err
 	}
 	if k.New {
 		p, err := s.Keys.Generate(&acc, k.Interactive, k.Passphrase)
-		if err != nil {
-			return acc, err
+		if err == nil {
+			acc.Key = p
+			err = s.Store.Save(acc)
 		}
-		acc.Key = p
-		if err := s.Store.Save(acc); err != nil {
+		if err != nil {
+			// Undo the half-made account so adding it again works.
+			if rerr := s.Store.Remove(acc.ID); rerr != nil {
+				return acc, fmt.Errorf("%v; the account %s was saved without a key, remove it with `gitswitch account remove %s` (%v)", err, acc.ID, acc.ID, rerr)
+			}
 			return acc, err
 		}
 	}

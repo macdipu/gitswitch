@@ -16,9 +16,13 @@ type Head struct {
 	Short    string `json:"short"`
 	Subject  string `json:"subject"`
 	Upstream string `json:"upstream"` // e.g. origin/main; "" when none
-	Ahead    int    `json:"ahead"`    // commits not pushed to the upstream
-	Behind   int    `json:"behind"`   // commits on the upstream not pulled yet
-	Busy     string `json:"busy"`     // an operation git is in the middle of, e.g. "rebase"
+	// Gone is the remote branch the branch is set to pull from when this
+	// clone has no copy of it (deleted on the server, or a single-branch
+	// clone); Upstream is "" then.
+	Gone   string `json:"gone"`
+	Ahead  int    `json:"ahead"`  // commits not pushed to the upstream
+	Behind int    `json:"behind"` // commits on the upstream not pulled yet
+	Busy   string `json:"busy"`   // an operation git is in the middle of, e.g. "rebase"
 }
 
 // Describe is a one-line summary, e.g. "main → origin/main, 2 to push · HEAD 1a2b3c4 Fix login".
@@ -45,6 +49,8 @@ func (h Head) Describe() string {
 			counts = append(counts, "up to date")
 		}
 		b.WriteString(", " + strings.Join(counts, ", "))
+	} else if h.Gone != "" {
+		b.WriteString(" → " + h.Gone + " (not in this clone)")
 	} else if h.Branch != "" {
 		b.WriteString(" (not on a remote)")
 	}

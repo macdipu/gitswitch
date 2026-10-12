@@ -28,8 +28,9 @@ func (s *Service) Branches(gitDir string) ([]refs.Branch, error) { return s.Refs
 
 // Switch checks out a branch. A remote branch (origin/x) checks out the
 // local branch x, creating it to track the remote one when it does not
-// exist. Git refuses when uncommitted changes would be overwritten. It
-// returns the local branch now checked out.
+// exist; it is refused when x exists but pulls from another remote branch.
+// Git refuses when uncommitted changes would be overwritten. It returns the
+// local branch now checked out.
 func (s *Service) Switch(gitDir, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || strings.HasPrefix(name, "-") {
@@ -48,12 +49,18 @@ func (s *Service) Switch(gitDir, name string) (string, error) {
 		return "", fmt.Errorf("no branch %q (see `gitswitch branch`)", name)
 	}
 	local := b.LocalName()
+	l := refs.Find(all, local) // local branches are found first
+	exists := l != nil && !l.Remote
+	// upstream/main when the local main pulls from origin/main: switching
+	// to main would quietly put you on another remote's branch.
+	if b.Remote && exists && l.Upstream != "" && l.Upstream != b.Name {
+		alt := strings.ReplaceAll(b.Name, "/", "-")
+		return "", fmt.Errorf("the local branch %s pulls from %s, not %s, so gitswitch can't switch to %s through it. Switch to %s instead, or make a separate branch for %s in a terminal: git switch -c %s --track %s", local, l.Upstream, b.Name, b.Name, local, b.Name, alt, b.Name)
+	}
 	if local == h.Branch {
 		return local, fmt.Errorf("already on %s", local)
 	}
 	wt := s.Locator.WorktreeOf(gitDir)
-	l := refs.Find(all, local) // local branches are found first
-	exists := l != nil && !l.Remote
 	if s.FS.Dry(fmt.Sprintf("switch %s to branch %s", wt, local)) {
 		return local, nil
 	}
@@ -74,6 +81,10 @@ func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error
 	}
 	if h.Branch == "" {
 		return h, errors.New("HEAD is detached; switch to a branch first")
+	}
+	if h.Upstream == "" && h.Gone != "" {
+		rem, rb, _ := strings.Cut(h.Gone, "/")
+		return h, fmt.Errorf("%s pulls from %s, but this clone has no copy of that remote branch: it was deleted on the server, or this is a single-branch clone. If it is still on the server, get it with: git fetch %s %s:refs/remotes/%s. If it was deleted, push the branch again (git push -u %s %s) or pull from another branch (git branch --set-upstream-to=<remote>/<branch>)", h.Branch, h.Gone, rem, rb, h.Gone, rem, h.Branch)
 	}
 	if h.Upstream == "" {
 		return h, fmt.Errorf("%s is not on a remote yet; push it first: git push -u origin %s", h.Branch, h.Branch)

@@ -91,3 +91,39 @@ func TestParseDateAndForGit(t *testing.T) {
 		t.Error("a start in the future matches nothing")
 	}
 }
+
+func TestParseDateEdges(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no time zone data:", err)
+	}
+	now := time.Date(2026, 3, 31, 10, 0, 0, 0, ny)
+	end := map[string]string{
+		"2026-03-08":          "2026-03-08 23:59:59", // 23 hours long (clocks go forward)
+		"2025-11-02":          "2025-11-02 23:59:59", // 25 hours long
+		"2024-05-01 14:30":    "2024-05-01 14:30:59", // the whole minute
+		"2024-05-01T14:30":    "2024-05-01 14:30:59",
+		"2024-05-01 14:30:10": "2024-05-01 14:30:10",
+	}
+	for in, want := range end {
+		got, err := ParseDate(in, now, true)
+		if err != nil || got.Format("2006-01-02 15:04:05") != want {
+			t.Errorf("ParseDate(%q, end) = %v, %v; want %s", in, got, err, want)
+		}
+	}
+	ago := map[string]string{
+		"1 month ago":   "2026-02-28 10:00:00", // not 3 March
+		"13 months ago": "2025-02-28 10:00:00",
+		"1 year ago":    "2025-03-31 10:00:00",
+	}
+	for in, want := range ago {
+		got, err := ParseDate(in, now, false)
+		if err != nil || got.Format("2006-01-02 15:04:05") != want {
+			t.Errorf("ParseDate(%q) = %v, %v; want %s", in, got, err, want)
+		}
+	}
+	leap := time.Date(2024, 2, 29, 9, 0, 0, 0, time.UTC)
+	if got, _ := ParseDate("1 year ago", leap, false); got.Format("2006-01-02") != "2023-02-28" {
+		t.Errorf("a year before 29 February = %v, want 2023-02-28", got)
+	}
+}

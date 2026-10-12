@@ -9,6 +9,7 @@ func TestDescribe(t *testing.T) {
 		"wip (not on a remote) · HEAD 1a2b3c4 Fix":                    {Branch: "wip", Hash: "x", Short: "1a2b3c4", Subject: "Fix"},
 		"detached HEAD · HEAD 1a2b3c4 Fix · rebase in progress":       {Hash: "x", Short: "1a2b3c4", Subject: "Fix", Busy: "rebase"},
 		"main (not on a remote) · no commits yet":                     {Branch: "main"},
+		"feat → origin/feat (not in this clone) · HEAD 1a2b3c4 Fix":   {Branch: "feat", Hash: "x", Short: "1a2b3c4", Subject: "Fix", Gone: "origin/feat"},
 	}
 	for want, h := range cases {
 		if got := h.Describe(); got != want {

@@ -52,7 +52,8 @@ type fakeLog struct {
 	targets  map[string]history.Target // rev -> commit
 	onBranch map[string]bool
 	after    map[string][]string
-	changed  []string // "revert|drop|reset <hash>"
+	remote   map[string]bool // commits on a remote branch
+	changed  []string        // "revert|drop|reset <hash>"
 }
 
 func (f *fakeLog) Resolve(_, rev string) (history.Target, error) {
@@ -109,6 +110,7 @@ func (f *fakeLog) Unpushed(string) map[string]bool {
 	}
 	return set
 }
+func (f *fakeLog) OnRemote(_, hash string) bool            { return f.remote[hash] }
 func (f *fakeLog) Graph(string, int, bool) (string, error) { return f.graph, f.graphErr }
 func (f *fakeLog) LocalCommits(string) ([]string, error)   { return f.local, nil }
 func (f *fakeLog) AuthorEmail(_, hash string) string       { return f.emails[hash] }
@@ -206,10 +208,11 @@ func branchLog(s *Service, l *fakeLog) {
 	l.targets = map[string]history.Target{
 		"root": t("root"), "pushed": t("pushed", "root"), "mine1": t("mine1", "pushed"),
 		"mine2": t("mine2", "mine1"), "merge": t("merge", "pushed", "side"), "other": t("other", "root"),
-		"other2": t("other2", "other"), "sidemerge": t("sidemerge", "other", "x"),
+		"other2": t("other2", "other"), "sidemerge": t("sidemerge", "other", "x"), "tagonly": t("tagonly", "root"),
 	}
 	l.onBranch = map[string]bool{"root": true, "pushed": true, "mine1": true, "mine2": true, "merge": true}
 	l.local = []string{"mine1", "mine2"}
+	l.remote = map[string]bool{"root": true, "pushed": true, "other": true, "other2": true}
 	l.after = map[string][]string{"root": {"mine2", "mine1", "pushed"}, "pushed": {"mine2", "mine1"}, "mine1": {"mine2"}, "mine2": nil}
 	s.FS = &filesystem.FS{}
 }
@@ -362,6 +365,9 @@ func TestWebURL(t *testing.T) {
 	}
 	if _, err := s.WebURL("/r/.git", "mine1"); err == nil || !strings.Contains(err.Error(), "not pushed") {
 		t.Errorf("not-pushed commit: err=%v", err)
+	}
+	if _, err := s.WebURL("/r/.git", "tagonly"); err == nil || !strings.Contains(err.Error(), "not pushed") {
+		t.Errorf("a commit on no branch and no remote (only a tag) must be refused: err=%v", err)
 	}
 }
 

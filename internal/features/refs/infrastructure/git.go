@@ -43,8 +43,28 @@ func (g *Git) Head(gitDir string) (refs.Head, error) {
 				h.Behind, _ = strconv.Atoi(f[1])
 			}
 		}
+	} else {
+		h.Gone = g.goneUpstream(gitDir, h.Branch)
 	}
 	return h, nil
+}
+
+// goneUpstream is the remote branch a branch is set to pull from when git
+// has no copy of it, e.g. origin/feat; "" when none is set.
+func (g *Git) goneUpstream(gitDir, branch string) string {
+	r, _ := g.Git.Run("--git-dir="+gitDir, "config", "--get", "branch."+branch+".remote")
+	if r == "" {
+		return ""
+	}
+	// %(upstream) comes from the config, so it is known even when gone.
+	if up, _ := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+branch); up != "" {
+		return up
+	}
+	m, _ := g.Git.Run("--git-dir="+gitDir, "config", "--get", "branch."+branch+".merge")
+	if m == "" {
+		return r
+	}
+	return r + "/" + strings.TrimPrefix(m, "refs/heads/")
 }
 
 func (g *Git) Branches(gitDir string) ([]refs.Branch, error) {

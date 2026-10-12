@@ -249,16 +249,18 @@ func (f Filter) Describe() string {
 // ParseDate reads a filter date: 2024-05-01, 2024-05-01 14:30, today,
 // yesterday, or "3 weeks ago" (seconds, minutes, hours, days, weeks,
 // months, years). A day without a time means its first second, or with
-// endOfDay its last, so both ends of a range are included.
+// endOfDay its last, so both ends of a range are included; likewise a time
+// without seconds means the whole minute.
 func ParseDate(s string, now time.Time, endOfDay bool) (time.Time, error) {
 	s = strings.ToLower(strings.Join(strings.Fields(s), " "))
 	day := func(t time.Time) time.Time {
 		y, m, d := t.Date()
-		start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 		if endOfDay {
-			return start.Add(24*time.Hour - time.Second)
+			// One second before the next midnight: a day is not always 24
+			// hours long (daylight saving time).
+			return time.Date(y, m, d+1, 0, 0, 0, 0, now.Location()).Add(-time.Second)
 		}
-		return start
+		return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 	}
 	bad := fmt.Errorf("cannot read the date %q; use 2024-05-01, 2024-05-01 14:30, yesterday or 2 weeks ago", s)
 	var t time.Time
@@ -288,15 +290,19 @@ func ParseDate(s string, now time.Time, endOfDay bool) (time.Time, error) {
 		case "week":
 			return now.AddDate(0, 0, -7*n), nil
 		case "month":
-			return now.AddDate(0, -n, 0), nil
+			return monthsBefore(now, n), nil
 		case "year":
-			return now.AddDate(-n, 0, 0), nil
+			return monthsBefore(now, 12*n), nil
 		}
 		return t, bad
 	}
-	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02T15:04:05", "2006-01-02T15:04"} {
+	// s is lower case, so the T between date and time is too.
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02t15:04:05", "2006-01-02t15:04"} {
 		if v, err := time.ParseInLocation(layout, s, now.Location()); err == nil {
 			t = v
+			if endOfDay && !strings.HasSuffix(layout, ":05") {
+				t = t.Add(59 * time.Second)
+			}
 			break
 		}
 	}
@@ -311,6 +317,17 @@ func ParseDate(s string, now time.Time, endOfDay bool) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("the date %q is out of range; use a year from 1970 to 2099", s)
 	}
 	return t, nil
+}
+
+// monthsBefore goes back n months, staying in the target month: a month
+// before 31 March is 28 (or 29) February, not 3 March.
+func monthsBefore(t time.Time, n int) time.Time {
+	y, m, d := t.Date()
+	first := time.Date(y, m-time.Month(n), 1, 0, 0, 0, 0, t.Location())
+	if last := first.AddDate(0, 1, -1).Day(); d > last {
+		d = last
+	}
+	return time.Date(first.Year(), first.Month(), d, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 }
 
 // ForGit checks the filter and turns its dates into exact times for git
@@ -469,6 +486,8 @@ type Log interface {
 	Commits(gitDir string, limit int, f Filter) ([]Commit, error)
 	// Unpushed is the set of commits on a branch but on no remote.
 	Unpushed(gitDir string) map[string]bool
+	// OnRemote reports whether a commit is on a remote branch.
+	OnRemote(gitDir, hash string) bool
 	// Graph is git's own graph of the last n commits, each line's hash
 	// after a \x1f. ErrNoCommits for a repo without commits.
 	Graph(gitDir string, n int, color bool) (string, error)
