@@ -54,7 +54,15 @@ a.btn{color:var(--ink);text-decoration:none;display:inline-block}
 .btn.primary:hover{opacity:.88}
 .btn.danger{color:var(--bad)}
 .btn:disabled{opacity:.5;cursor:default}
-.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:start}
+details.more{position:relative}
+details.more>summary{list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+.menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:150px;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:4px;box-shadow:0 6px 20px rgb(0 0 0 / .14)}
+.menu button{all:unset;cursor:pointer;padding:6px 10px;border-radius:4px;font-size:14px}
+.menu button:hover,.menu button:focus-visible{background:var(--hover)}
+.menu button.danger{color:var(--bad)}
+.menu hr{border:0;border-top:1px solid var(--rule);margin:4px 0}
 
 /* account rows */
 .accounts{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
@@ -202,8 +210,14 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .checks{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
 .check{display:grid;grid-template-columns:18px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:start}
 .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
+.checks-sum{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
+.checks-sum .dot{margin-top:0}
+details.checks-more>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:8px 0}
+.set-row{display:flex;flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--ink)}
+.set-row input[type=number]{width:5.5em;padding:5px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 h3{font-size:16px;margin:28px 0 10px}
-@media (max-width:820px){body{grid-template-columns:1fr} aside{position:static;height:auto} main{padding:20px} form.card{grid-template-columns:1fr} .hrow{grid-template-columns:var(--gw) 90px minmax(0,1fr) 70px}.hrow .em{display:none}}
+@media (max-width:820px){body{grid-template-columns:176px 1fr} aside{padding:16px 10px} main{padding:20px} form.card{grid-template-columns:1fr} .hrow{grid-template-columns:var(--gw) 90px minmax(0,1fr) 70px}.hrow .em{display:none}}
+@media (max-width:600px){body{grid-template-columns:1fr} aside{position:static;height:auto;gap:10px} nav{flex-direction:row;flex-wrap:wrap} .lanes,.side-foot{display:none}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 dialog{border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);color:var(--ink);padding:18px 20px;max-width:440px;width:calc(100% - 32px)}
 dialog::backdrop{background:rgb(0 0 0 / .35)}
@@ -359,8 +373,8 @@ dialog .row-actions{justify-content:flex-end}
     <p class="lead">GitSwitch has no background process. Git starts it for a moment on each network command, and this window runs only while it is open.</p>
     <form class="card" id="setForm">
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
-      <label>Seconds to wait for an answer before using the default<input name="promptTimeout" type="number" min="5" max="600"></label>
-      <div style="align-self:end"><button class="btn primary" type="submit">Save settings</button></div>
+      <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, then use the default account</label>
+      <p class="hint full" style="margin:0">Changes are saved right away.</p>
     </form>
     <h3>Health check</h3>
     <div class="checks" id="checks"></div>
@@ -603,10 +617,14 @@ function renderAccounts(){
       <div class="row-actions">
         <button class="btn" data-act="test">Test</button>
         <button class="btn" data-act="key">Public key</button>
-        <button class="btn" data-act="edit">Edit</button>
-        <button class="btn" data-act="rename">Rename</button>
-        ${a.id !== c.default ? '<button class="btn" data-act="default">Make default</button>' : ''}
-        <button class="btn danger" data-act="remove">Remove</button>
+        <details class="more"><summary class="btn" aria-label="More actions for ${esc(a.id)}">More ▾</summary>
+          <div class="menu" role="menu">
+            <button role="menuitem" data-act="edit">Edit…</button>
+            <button role="menuitem" data-act="rename">Rename…</button>
+            ${a.id !== c.default ? '<button role="menuitem" data-act="default">Make default</button>' : ''}
+            <hr><button role="menuitem" class="danger" data-act="remove">Remove…</button>
+          </div>
+        </details>
       </div>
       ${openDetail[a.id] ? `<div class="detail">${openDetail[a.id]}</div>` : ''}
     </div>`).join('');
@@ -614,6 +632,7 @@ function renderAccounts(){
 $('#accounts').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   const id = b.closest('.acct')?.dataset.id, a = S.accounts.find(x => x.id === id);
+  b.closest('details.more')?.removeAttribute('open');
   if (b.dataset.act === 'test'){
     b.disabled = true; b.textContent = 'Testing…';
     const r = await act(() => api('POST', '/api/test', {id}));
@@ -784,7 +803,8 @@ const histVisible = () => !$('#tab-history').hidden;
 async function fillRepoSelect(){
   if (!repos.length && (S.config.scanFolders.length || S.config.repos.length)) repos = await act(() => api('GET','/api/repos')) || [];
   const cur = $('#histRepo').value, ok = repos.filter(r => !r.missing);
-  $('#histRepo').innerHTML = ok.length ? ok.map(r => `<option value="${esc(r.gitDir)}">${esc(r.path)}</option>`).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
+  $('#histRepo').innerHTML = ok.length ? ok.map(r => { const p = r.path.replace(/[\\/]+$/, ''), i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+    return `<option value="${esc(r.gitDir)}" title="${esc(p)}">${esc(p.slice(i + 1))} — ${esc(p.slice(0, i) || '/')}</option>`; }).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
   if (cur) $('#histRepo').value = cur;
   const fa = $('#filterPanel').account;
   fa.innerHTML = '<option value="">Any account</option>' + S.config.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
@@ -973,7 +993,7 @@ function renderHistory(){
   });
   $('#histMeta').innerHTML = `<span>Repo account: <strong style="color:${colorOf(r.account)}">${esc(r.account || 'not set')}</strong></span>
     <span>${filtered ? `<strong>${shown.length}</strong> matching commit${shown.length === 1 ? '' : 's'}` : `${H.commits.length} commit${H.commits.length === 1 ? '' : 's'}`}</span>
-    ${H.unpushed ? `<span>${H.unpushed} not pushed</span>` : ''}${H.flagged ? `<span class="status-bad">${H.flagged} wrong-account</span>` : ''}`;
+    ${H.unpushed ? `<span>${H.unpushed} not pushed</span>` : ''}${H.flagged ? `<span class="status-bad">${H.flagged} wrong-account${fixable && fixable < H.flagged ? ` (${fixable} not pushed, can be fixed)` : fixable ? '' : ' (already pushed)'}</span>` : ''}`;
   if (!shown.length){
     box.innerHTML = filtered ? '<div class="empty">No commits match these filters. <button class="btn" data-chip="*" id="emptyClear">Clear filters</button></div>' : '<div class="empty">This repo has no commits yet.</div>';
     $('#emptyClear')?.addEventListener('click', clearFilters);
@@ -1126,11 +1146,23 @@ async function loadChecks(){
   if (!$('#checks').children.length) $('#checks').innerHTML = '<p class="hint">Checking…</p>';
   const cs = await act(() => api('GET', '/api/doctor'));
   if (!cs) return;
-  $('#checks').innerHTML = cs.map(c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
-    <div><div>${esc(c.title)}</div><div class="hint">${esc(c.detail)}</div></div>${c.canFix ? `<button class="btn" data-fix="${esc(c.id)}">Fix</button>` : ''}</div>`).join('');
+  const row = c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
+    <div><div>${esc(c.title)}</div><div class="hint">${esc(c.detail)}</div></div>${c.canFix ? `<button class="btn" data-fix="${esc(c.id)}">Fix</button>` : ''}</div>`;
+  const bad = cs.filter(c => !c.ok), good = cs.filter(c => c.ok);
+  const open = $('#checks details')?.open ? ' open' : '';
+  $('#checks').innerHTML = (bad.length
+      ? bad.map(row).join('')
+      : `<div class="checks-sum"><span class="dot" style="background:var(--ok)"></span><strong>All ${cs.length} checks passed</strong></div>`)
+    + (good.length ? `<details class="checks-more"${open}><summary>${bad.length ? `Show the ${good.length} passing check${good.length === 1 ? '' : 's'}` : 'Show details'}</summary>${good.map(row).join('')}</details>` : '');
 }
-$('#setForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
-  await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:+f.promptTimeout.value}), 'Settings saved'); refresh(); };
+// Settings save on change: there is no Save button to forget.
+async function saveSettings(){
+  const f = $('#setForm'), t = +f.promptTimeout.value;
+  if (!f.promptTimeout.checkValidity() || !t){ f.promptTimeout.reportValidity(); return; }
+  await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t}), 'Settings saved'); refresh();
+}
+$('#setForm').onsubmit = e => { e.preventDefault(); saveSettings(); };
+$('#setForm').addEventListener('change', saveSettings);
 $('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); loadChecks(); });
 
 refresh().then(() => { if (needsSetup() && !wizSkipped()) openWizard(); }).catch(e => toast(e.message, true, e.hint));
