@@ -39,6 +39,9 @@ type History struct {
 	Lanes    int       `json:"lanes"`
 	Flagged  int       `json:"flagged"`
 	Unpushed int       `json:"unpushed"`
+	// More is true when git had more commits than were asked for: the
+	// front ends offer to load more.
+	More bool `json:"more"`
 }
 
 // LayoutLanes assigns each commit a column and the line segments to the next row.

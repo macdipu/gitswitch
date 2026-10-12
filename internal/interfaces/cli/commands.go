@@ -416,6 +416,9 @@ func (x *CLI) cmdLog(args []string) error {
 	for _, l := range lines {
 		x.say(l)
 	}
+	if h.More {
+		x.sayf("\n(latest %d commits; see more with: gitswitch log -n %d)\n", n, n*2)
+	}
 	if h.Flagged > 0 {
 		if flagged {
 			x.say("Fix the not-pushed ones with: gitswitch fix-author")

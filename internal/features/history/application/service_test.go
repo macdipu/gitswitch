@@ -405,3 +405,16 @@ func TestFilter(t *testing.T) {
 		t.Errorf("without a filter the graph is laid out: %+v", h.Commits)
 	}
 }
+
+// More tells the front ends to offer "load more": git returned as many
+// commits as were asked for, so there may be older ones.
+func TestBuildMore(t *testing.T) {
+	s, _, l := newService()
+	l.commits = []history.Commit{{Hash: "bbbb", Parents: []string{"aaaa"}}, {Hash: "aaaa"}}
+	for limit, want := range map[int]bool{2: true, 3: false} {
+		h, err := s.Build("/r/.git", limit, history.Filter{})
+		if err != nil || h.More != want {
+			t.Errorf("Build(limit %d).More = %v, %v; want %v", limit, h.More, err, want)
+		}
+	}
+}

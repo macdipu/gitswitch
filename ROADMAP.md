@@ -97,7 +97,7 @@ in it. The same actions in the desktop app, the terminal app and the CLI.
 | H10 | **Redesigned desktop screen**: toolbar, search with tokens and date presets, filter chips, details panel, selection bar, keyboard | done | Desktop page only; uses the API above. |
 | H11 | **Commit details**: full message, changed files and line counts | planned | A `Show` port in the history domain (`git show --numstat --format=...`), shown in the details panel and `gitswitch show <commit>`. |
 | H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, switch) | planned | An `undo` feature over the reflog: remember HEAD before each action, offer "Undo" in the toast, `git reset --keep` back to it. |
-| H13 | **Load more**: page through history beyond the latest 400 commits | planned | `--skip` in `Log.Commits`; the list loads the next page when you scroll to the end. |
+| H13 | **Load more**: page through history beyond the first page of commits | done | `History.More` says git had more; the desktop app's "Load more" button, `m` in the terminal app and `gitswitch log -n` read a bigger window, so the graph stays connected. |
 | H14 | **Uncommitted changes when switching**: offer to stash and restore | planned | A `stash` use case in `refs`; ask before stashing, restore after switching. |
 | H15 | **Update with rebase** for people who prefer it | planned | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
 | H16 | **Compare a branch with its upstream**: list what you would push or pull | planned | `rev-list HEAD...@{upstream}` in `refs`, shown from the sync status. |

@@ -210,6 +210,7 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .checks{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
 .check{display:grid;grid-template-columns:18px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:start}
 .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
+.more-row{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0}
 .checks-sum{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
 .checks-sum .dot{margin-top:0}
 details.checks-more>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:8px 0}
@@ -891,7 +892,7 @@ $('#chips').addEventListener('click', e => {
 });
 
 function query(gd){
-  const q = new URLSearchParams({n:400, gitDir:gd});
+  const q = new URLSearchParams({n:histN, gitDir:gd});
   if (F.text) q.set('text', F.text);
   if (F.author) q.set('author', F.author);
   if (F.account) q.set('account', F.account);
@@ -901,8 +902,15 @@ function query(gd){
 }
 const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range);
 
-async function loadHistory(){
+// How many commits to read. "Load more" raises it; another repo or filter
+// starts again from one page (the graph needs every commit above the last).
+const HIST_PAGE = 400;
+let histN = HIST_PAGE, histKey = '';
+async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
+  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until].join('|');
+  histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
+  histKey = key;
   if (!H) $('#history').innerHTML = '<p class="hint">Reading history…</p>';
   renderChips();
   const [h, r] = await Promise.all([act(() => api('GET', '/api/history?' + query(gd))), act(() => api('GET', '/api/refs?gitDir=' + encodeURIComponent(gd)))]);
@@ -1023,7 +1031,8 @@ function renderHistory(){
     return `<div class="hrow${c.flagged ? ' flag' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
       <div class="subj">${refs}${esc(c.subject)}</div><div class="em">${esc(c.email)}</div>
       <div class="when">${c.unpushed ? 'not pushed' : ago(c.time)}</div></div>`;
-  }).join('') + '</div>' + (H.commits.length >= 400 ? '<p class="hint">Showing the latest 400 commits. Narrow it down with the search or the time range.</p>' : '');
+  }).join('') + '</div>' + (H.more ? `<div class="more-row"><span class="hint">Showing the latest ${H.commits.length} commits.</span> <button class="btn" id="moreBtn">Load ${HIST_PAGE} more</button></div>` : '');
+  $('#moreBtn')?.addEventListener('click', e => { e.target.disabled = true; e.target.textContent = 'Loading…'; loadHistory(true); });
   renderDetails();
 }
 

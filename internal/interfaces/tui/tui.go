@@ -100,6 +100,7 @@ type tui struct {
 
 	histDir   string
 	histLines []string
+	histN     int           // commits to read; m (load more) raises it
 	histRows  []history.Row // the commit on each line
 	hist      *history.History
 	head      *refs.Head
@@ -656,7 +657,7 @@ Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
 History
-  o other repo   f only wrong-account commits   x fix not-pushed commits   r reload
+  o other repo   f only wrong-account commits   x fix not-pushed commits   r reload   m load more
   b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
@@ -1061,8 +1062,30 @@ func indexOfPrefix(opts []string, id string) int {
 
 // ---------------- history ----------------
 
+// histPage is how many commits the History page reads at a time.
+const histPage = 300
+
+// loadHistory reads the history from the top, one page of commits.
 func (t *tui) loadHistory() {
 	t.sel[tabHistory] = 0
+	t.histN = histPage
+	t.readHistory()
+}
+
+// loadMoreHistory reads another page of older commits and keeps the
+// selection where it was.
+func (t *tui) loadMoreHistory() {
+	if t.hist == nil || !t.hist.More {
+		t.say(nil, "No more commits to load.")
+		return
+	}
+	sel := t.sel[tabHistory]
+	t.histN += histPage
+	t.readHistory()
+	t.sel[tabHistory] = min(sel, max(0, len(t.histLines)-1))
+}
+
+func (t *tui) readHistory() {
 	if t.histDir == "" {
 		t.histLines = []string{}
 		return
@@ -1071,7 +1094,7 @@ func (t *tui) loadHistory() {
 	if h, err := t.app.Refs.Head(t.histDir); err == nil {
 		t.head = &h
 	}
-	rows, h, err := t.app.History.Rows(t.histDir, 300, t.flagged, true, t.filter)
+	rows, h, err := t.app.History.Rows(t.histDir, t.histN, t.flagged, true, t.filter)
 	if err != nil { // show nothing rather than the previous repo's header
 		t.histLines, t.histRows, t.hist, t.head = []string{}, nil, nil, nil
 		t.marked = map[string]bool{}
@@ -1097,6 +1120,8 @@ func (t *tui) keyHistory(k string) {
 		t.loadHistory()
 	case "r":
 		t.loadHistory()
+	case "m":
+		t.loadMoreHistory()
 	case "o":
 		if !t.scanned {
 			t.scanRepos()
@@ -1515,7 +1540,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "/ filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · ? help · q quit"
+		return "/ filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · m more · ? help · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}
@@ -1648,6 +1673,9 @@ func (t *tui) drawHistory() ([]string, int) {
 		} else {
 			l = append(l, lead+x)
 		}
+	}
+	if t.hist != nil && t.hist.More {
+		l = append(l, "", " "+cDim+fmt.Sprintf("Showing the latest %d commits · m loads %d more", len(t.hist.Commits), histPage)+cReset)
 	}
 	return l, sel
 }

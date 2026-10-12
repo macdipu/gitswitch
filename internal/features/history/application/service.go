@@ -53,7 +53,7 @@ func (s *Service) build(c *account.Config, gitDir string, limit int, f history.F
 			return nil, err
 		}
 	}
-	h := &history.History{Repo: s.Repos.InfoFor(c, gitDir)}
+	h := &history.History{Repo: s.Repos.InfoFor(c, gitDir), More: limit > 0 && len(cs) >= limit}
 	if !f.Active() {
 		h.Lanes = history.LayoutLanes(cs)
 	}

@@ -183,7 +183,7 @@ func (s *server) routes() map[string]handler {
 			}
 			n := 300
 			fmt.Sscan(r.URL.Query().Get("n"), &n)
-			if n < 1 || n > 2000 {
+			if n < 1 || n > 20000 {
 				n = 300
 			}
 			q := r.URL.Query()
