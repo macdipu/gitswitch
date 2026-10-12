@@ -171,6 +171,15 @@ func (s *Service) FixAuthor(gitDir string) (int, error) {
 	return bad, nil
 }
 
+// Show reads a commit's full message and the files it changed. It only
+// reads, so it works on any commit, on any branch.
+func (s *Service) Show(gitDir, rev string) (history.Detail, error) {
+	if rev == "" || strings.HasPrefix(rev, "-") {
+		return history.Detail{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	return s.Log.Show(gitDir, rev)
+}
+
 // Revert adds a commit that undoes a commit on the current branch. It is
 // the safe way to undo a commit that is already pushed. A merge commit is
 // undone against its first parent. It returns the reverted commit.

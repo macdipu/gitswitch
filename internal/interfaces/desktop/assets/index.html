@@ -210,6 +210,13 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .checks{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
 .check{display:grid;grid-template-columns:18px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:start}
 .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
+.cdetail{margin:-4px 0 12px}
+.cmsg{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13.5px;color:var(--muted);margin:0 0 10px;max-height:200px;overflow:auto}
+.cfiles>summary{cursor:pointer;font-size:13.5px}
+.cfiles ul{list-style:none;margin:6px 0 0;padding:0;max-height:260px;overflow:auto;font-size:12.5px}
+.cfiles li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:3px 0;border-bottom:1px solid var(--rule)}
+.cfiles .fn{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.add{color:var(--ok)} .del{color:var(--bad)}
 .more-row{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0}
 .checks-sum{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
 .checks-sum .dot{margin-top:0}
@@ -1064,6 +1071,7 @@ function renderDetails(){
   d.innerHTML = `<div class="dhead"><code>${esc(c.short)}</code><button class="btn ghost" data-ca="copy">Copy hash</button>
       <span class="spacer"></span><button class="btn ghost" data-ca="close" aria-label="Close details" title="Close (Esc)">✕</button></div>
     <h2>${esc(c.subject)}</h2>
+    <div class="cdetail" id="cdetail"></div>
     <dl><dt>Author</dt><dd>${esc(c.author)}<br><span class="hint">${esc(c.email)}</span></dd>
       <dt>Account</dt><dd><span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>${c.flagged ? ' <span class="status-bad">wrong account for this repo</span>' : ''}</dd>
       <dt>Date</dt><dd>${esc(new Date(c.time * 1000).toLocaleString())}<br><span class="hint">${ago(c.time)}</span></dd>
@@ -1081,6 +1089,26 @@ function renderDetails(){
     </div>
     <p class="hint">Ctrl/⌘-click more commits to cherry-pick several at once.</p>`;
   d.hidden = false;
+  showDetail($('#histRepo').value, c.hash);
+}
+// The rest of the message and the changed files, read when a commit is
+// selected and kept for the session (a commit never changes).
+const detailCache = new Map();
+async function showDetail(gd, hash){
+  const key = gd + '|' + hash, el = () => picked.size === 1 && picked.has(hash) ? $('#cdetail') : null;
+  let d = detailCache.get(key);
+  if (!d){
+    if (el()) el().innerHTML = '<p class="hint">Reading the changes…</p>';
+    try { d = await api('GET', `/api/commit/show?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}`); detailCache.set(key, d); }
+    catch (e) { if (el()) el().innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+  }
+  const box = el(); if (!box) return; // another commit was picked meanwhile
+  const body = d.message.split('\n').slice(1).join('\n').trim();
+  const n = d.files.length + d.more;
+  box.innerHTML = (body ? `<pre class="cmsg">${esc(body)}</pre>` : '')
+    + `<details class="cfiles"${n <= 12 ? ' open' : ''}><summary>${n} file${n === 1 ? '' : 's'} changed <span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span></summary>
+      <ul>${d.files.map(f => `<li title="${esc(f.path)}"><span class="fn">${esc(f.path)}</span>${f.binary ? '<span class="hint">binary</span>' : `<span class="add">+${f.added}</span><span class="del">−${f.deleted}</span>`}</li>`).join('')}
+      ${d.more ? `<li class="hint">and ${d.more} more</li>` : ''}</ul></details>`;
 }
 for (const el of ['#details', '#selbar']) $(el).addEventListener('click', e => { const a = e.target.closest('[data-ca]')?.dataset.ca; if (a) commitAction(a); });
 async function commitAction(a){

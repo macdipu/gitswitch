@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
@@ -201,6 +203,49 @@ func (x *CLI) cmdCherryPick(args []string) error {
 			x.say("Cherry-picked", history.CleanText(t.Label()))
 		}
 	}
+	return nil
+}
+
+// cmdShow prints a commit's full message and the files it changed.
+func (x *CLI) cmdShow(args []string) error {
+	asJSON := hasFlag(args, "--json")
+	var revs []string
+	for _, a := range args {
+		if a != "--json" {
+			revs = append(revs, a)
+		}
+	}
+	if len(revs) != 1 {
+		return usageErr("gitswitch show <commit> [--json]")
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	d, err := x.app.History.Show(gd, revs[0])
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return json.NewEncoder(x.out).Encode(d)
+	}
+	x.say("commit", d.Hash)
+	x.say()
+	for _, l := range strings.Split(d.Message, "\n") {
+		x.say("   ", l)
+	}
+	x.say()
+	for _, f := range d.Files {
+		if f.Binary {
+			x.sayf("  %8s  %s\n", "binary", f.Path)
+		} else {
+			x.sayf("  %+4d %-4s %s\n", f.Added, fmt.Sprintf("-%d", f.Deleted), f.Path)
+		}
+	}
+	if d.More > 0 {
+		x.sayf("  ... and %d more file(s)\n", d.More)
+	}
+	x.sayf("%d file(s) changed, %d insertion(s), %d deletion(s)\n", len(d.Files)+d.More, d.Added, d.Deleted)
 	return nil
 }
 

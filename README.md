@@ -249,6 +249,7 @@ gitswitch revert 1a2b3c4             # a new commit that undoes one (safe after 
 gitswitch cherry-pick 5d6e7f8 9a0b1c2   # copy commits from another branch, oldest first
 gitswitch drop 1a2b3c4               # remove a not-pushed commit
 gitswitch rollback 1a2b3c4           # undo the not-pushed commits after it; their changes stay in your files
+gitswitch show 1a2b3c4               # the whole message and the files it changed
 gitswitch browse 1a2b3c4             # open the commit on GitHub, GitLab, Bitbucket, ...
 ```
 

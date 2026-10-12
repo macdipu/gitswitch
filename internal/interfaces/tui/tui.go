@@ -657,7 +657,8 @@ Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
 History
-  o other repo   f only wrong-account commits   x fix not-pushed commits   r reload   m load more
+  Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
+  r reload   m load more
   b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
@@ -1105,6 +1106,39 @@ func (t *tui) readHistory() {
 	t.marked = map[string]bool{}
 }
 
+// showCommit opens the selected commit's full message and changed files.
+func (t *tui) showCommit() {
+	hash := t.selectedCommit()
+	if hash == "" {
+		return
+	}
+	d, err := t.app.History.Show(t.histDir, hash)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	lines := []string{cDim + d.Hash + cReset, ""}
+	for _, l := range strings.Split(d.Message, "\n") {
+		lines = append(lines, history.CleanText(l))
+	}
+	lines = append(lines, "", fmt.Sprintf("%d file(s) changed, %s+%d%s %s-%d%s", len(d.Files)+d.More, cGreen, d.Added, cReset, cRed, d.Deleted, cReset))
+	for _, f := range d.Files {
+		if f.Binary {
+			lines = append(lines, fmt.Sprintf("  %s%-11s%s %s", cDim, "binary", cReset, history.CleanText(f.Path)))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s%+5d%s %s%5s%s %s", cGreen, f.Added, cReset, cRed, fmt.Sprintf("-%d", f.Deleted), cReset, history.CleanText(f.Path)))
+		}
+	}
+	if d.More > 0 {
+		lines = append(lines, fmt.Sprintf("  … and %d more", d.More))
+	}
+	short := d.Hash
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	t.view = &viewer{title: "Commit " + short, lines: lines, copy: d.Hash}
+}
+
 // selectedCommit is the commit on the selected history line, or "".
 func (t *tui) selectedCommit() string {
 	if i := t.sel[tabHistory]; i < len(t.histRows) {
@@ -1122,6 +1156,8 @@ func (t *tui) keyHistory(k string) {
 		t.loadHistory()
 	case "m":
 		t.loadMoreHistory()
+	case "enter":
+		t.showCommit()
 	case "o":
 		if !t.scanned {
 			t.scanRepos()
@@ -1540,7 +1576,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "/ filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · m more · ? help · q quit"
+		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · Space mark · w browser · o repo · f flagged · x fix · r reload · m more · ? help · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}

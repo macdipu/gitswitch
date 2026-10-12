@@ -103,6 +103,9 @@ func (f *fakeLog) Commits(_ string, _ int, fl history.Filter) ([]history.Commit,
 	f.filter = fl
 	return f.commits, nil
 }
+func (f *fakeLog) Show(_, rev string) (history.Detail, error) {
+	return history.Detail{Hash: rev}, nil
+}
 func (f *fakeLog) Unpushed(string) map[string]bool {
 	set := map[string]bool{}
 	for _, h := range f.local {
@@ -416,5 +419,17 @@ func TestBuildMore(t *testing.T) {
 		if err != nil || h.More != want {
 			t.Errorf("Build(limit %d).More = %v, %v; want %v", limit, h.More, err, want)
 		}
+	}
+}
+
+func TestShowRefusesOptions(t *testing.T) {
+	s, _, _ := newService()
+	for _, rev := range []string{"", "--output=/tmp/x", "-p"} {
+		if _, err := s.Show("/r/.git", rev); err == nil {
+			t.Errorf("Show(%q) = nil error", rev)
+		}
+	}
+	if d, err := s.Show("/r/.git", "abc1234"); err != nil || d.Hash != "abc1234" {
+		t.Errorf("Show(abc1234) = %+v, %v", d, err)
 	}
 }

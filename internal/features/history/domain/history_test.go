@@ -2,6 +2,7 @@ package domain
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,5 +126,28 @@ func TestParseDateEdges(t *testing.T) {
 	leap := time.Date(2024, 2, 29, 9, 0, 0, 0, time.UTC)
 	if got, _ := ParseDate("1 year ago", leap, false); got.Format("2006-01-02") != "2023-02-28" {
 		t.Errorf("a year before 29 February = %v, want 2023-02-28", got)
+	}
+}
+
+func TestParseNumstat(t *testing.T) {
+	var d Detail
+	ParseNumstat(&d, "\n3\t1\tmain.go\n-\t-\tlogo.png\n10\t0\tdocs/{a.md => b.md}\r\n\n")
+	want := []FileChange{{Path: "main.go", Added: 3, Deleted: 1}, {Path: "logo.png", Binary: true}, {Path: "docs/{a.md => b.md}", Added: 10}}
+	if len(d.Files) != len(want) || d.Added != 13 || d.Deleted != 1 {
+		t.Fatalf("got %+v", d)
+	}
+	for i := range want {
+		if d.Files[i] != want[i] {
+			t.Errorf("file %d = %+v, want %+v", i, d.Files[i], want[i])
+		}
+	}
+	var big Detail
+	ParseNumstat(&big, strings.Repeat("1\t1\tf\n", MaxDetailFiles+3))
+	if len(big.Files) != MaxDetailFiles || big.More != 3 || big.Added != MaxDetailFiles+3 {
+		t.Errorf("big commit: %d files, %d more, %d added", len(big.Files), big.More, big.Added)
+	}
+	var none Detail
+	if ParseNumstat(&none, ""); none.Files == nil {
+		t.Error("no files should be [] in JSON, not null")
 	}
 }

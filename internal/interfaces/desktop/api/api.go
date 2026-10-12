@@ -190,6 +190,13 @@ func (s *server) routes() map[string]handler {
 			return a.History.Build(gd, n, history.Filter{Author: strings.TrimSpace(q.Get("author")), Text: strings.TrimSpace(q.Get("text")),
 				Since: strings.TrimSpace(q.Get("since")), Until: strings.TrimSpace(q.Get("until")), Account: strings.TrimSpace(q.Get("account"))})
 		},
+		"GET /api/commit/show": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.History.Show(gd, r.URL.Query().Get("hash"))
+		},
 		"POST /api/repo/fix": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(str(body(r), "gitDir"))
 			if err != nil {

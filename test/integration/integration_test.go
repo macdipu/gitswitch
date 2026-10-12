@@ -1140,3 +1140,44 @@ func TestRenameMovesFolderRuleAndIdentity(t *testing.T) {
 		t.Fatal("an includeIf still points at the old identity file")
 	}
 }
+
+// `gitswitch show` reads a commit's whole message and changed files from
+// real git, including a merge (compared with its first parent).
+func TestShowCommit(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "one\ntwo\n", "add a")
+	must(t, os.WriteFile(filepath.Join(api, "b.bin"), []byte{0, 1, 2, 0}, 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("one\n"), 0o644))
+	e.gitIn(api, "add", "-A")
+	e.gitIn(api, "commit", "-q", "-m", "Second\n\nThe body explains why.")
+
+	out := e.gsIn(api, "show", "HEAD", "--json")
+	var d struct {
+		Message        string
+		Added, Deleted int
+		Files          []struct {
+			Path   string
+			Binary bool
+		}
+	}
+	must(t, json.Unmarshal([]byte(out), &d))
+	if !strings.Contains(d.Message, "The body explains why.") || d.Deleted != 1 || len(d.Files) != 2 || !d.Files[1].Binary {
+		t.Fatalf("show --json = %+v", d)
+	}
+	if out := e.gsIn(api, "show", "HEAD"); !strings.Contains(out, "2 file(s) changed, 0 insertion(s), 1 deletion(s)") {
+		t.Errorf("show:\n%s", out)
+	}
+
+	e.gitIn(api, "switch", "-q", "-c", "side", "HEAD~1")
+	e.commitFile(api, "side.txt", "s\n", "side work")
+	e.gitIn(api, "switch", "-q", "main")
+	e.gitIn(api, "merge", "-q", "--no-ff", "-m", "Merge side", "side")
+	if out := e.gsIn(api, "show", "HEAD"); !strings.Contains(out, "side.txt") || !strings.Contains(out, "1 file(s) changed") {
+		t.Errorf("show merge:\n%s", out)
+	}
+	e.gsErr(api, "no commit", "show", "--output=/tmp/x")
+	e.gsErr(api, "no commit", "show", "nope")
+}

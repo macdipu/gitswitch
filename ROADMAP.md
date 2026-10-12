@@ -95,7 +95,7 @@ in it. The same actions in the desktop app, the terminal app and the CLI.
 | H8 | **View on the web** (commit or repo) | done | `remote.CommitURL`: GitHub, GitLab, Bitbucket and GitHub-style hosts. |
 | H9 | **Filters**: message, author, account, dates; wrong-account and not-pushed only | done | `history.Filter`. Text, author and dates are sent to git, so they search the whole history; dates are parsed by gitswitch (git guesses silently). |
 | H10 | **Redesigned desktop screen**: toolbar, search with tokens and date presets, filter chips, details panel, selection bar, keyboard | done | Desktop page only; uses the API above. |
-| H11 | **Commit details**: full message, changed files and line counts | planned | A `Show` port in the history domain (`git show --numstat --format=...`), shown in the details panel and `gitswitch show <commit>`. |
+| H11 | **Commit details**: full message, changed files and line counts | done | `history.Log.Show` (`git log -1 --numstat`, merges against their first parent). Desktop details panel, Enter in the terminal app, `gitswitch show <commit> [--json]`. |
 | H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, switch) | planned | An `undo` feature over the reflog: remember HEAD before each action, offer "Undo" in the toast, `git reset --keep` back to it. |
 | H13 | **Load more**: page through history beyond the first page of commits | done | `History.More` says git had more; the desktop app's "Load more" button, `m` in the terminal app and `gitswitch log -n` read a bigger window, so the graph stays connected. |
 | H14 | **Uncommitted changes when switching**: offer to stash and restore | planned | A `stash` use case in `refs`; ask before stashing, restore after switching. |

@@ -212,6 +212,24 @@ func (l *Log) Resolve(wt, rev string) (history.Target, error) {
 	return t, nil
 }
 
+func (l *Log) Show(gitDir, rev string) (history.Detail, error) {
+	// --diff-merges=first-parent: a merge lists what it brought into the
+	// branch. The record separator ends the message, numstat lines follow.
+	out, err := l.Git.Run("--git-dir="+gitDir, "log", "-1", "--no-color", "--numstat", "--diff-merges=first-parent",
+		"--format=%H%x1f%B%x1e", rev+"^{commit}", "--")
+	if err != nil {
+		return history.Detail{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	head, stat, _ := strings.Cut(out, "\x1e")
+	hash, msg, ok := strings.Cut(head, "\x1f")
+	if !ok {
+		return history.Detail{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	d := history.Detail{Hash: strings.TrimSpace(hash), Message: strings.TrimSpace(msg)}
+	history.ParseNumstat(&d, stat)
+	return d, nil
+}
+
 func (l *Log) Branch(wt string) string {
 	b, _ := l.Git.Run("-C", wt, "symbolic-ref", "-q", "--short", "HEAD")
 	return b

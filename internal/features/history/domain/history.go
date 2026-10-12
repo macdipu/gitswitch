@@ -504,8 +504,58 @@ func (t Target) IsMerge() bool { return len(t.Parents) > 1 }
 // Label is the short hash and subject, e.g. "1a2b3c4 Fix login".
 func (t Target) Label() string { return t.Short + " " + t.Subject }
 
+// FileChange is one file a commit changed, with its line counts. Binary
+// files have no line counts.
+type FileChange struct {
+	Path    string `json:"path"`
+	Added   int    `json:"added"`
+	Deleted int    `json:"deleted"`
+	Binary  bool   `json:"binary,omitempty"`
+}
+
+// MaxDetailFiles is how many changed files a commit's details list.
+const MaxDetailFiles = 500
+
+// Detail is what a commit's details show beyond its line in the list: the
+// whole message and the files it changed. A merge is compared with its
+// first parent, which is what the merge brought into the branch.
+type Detail struct {
+	Hash    string       `json:"hash"`
+	Message string       `json:"message"`
+	Files   []FileChange `json:"files"`
+	More    int          `json:"more"` // changed files left out after MaxDetailFiles
+	Added   int          `json:"added"`
+	Deleted int          `json:"deleted"`
+}
+
+// ParseNumstat reads `git log --numstat` lines ("added<TAB>deleted<TAB>path",
+// "-" counts for binary files) into d, keeping MaxDetailFiles files.
+func ParseNumstat(d *Detail, out string) {
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.SplitN(strings.TrimRight(line, "\r"), "\t", 3)
+		if len(f) != 3 || f[2] == "" {
+			continue
+		}
+		fc := FileChange{Path: f[2], Binary: f[0] == "-" && f[1] == "-"}
+		fc.Added, _ = strconv.Atoi(f[0])
+		fc.Deleted, _ = strconv.Atoi(f[1])
+		d.Added += fc.Added
+		d.Deleted += fc.Deleted
+		if len(d.Files) >= MaxDetailFiles {
+			d.More++
+			continue
+		}
+		d.Files = append(d.Files, fc)
+	}
+	if d.Files == nil {
+		d.Files = []FileChange{}
+	}
+}
+
 // Log reads commits from git and rewrites authors.
 type Log interface {
+	// Show reads a commit's full message and changed files.
+	Show(gitDir, rev string) (Detail, error)
 	// Commits loads the latest commits of all branches in topological
 	// order; none for a repo without commits.
 	Commits(gitDir string, limit int, f Filter) ([]Commit, error)
