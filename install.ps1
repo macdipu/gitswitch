@@ -40,6 +40,11 @@ try {
   if ($expected -ne $actual) { throw "Checksum mismatch for $asset. Nothing was installed." }
   Write-Host 'Checksum OK.'
 
+  # Make sure it starts here before git depends on it (git runs it on every
+  # pull and push).
+  & $exe version | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "$asset does not start on this system. Nothing was installed." }
+
   # The program copies itself to %LOCALAPPDATA%\GitSwitch, hooks into git,
   # adds itself to PATH and to the Start menu.
   & $exe install

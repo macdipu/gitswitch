@@ -70,26 +70,45 @@ command -v git >/dev/null 2>&1 || fail "git is not installed. Install git first,
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t gitswitch)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
-say "Downloading $ASSET ($VERSION)..."
-fetch "$BASE/$ASSET" "$TMP/$ASSET" || fail "download failed: $BASE/$ASSET"
 fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" || fail "could not download SHA256SUMS"
 
-# ---- verify checksum ----
-EXPECTED="$(grep " $ASSET\$" "$TMP/SHA256SUMS" | awk '{print $1}' | head -n 1)"
-[ -n "$EXPECTED" ] || fail "no checksum for $ASSET in SHA256SUMS"
-if command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL="$(sha256sum "$TMP/$ASSET" | awk '{print $1}')"
-elif command -v shasum >/dev/null 2>&1; then
-  ACTUAL="$(shasum -a 256 "$TMP/$ASSET" | awk '{print $1}')"
-else
-  fail "sha256sum or shasum is needed to verify the download"
-fi
-[ "$ACTUAL" = "$EXPECTED" ] || fail "checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL). Nothing was installed."
-say "Checksum OK."
+# ---- download and verify one file ----
+get() {
+  say "Downloading $1 ($VERSION)..."
+  fetch "$BASE/$1" "$TMP/$1" || fail "download failed: $BASE/$1"
+  EXPECTED="$(grep " $1\$" "$TMP/SHA256SUMS" | awk '{print $1}' | head -n 1)"
+  [ -n "$EXPECTED" ] || fail "no checksum for $1 in SHA256SUMS"
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "$TMP/$1" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL="$(shasum -a 256 "$TMP/$1" | awk '{print $1}')"
+  else
+    fail "sha256sum or shasum is needed to verify the download"
+  fi
+  [ "$ACTUAL" = "$EXPECTED" ] || fail "checksum mismatch for $1 (expected $EXPECTED, got $ACTUAL). Nothing was installed."
+  say "Checksum OK."
+  chmod +x "$TMP/$1"
+  if [ "$OS" = darwin ]; then
+    xattr -d com.apple.quarantine "$TMP/$1" 2>/dev/null || true
+  fi
+}
+starts() { "$TMP/$1" version >/dev/null 2>&1; }
 
-chmod +x "$TMP/$ASSET"
-if [ "$OS" = darwin ]; then
-  xattr -d com.apple.quarantine "$TMP/$ASSET" 2>/dev/null || true
+get "$ASSET"
+# Make sure the program starts here before git depends on it: git runs it
+# on every pull and push. A Linux desktop build can fail to start when a
+# library is missing or too old; the build without the window has none.
+if ! starts "$ASSET"; then
+  case "$ASSET" in
+    gitswitch-linux-*-cli) fail "$ASSET does not start on this system. Nothing was installed." ;;
+    gitswitch-linux-*)
+      say "The desktop build does not start on this system; using the build without the window."
+      ASSET="$ASSET-cli"
+      get "$ASSET"
+      starts "$ASSET" || fail "$ASSET does not start on this system. Nothing was installed."
+      ;;
+    *) fail "$ASSET does not start on this system. Nothing was installed." ;;
+  esac
 fi
 
 # ---- install: the program copies itself to its fixed folder and hooks into git ----

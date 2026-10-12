@@ -1,13 +1,15 @@
 # Push a tag like v1.2.0 to build all platforms and publish a GitHub release.
 # install.sh and install.ps1 download from the latest release.
 # The desktop window needs cgo on macOS and Linux, so each of those builds on
-# its own runner; Windows builds on Linux without cgo.
+# its own runner; Windows builds on Linux without cgo. Linux builds on the
+# oldest supported Ubuntu, because a program linked against a newer glibc
+# does not start on older systems.
 name: release
 on:
   push:
     tags: ["v*"]
 permissions:
-  contents: write
+  contents: read # only the publish job may write
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -23,9 +25,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             targets: linux/amd64 windows/amd64 windows/arm64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             targets: linux/arm64
           - runner: macos-latest
             targets: darwin/amd64 darwin/arm64
@@ -46,6 +48,8 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload its files
     steps:
       - uses: actions/download-artifact@v4
         with:
