@@ -51,6 +51,15 @@ jobs:
     permissions:
       contents: write # create the release and upload its files
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: docs/release-notes
+      - name: release notes
+        # docs/release-notes/<tag>.md, or a pointer to the commits when there is none
+        run: |
+          f="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$f" ]; then cp "$f" "$RUNNER_TEMP/notes.md"
+          else echo "See the commits: https://github.com/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" > "$RUNNER_TEMP/notes.md"; fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
@@ -58,6 +67,7 @@ jobs:
       - run: cd dist && sha256sum gitswitch-* > SHA256SUMS && cat SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
+          body_path: ${{ runner.temp }}/notes.md
           files: |
             dist/gitswitch-*
             dist/SHA256SUMS

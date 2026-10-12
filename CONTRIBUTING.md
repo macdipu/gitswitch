@@ -159,10 +159,13 @@ change.
 
 ## Publishing a release (maintainers)
 
-1. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
-2. The `release` workflow runs the tests, builds `gitswitch-*` and
+1. Write the release notes in `docs/release-notes/<tag>.md` (for example
+   `docs/release-notes/v1.3.0.md`) and commit them. Check that the `test`
+   workflow passes on all three systems: the release only runs the Linux tests.
+2. Push a tag: `git tag v1.3.0 && git push origin v1.3.0`.
+3. The `release` workflow runs the tests, builds `gitswitch-*` and
    `gitswitch-app-*` for every platform (the app for macOS and Linux on their
    own runners; Linux on Ubuntu 22.04 so it starts on older systems) plus
-   `SHA256SUMS`, and
-   attaches them to the GitHub release.
-3. The one-line installers always fetch the latest release.
+   `SHA256SUMS`, and attaches them to the GitHub release, with the notes
+   file as its text.
+4. The one-line installers always fetch the latest release.
