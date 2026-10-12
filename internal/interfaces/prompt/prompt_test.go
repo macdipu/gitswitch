@@ -45,3 +45,24 @@ func TestAskWithoutAnAnswerIsNotAChoice(t *testing.T) {
 		t.Errorf("timeout: got %+v", d)
 	}
 }
+
+// With no default account, Enter alone is not an answer, every answer is
+// saved for the repo, and no answer is no account.
+func TestAskWithNoDefault(t *testing.T) {
+	var out bytes.Buffer
+	d := ask(strings.NewReader("\n2\n"), &out, "acme/api", cands, nil, time.Second)
+	if d == nil || d.Account.ID != "work" || !d.Save || d.Reason != resolve.Prompt {
+		t.Fatalf("got %+v", d)
+	}
+	if strings.Contains(out.String(), "[Enter]") || strings.Count(out.String(), "is not a choice") != 1 {
+		t.Errorf("prompt:\n%s", out.String())
+	}
+	if d := ask(strings.NewReader(""), &out, "acme/api", cands, nil, time.Second); d != nil {
+		t.Errorf("end of input: got %+v, want no account", d)
+	}
+	r, w := io.Pipe()
+	defer w.Close()
+	if d := ask(r, &out, "acme/api", cands, nil, 50*time.Millisecond); d != nil {
+		t.Errorf("timeout: got %+v, want no account", d)
+	}
+}

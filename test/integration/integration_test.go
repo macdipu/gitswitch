@@ -1181,3 +1181,59 @@ func TestShowCommit(t *testing.T) {
 	e.gsErr(api, "no commit", "show", "--output=/tmp/x")
 	e.gsErr(api, "no commit", "show", "nope")
 }
+
+// `gitswitch default --none`: no account is ever guessed. With nobody to
+// ask, a repo without a saved account or rule does not connect; adding an
+// account does not quietly make it the default; picking a default again
+// brings the old behaviour back.
+func TestNoDefaultNeverGuesses(t *testing.T) {
+	e := newEnv(t)
+	e.gs("default", "--none")
+	if out := e.gs("status"); !strings.Contains(out, "Default:  none") {
+		t.Fatalf("status:\n%s", out)
+	}
+	e.keyPair("extra")
+	e.gs("account", "add", "extra", "--email", "x@extra.example", "--key", e.key("extra"))
+	if got := e.cfg(e.root, "gitswitch.default"); got != "" {
+		t.Fatalf("adding an account set the default to %q", got)
+	}
+
+	out, err := e.gitMay(e.root, "clone", "-q", "git@github.com:dipu/notes.git", "notes")
+	if err == nil || !strings.Contains(out, "no default account") || !strings.Contains(out, "gitswitch use <account>") {
+		t.Fatalf("clone with no default and nobody to ask: err=%v\n%s", err, out)
+	}
+
+	e.gs("rule", "add", "owner:dipu", "me")
+	e.clone("git@github.com:dipu/notes.git", "notes")
+	if got := e.keysUsed(); len(got) == 0 || got[len(got)-1] != "me" {
+		t.Errorf("a rule still decides with no default: keys %v", got)
+	}
+
+	// A repo can ask on every connection: rules no longer decide for it,
+	// and with nobody to ask and no default it does not connect.
+	notes := filepath.Join(e.root, "notes")
+	e.gsIn(notes, "use", "--ask")
+	if out := e.gsIn(notes, "status"); !strings.Contains(out, "asks on every pull and push") {
+		t.Errorf("status:\n%s", out)
+	}
+	if out, err := e.gitMay(notes, "fetch", "-q"); err == nil || !strings.Contains(out, "asks every time") {
+		t.Errorf("fetch in an ask-every-time repo with nobody to ask: err=%v\n%s", err, out)
+	}
+	// With a default, nobody answering means the default, for this
+	// connection only: the repo keeps asking.
+	e.gs("default", "client")
+	e.resetLog()
+	if out, err := e.gitMay(notes, "fetch", "-q"); err != nil {
+		t.Fatalf("fetch with a default: %v\n%s", err, out)
+	}
+	if got := e.keysUsed(); len(got) == 0 || got[0] != "client" {
+		t.Errorf("keys %v, want the default", got)
+	}
+	if got := e.cfg(notes, "gitswitch.account"); got != "ask" {
+		t.Errorf("the repo must keep asking, gitswitch.account=%q", got)
+	}
+	e.gsIn(notes, "forget")
+	if got := e.cfg(notes, "gitswitch.account"); got != "" {
+		t.Errorf("forget left gitswitch.account=%q", got)
+	}
+}

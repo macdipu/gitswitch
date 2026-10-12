@@ -5,7 +5,8 @@
 //
 // Global keys (~/.gitconfig):
 //
-//	gitswitch.default            account used when nothing else decides
+//	gitswitch.default            optional: account used when a repo has nothing saved, no rule
+//	                             matches and nobody answers. Unset: ask, and save the answer
 //	gitswitch.guiPrompt          ask with a popup when git runs with no terminal
 //	gitswitch.promptTimeout      seconds before a prompt falls back to the default
 //	gitswitch.sshPath            optional path to the real ssh program
@@ -111,7 +112,12 @@ func (c *Config) SortedIDs() []string {
 var idRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
 
 // ValidID reports whether an account id is allowed.
-func ValidID(id string) bool { return idRe.MatchString(id) }
+func ValidID(id string) bool { return idRe.MatchString(id) && !strings.EqualFold(id, AskEveryTime) }
+
+// AskEveryTime, saved as a repo's account (gitswitch.account), makes that
+// repo ask on every connection and never remember the answer. It is not a
+// valid account id.
+const AskEveryTime = "ask"
 
 // ParseRule reads "owner:acme=work" or "folder:/x=me".
 func ParseRule(v string) (Rule, bool) {

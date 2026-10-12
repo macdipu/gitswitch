@@ -19,6 +19,8 @@ type Store interface {
 	// Rename renames an account everywhere it is stored and records the
 	// rename so repos that still name the old id keep working.
 	Rename(oldID, newID string) error
+	// SetDefault sets the default account; "" removes it, so repos with
+	// nothing saved ask and remember the answer.
 	SetDefault(id string) error
 	// DeleteKeyFiles removes an account's key pair and returns the files.
 	DeleteKeyFiles(a *Account) []string

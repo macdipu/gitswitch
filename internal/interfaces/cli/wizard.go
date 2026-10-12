@@ -105,7 +105,12 @@ func (x *CLI) wizard() error {
 	c := x.app.Accounts.Config()
 	if len(c.Accounts) > 1 {
 		x.say("\nAccounts:", strings.Join(c.SortedIDs(), ", "))
-		if d := ask("Default account (used when a repo has no saved choice and nobody can be asked)", c.Default); d != "" {
+		x.say("A default account is used when a repo has no saved account or rule and nobody can be asked.")
+		x.say("Type none to have no default: every new repo asks, and your answer is saved for it.")
+		if d := ask("Default account", c.Default); d != "" {
+			if strings.EqualFold(d, "none") {
+				d = ""
+			}
 			if err := x.app.Accounts.SetDefault(d); err != nil {
 				x.say("Error:", err)
 			}

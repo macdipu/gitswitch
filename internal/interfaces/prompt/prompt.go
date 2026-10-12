@@ -30,14 +30,37 @@ func Terminal(t *terminal.Terminal, label string, cands []account.Account, def *
 
 // ask asks until the answer names an account or the time runs out. A typo
 // is asked again rather than guessed: guessing would push as the wrong
-// account.
+// account. With no default account (def nil) Enter alone is not an answer,
+// the answer is marked to be saved (the hook decides), and no answer
+// returns nil.
 func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *account.Account, timeout time.Duration) *resolve.Decision {
 	fmt.Fprintf(w, "\nGit account for %s?\n", label)
-	fmt.Fprintf(w, "  [Enter] %s   (default)\n", def.ID)
+	if def != nil {
+		fmt.Fprintf(w, "  [Enter] %s   (default)\n", def.ID)
+	}
 	for i, a := range cands {
 		fmt.Fprintf(w, "  %d  %-16s %s\n", i+1, a.ID, a.Email)
 	}
-	fmt.Fprintf(w, "Type a number for this time, or add ! to always use it for this repo (e.g. 2!): ")
+	if def != nil {
+		fmt.Fprintf(w, "Type a number for this time, or add ! to always use it for this repo (e.g. 2!): ")
+	} else {
+		fmt.Fprintf(w, "Type a number or an account name: ")
+	}
+	retry := func(s string) {
+		if def != nil {
+			fmt.Fprintf(w, "%q is not a choice. Press Enter for %s, or type 1-%d or an account name: ", strings.TrimSpace(s), def.ID, len(cands))
+		} else {
+			fmt.Fprintf(w, "%q is not a choice. Type 1-%d or an account name: ", strings.TrimSpace(s), len(cands))
+		}
+	}
+	none := func(why string) *resolve.Decision {
+		if def == nil {
+			fmt.Fprintf(w, "\n(%s)\n", why)
+			return nil
+		}
+		fmt.Fprintf(w, "\n(%s, using %s)\n", why, def.ID)
+		return &resolve.Decision{Account: def, Reason: resolve.Default}
+	}
 
 	lines := make(chan string, 1)
 	go func() {
@@ -60,16 +83,17 @@ func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *
 		select {
 		case s, ok := <-lines:
 			if !ok { // end of input: nobody chose
-				fmt.Fprintf(w, "\n(no answer, using %s)\n", def.ID)
-				return &resolve.Decision{Account: def, Reason: resolve.Default}
+				return none("no answer")
 			}
 			if d := parseAnswer(s, cands, def); d != nil {
+				if def == nil {
+					d.Save = true
+				}
 				return d
 			}
-			fmt.Fprintf(w, "%q is not a choice. Press Enter for %s, or type 1-%d or an account name: ", strings.TrimSpace(s), def.ID, len(cands))
+			retry(s)
 		case <-deadline:
-			fmt.Fprintf(w, "\n(no answer in %s, using %s)\n", timeout, def.ID)
-			return &resolve.Decision{Account: def, Reason: resolve.Default}
+			return none(fmt.Sprintf("no answer in %s", timeout))
 		}
 	}
 }
@@ -81,6 +105,9 @@ func parseAnswer(s string, cands []account.Account, def *account.Account) *resol
 	save := strings.HasSuffix(ans, "!")
 	ans = strings.TrimSpace(strings.TrimSuffix(ans, "!"))
 	if ans == "" {
+		if def == nil {
+			return nil
+		}
 		return &resolve.Decision{Account: def, Reason: resolve.Prompt, Save: save}
 	}
 	if n, err := strconv.Atoi(ans); err == nil && n >= 1 && n <= len(cands) {
@@ -103,6 +130,9 @@ func Dialog(label string, cands []account.Account, def *account.Account, timeout
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
+	if def == nil { // no default: the first account is only preselected
+		def = &cands[0]
+	}
 	var choice string
 	switch runtime.GOOS {
 	case "darwin":

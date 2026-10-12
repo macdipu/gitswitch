@@ -38,10 +38,12 @@ Accounts
   gitswitch key agent <id>          load the key into the OS agent / Keychain once
   gitswitch test [<id>]             check each key logs in, and as whom
   gitswitch default <id>            account used when nothing else decides
+  gitswitch default --none          remove the default: new repos ask once and remember the answer
 
 Repos and rules
   gitswitch use <id> [--once]       set this repo's account (and its commit name/email)
-  gitswitch forget                  make this repo ask again
+  gitswitch use --ask               this repo asks on every pull/push and never remembers
+  gitswitch forget                  remove this repo's account: follow rules and the default
   gitswitch rule add owner:<org> <id>     e.g. owner:acme-corp client-acme
   gitswitch rule add folder:<path> <id>   e.g. folder:~/work polygon
   gitswitch rule list | remove owner:<org>|folder:<path>|<n>
@@ -178,7 +180,14 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdTest(rest)
 	case "default":
 		if len(rest) != 1 {
-			return usageErr("gitswitch default <id>")
+			return usageErr("gitswitch default <id> | --none")
+		}
+		if rest[0] == "--none" {
+			if err := x.app.Accounts.SetDefault(""); err != nil {
+				return err
+			}
+			x.say("No default account: a repo with no saved account or rule asks once, and your answer is saved for that repo.")
+			return nil
 		}
 		if err := x.app.Accounts.SetDefault(rest[0]); err != nil {
 			return err
@@ -195,7 +204,7 @@ func (x *CLI) dispatch(args []string) error {
 		if _, err := x.app.Accounts.SetRepoAccount(gd, ""); err != nil {
 			return err
 		}
-		x.say("This repo will ask again on the next pull or push.")
+		x.say("This repo has no saved account now: it follows your rules and default, or asks on the next pull or push.")
 		return nil
 	case "rule":
 		return x.cmdRule(rest)

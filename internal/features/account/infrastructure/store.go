@@ -163,9 +163,6 @@ func (s *Store) Save(a account.Account) error {
 	if err := s.writeIdentityFile(a); err != nil {
 		return err
 	}
-	if s.Load().Default == "" {
-		_, _ = s.Git.Global("gitswitch.default", a.ID)
-	}
 	return nil
 }
 
@@ -249,6 +246,13 @@ func (s *Store) DeleteKeyFiles(a *account.Account) []string {
 }
 
 func (s *Store) SetDefault(id string) error {
+	if id == "" {
+		if s.Load().Default == "" {
+			return nil
+		}
+		_, err := s.Git.Global("--unset", "gitswitch.default")
+		return err
+	}
 	a := s.Load().Account(id)
 	if a == nil {
 		return fmt.Errorf("no account %q", id)

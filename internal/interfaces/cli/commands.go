@@ -47,7 +47,11 @@ func (x *CLI) cmdAccount(args []string) error {
 			}
 			x.sayf("%s %-14s %-28s %-14s %s\n", mark, a.ID, a.Email, a.Host, a.Key)
 		}
-		x.say("(* = default)")
+		if c.Default == "" {
+			x.say("(no default account: new repos ask once, and the answer is saved)")
+		} else {
+			x.say("(* = default)")
+		}
 		return nil
 
 	case "add":
@@ -254,8 +258,20 @@ func (x *CLI) cmdTest(args []string) error {
 
 func (x *CLI) cmdUse(args []string) error {
 	pos, fl := splitArgs(args)
+	if len(pos) == 0 && hasFlag(fl, "--ask") {
+		gd, err := x.requireRepo()
+		if err != nil {
+			return err
+		}
+		if _, err := x.app.Accounts.SetRepoAccount(gd, account.AskEveryTime); err != nil {
+			return err
+		}
+		x.say("This repo now asks for the account on every pull and push, and never remembers the answer.")
+		x.say("Undo: gitswitch use <account> (always that one) or gitswitch forget (follow rules and the default).")
+		return nil
+	}
 	if len(pos) != 1 {
-		return usageErr("gitswitch use <id> [--once]")
+		return usageErr("gitswitch use <id> [--once] | --ask")
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
@@ -346,7 +362,11 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 		return json.NewEncoder(x.out).Encode(map[string]any{"config": c, "repo": info, "installed": x.app.Setup.Installed()})
 	}
 	x.say("Hook:    ", orNone(x.app.Setup.Hook()))
-	x.say("Default: ", orNone(c.Default))
+	if c.Default == "" {
+		x.say("Default:  none (new repos ask once, and the answer is saved)")
+	} else {
+		x.say("Default: ", c.Default)
+	}
 	x.sayf("Accounts: %d   Rules: %d   GUI prompt: %v\n", len(c.Accounts), len(c.Rules), c.GUIPrompt)
 	for _, v := range []string{"GIT_SSH_COMMAND", "GIT_SSH"} {
 		if os.Getenv(v) != "" {
@@ -370,7 +390,9 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 	r := x.app.Repos.Info(gd)
 	x.say("\nThis repo:", r.Path)
 	x.say("  remote: ", orNone(r.Remote))
-	if r.Account != "" {
+	if r.Reason == "asks-every-time" {
+		x.say("  account: asks on every pull and push (gitswitch use --ask)")
+	} else if r.Account != "" {
 		x.sayf("  account: %s (%s)\n", r.Account, r.Reason)
 	} else {
 		x.say("  account: none, will ask on next pull/push")

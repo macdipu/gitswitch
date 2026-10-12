@@ -21,7 +21,12 @@ const (
 	Dialog      = "dialog"
 	Default     = "default"
 	Asks        = "asks"
+	AsksAlways  = "asks-every-time" // the repo is set to ask on every connection
 )
+
+// AsksEveryTime reports whether a repo's saved account says to ask on
+// every connection (account.AskEveryTime).
+func AsksEveryTime(savedID string) bool { return strings.EqualFold(savedID, account.AskEveryTime) }
 
 // Decision is the account chosen for a repo and why.
 type Decision struct {
@@ -55,8 +60,12 @@ func Candidates(c *account.Config, host string) []account.Account {
 }
 
 // Decide runs the silent steps: saved account, the most specific owner
-// rule, the deepest folder rule, or the only account. nil means ask.
+// rule, the deepest folder rule, or the only account. nil means ask. A repo
+// set to ask every time skips them all.
 func Decide(c *account.Config, cands []account.Account, in Input) *Decision {
+	if AsksEveryTime(in.SavedID) {
+		return nil
+	}
 	pick := func(id string) *account.Account {
 		if a := c.Account(id); a != nil { // follows renames
 			id = a.ID
@@ -103,14 +112,20 @@ func best(rules []account.Rule, kind string, pick func(string) *account.Account,
 	return found
 }
 
-// DefaultAmong returns the default account if it is a candidate, else the first.
+// DefaultAmong returns the default account if one is set and it is a
+// candidate (an account for this host), else nil: no default here.
 func DefaultAmong(c *account.Config, cands []account.Account) *account.Account {
-	for i := range cands {
-		if strings.EqualFold(cands[i].ID, c.Default) {
-			return &cands[i]
+	if c.Default == "" {
+		return nil
+	}
+	if a := c.Account(c.Default); a != nil { // follows renames
+		for i := range cands {
+			if strings.EqualFold(cands[i].ID, a.ID) {
+				return &cands[i]
+			}
 		}
 	}
-	return &cands[0]
+	return nil
 }
 
 // MatchesOwner: "acme" matches acme/api.git and acme/sub/x, not acme-corp/api.

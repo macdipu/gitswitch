@@ -27,8 +27,12 @@ func (r *Reader) AccountFor(c *account.Config, gitDir string) (*account.Account,
 	if len(cands) == 0 {
 		return nil, ""
 	}
+	saved := r.Git.RepoGet(gitDir, "gitswitch.account")
+	if resolve.AsksEveryTime(saved) {
+		return nil, resolve.AsksAlways
+	}
 	d := resolve.Decide(c, cands, resolve.Input{
-		SavedID:  r.Git.RepoGet(gitDir, "gitswitch.account"),
+		SavedID:  saved,
 		RepoPath: path,
 		Worktree: func() string { return r.Git.WorktreeOf(gitDir) },
 		RealPath: filesystem.RealPath,

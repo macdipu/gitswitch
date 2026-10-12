@@ -99,7 +99,22 @@ func TestCandidatesAndDefault(t *testing.T) {
 	if DefaultAmong(c, Candidates(c, "github.com")).ID != "b" {
 		t.Fatal("default not chosen")
 	}
-	if DefaultAmong(c, Candidates(c, "gitlab.com")).ID != "g" {
-		t.Fatal("first candidate should be used when the default is for another host")
+	if d := DefaultAmong(c, Candidates(c, "gitlab.com")); d != nil {
+		t.Fatalf("a default for another host is no default here, got %s", d.ID)
+	}
+	c.Default = ""
+	if d := DefaultAmong(c, Candidates(c, "github.com")); d != nil {
+		t.Fatalf("no default set, got %s", d.ID)
+	}
+}
+
+// A repo set to ask every time ignores rules, even the only account.
+func TestAskEveryTimeSkipsRules(t *testing.T) {
+	c := &account.Config{Default: "a", Accounts: []account.Account{{ID: "a"}}, Rules: []account.Rule{{Kind: "owner", Pattern: "acme", Account: "a"}}}
+	if d := Decide(c, c.Accounts, Input{SavedID: "ask", RepoPath: "acme/api.git"}); d != nil {
+		t.Fatalf("got %+v, want ask", d)
+	}
+	if account.ValidID("ask") || account.ValidID("ASK") {
+		t.Error(`"ask" must not be usable as an account id`)
 	}
 }

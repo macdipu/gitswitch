@@ -68,6 +68,9 @@ details.more>summary::-webkit-details-marker{display:none}
 
 /* account rows */
 .accounts{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.defrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:14px 0;border-bottom:1px solid var(--rule);font-size:14px}
+.defrow select{padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);font-size:14px}
+.defrow .hint{flex-basis:100%}
 .acct{display:grid;grid-template-columns:6px 1fr auto;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule);align-items:start}
 .acct .stripe{align-self:stretch;border-radius:3px}
 .acct-name{font-weight:650;font-size:16px}
@@ -383,7 +386,7 @@ dialog .row-actions{justify-content:flex-end}
     <p class="lead">GitSwitch has no background process. Git starts it for a moment on each network command, and this window runs only while it is open.</p>
     <form class="card" id="setForm">
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
-      <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, then use the default account</label>
+      <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, <span id="afterWait">then use the default account</span></label>
       <p class="hint full" style="margin:0">Changes are saved right away.</p>
     </form>
     <h3>Health check</h3>
@@ -541,7 +544,8 @@ function renderWizard(){
       <p class="lead">From now on, clone and push with normal addresses like <code>git@github.com:owner/repo.git</code>. GitSwitch picks the account.</p>
       <div class="card"><ol>
         <li>Accounts: ${c.accounts.map(a => `<strong>${esc(a.id)}</strong> (${esc(a.email)})`).join(', ') || 'none yet'}.</li>
-        ${c.accounts.length > 1 ? `<li>When a repo has no account yet, git asks you which one to use the first time. Add <strong>!</strong> to your answer to remember it.</li>`
+        ${c.accounts.length > 1 ? (!c.default ? `<li>When a repo has no account yet, git asks you which one to use the first time and remembers your answer for that repo.</li>`
+          : `<li>When a repo has no account yet, git asks you which one to use the first time. Add <strong>!</strong> to your answer to remember it. To always ask and remember, choose “Ask me” on the Accounts page.</li>`)
           : `<li>Every repo on ${esc(c.accounts[0]?.host || 'the host')} uses <strong>${esc(d || '')}</strong>. Add another account when you need one.</li>`}
         <li>Rules choose accounts automatically by GitHub owner or folder, so most repos never ask. Set them on the Rules page.</li></ol></div>
       <div class="foot"><button class="btn primary" data-w="finish">Open GitSwitch</button><button class="btn" data-w="another">Add another account</button></div>`; },
@@ -605,7 +609,7 @@ $('#tab-welcome').addEventListener('submit', async e => {
   if (!f.reportValidity()) return;
   const gen = f.keymode.value === 'new', btn = f.querySelector('[type=submit]');
   const data = {mode:'new', id:f.id.value.trim(), host:f.host.value.trim() || 'github.com', name:f.name.value.trim(), email:f.email.value.trim(),
-    key: gen ? '' : f.key.value.trim(), generateKey:gen, passphrase:f.passphrase.value, makeDefault:!S.config.accounts.length};
+    key: gen ? '' : f.key.value.trim(), generateKey:gen, passphrase:f.passphrase.value, makeDefault:false};
   btn.disabled = true; btn.textContent = gen ? 'Creating the key…' : 'Saving…';
   const r = await act(() => api('POST', '/api/account', data));
   btn.disabled = false; btn.textContent = 'Create account';
@@ -618,7 +622,11 @@ $('#rerunSetup').onclick = () => openWizard(S.installed ? 2 : 0);
 function renderAccounts(){
   const c = S.config, el = $('#accounts');
   if (!S.accounts?.length){ el.innerHTML = '<div class="empty">No accounts yet. Add your work account first, then your personal one.</div>'; return; }
-  el.innerHTML = S.accounts.map(a => `
+  // What happens for a repo with no saved account and no rule.
+  const defRow = S.accounts.length < 2 ? '' : `<div class="defrow"><label for="defSel">When a repo has no account yet</label>
+      <select id="defSel"><option value="">Ask me, and remember the answer for that repo</option>${S.accounts.map(a => `<option value="${esc(a.id)}"${a.id === c.default ? ' selected' : ''}>Ask, and use ${esc(a.id)} if nobody answers</option>`).join('')}</select>
+      <span class="hint">${!c.default ? 'Each new repo asks once; with no answer git does not connect, so nothing is pushed as the wrong account.' : 'Answers are used once unless you add ! (terminal) or tick “always”.'}</span></div>`;
+  el.innerHTML = defRow + S.accounts.map(a => `
     <div class="acct" data-id="${esc(a.id)}">
       <div class="stripe" style="background:${colorOf(a.id)}"></div>
       <div>
@@ -634,7 +642,7 @@ function renderAccounts(){
           <div class="menu">
             <button data-act="edit">Edit…</button>
             <button data-act="rename">Rename…</button>
-            ${a.id !== c.default ? '<button data-act="default">Make default</button>' : ''}
+            ${a.id !== c.default ? '<button data-act="default">Make default</button>' : '<button data-act="nodefault">Remove as default</button>'}
             <hr><button class="danger" data-act="remove">Remove…</button>
           </div>
         </details>
@@ -642,6 +650,12 @@ function renderAccounts(){
       ${openDetail[a.id] ? `<div class="detail">${openDetail[a.id]}</div>` : ''}
     </div>`).join('');
 }
+$('#accounts').addEventListener('change', async e => {
+  if (e.target.id !== 'defSel') return;
+  const id = e.target.value;
+  await act(() => api('POST', '/api/default', {id}), id ? id + ' is now the default' : 'No default: each new repo asks once and remembers the answer');
+  refresh();
+});
 $('#accounts').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   const id = b.closest('.acct')?.dataset.id, a = S.accounts.find(x => x.id === id);
@@ -669,6 +683,8 @@ $('#accounts').addEventListener('click', async e => {
     delete openDetail[id]; renderAccounts();
   } else if (b.dataset.act === 'edit'){
     openForm(a);
+  } else if (b.dataset.act === 'nodefault'){
+    await act(() => api('POST', '/api/default', {id:''}), 'No default: a new repo asks once and remembers the answer'); refresh();
   } else if (b.dataset.act === 'default'){
     await act(() => api('POST', '/api/default', {id}), id + ' is now the default'); refresh();
   } else if (b.dataset.act === 'rename'){
@@ -735,6 +751,11 @@ async function loadRepos(){
 function acctOptions(sel, askLabel){
   return `<option value="">${askLabel}</option>` + S.config.accounts.map(a => `<option value="${esc(a.id)}"${a.id === sel ? ' selected' : ''}>${esc(a.id)}</option>`).join('');
 }
+// A repo's choices: follow rules and the default, ask every time, or one account.
+function repoAcctOptions(sel){
+  return `<option value="">Follow rules and default</option><option value="ask"${sel === 'ask' ? ' selected' : ''}>Ask every time</option>`
+    + S.config.accounts.map(a => `<option value="${esc(a.id)}"${a.id === sel ? ' selected' : ''}>${esc(a.id)}</option>`).join('');
+}
 // pickFolder returns a folder from the native picker, or a typed path when
 // this build has none; null when cancelled.
 async function pickFolder(title){
@@ -746,21 +767,22 @@ async function pickFolder(title){
 const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
 function renderRepos(){
   if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found. Add a projects folder, or an existing repo.</div>'; return; }
-  const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', asks:'asks on next push', '':'no matching account'};
+  const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', default:'default',
+    asks: S.config.default ? 'asks on next push' : 'asks on next push, then remembers', 'asks-every-time':'asks on every push', '':'no matching account'};
   $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
     repos.map((r, i) => r.missing ? `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="Pin to the top">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.path)}</div></td>
       <td colspan="3" class="status-bad">Folder not found or no longer a git repo. Remove it from the list, or add it again from its new place.</td>
       <td>${repoActions(r, i)}</td></tr>` : `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="${r.pinned ? 'Unpin' : 'Pin to the top'}">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono" title="${esc(r.path)}">${esc(r.branch || 'detached HEAD')} · ${esc(r.remote || 'no remote')}</div></td>
-      <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${acctOptions(r.saved, r.saved ? 'Ask (follow rules)' : 'Ask (follow rules)')}</select></td>
-      <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && !r.saved ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${esc(why[r.reason] || r.reason)}` : (why[r.reason] ?? esc(r.reason))}</td>
+      <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${repoAcctOptions(r.saved)}</select></td>
+      <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && (!r.saved || r.saved === 'ask') ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${esc(why[r.reason] || r.reason)}` : (why[r.reason] ?? esc(r.reason))}</td>
       <td class="${r.emailBad ? 'status-bad' : 'hint'}">${esc(r.email || 'not set yet')}${r.emailBad ? ' (wrong account)' : ''}</td>
       <td>${repoActions(r, i)}</td></tr>`).join('') + '</tbody></table>';
 }
 $('#repos').addEventListener('change', async e => {
   const i = e.target.dataset.repo; if (i === undefined) return;
-  const r = await act(() => api('POST', '/api/repo/use', {gitDir:repos[i].gitDir, account:e.target.value}), e.target.value ? 'Saved: this repo uses ' + e.target.value : 'This repo will follow rules or ask');
+  const r = await act(() => api('POST', '/api/repo/use', {gitDir:repos[i].gitDir, account:e.target.value}), e.target.value === 'ask' ? 'This repo asks on every pull and push' : e.target.value ? 'Saved: this repo uses ' + e.target.value : 'This repo follows your rules and default');
   if (r){ repos[i] = r; renderRepos(); }
 });
 $('#repos').addEventListener('click', async e => {
@@ -1199,6 +1221,7 @@ $('#rules').addEventListener('click', async e => { const i = e.target.dataset.ru
 // ---- settings ----
 function renderSettings(){
   const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout;
+  $('#afterWait').textContent = !S.config.default ? 'then stop: there is no default account to fall back on' : 'then use the default account';
 }
 // The health checks start several programs, so they run only while Settings is shown.
 async function loadChecks(){

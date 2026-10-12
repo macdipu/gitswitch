@@ -134,12 +134,20 @@ git clone git@github.com:owner/repo.git
 
 For each repo, GitSwitch checks in this order and uses the first match:
 
-1. The account saved for the repo (`gitswitch use work`).
+1. The account saved for the repo (`gitswitch use work`). Cloning saves the account you chose for the clone.
 2. An **owner rule**: `owner:my-company` matches every repo of that org, even during `git clone`.
 3. A **folder rule**: `folder:~/work`.
-4. In a terminal, it **asks**. Type `2` for this time only, or `2!` to save it for the repo. A typo asks again. When git runs several connections at once (`fetch --jobs`, submodules), they ask one at a time.
+4. In a terminal, it **asks**. A typo asks again. When git runs several connections at once (`fetch --jobs`, submodules), they ask one at a time.
 5. With no terminal (e.g. an IDE's Source Control panel, a background job, or `GIT_TERMINAL_PROMPT=0`), a **small popup** asks.
-6. Otherwise, the **default account**. Nothing ever hangs waiting for an answer, and ssh's `BatchMode=yes` never asks.
+6. If nobody answers: the **default account**, when you have set one, for that connection only. With no default, git does not connect, so nothing is ever pushed as a guessed account. Nothing hangs waiting for an answer, and ssh's `BatchMode=yes` never asks.
+
+**The default account is optional.** Without one (the normal case), the answer you give the first time is saved for that repo, so each repo asks once. With one, `Enter` picks it, and an answer is saved only if you add `!` (`2!`).
+
+| | Set | Remove |
+| --- | --- | --- |
+| Global default | `gitswitch default work`, or Accounts → "When a repo has no account yet" | `gitswitch default --none` (ask, and remember per repo) |
+| One repo | `gitswitch use work`, or the Repos page | `gitswitch forget` (follow rules and the default again) |
+| One repo, always ask | `gitswitch use --ask`, or "Ask every time" on the Repos page | `gitswitch forget` |
 
 It also sets the repo's `user.name` and `user.email` to the chosen account. A default used because nobody answered is for that connection only: it is not saved, and the repo's commit email is left alone.
 

@@ -63,13 +63,14 @@ func (h *Hook) Run(args []string) int {
 		in.SavedID = h.Repos.SavedAccount(gitDir)
 		in.Worktree = func() string { return h.Repos.Worktree(gitDir) }
 	}
+	everyTime := resolve.AsksEveryTime(in.SavedID) // the repo asks on every connection
 	d := resolve.Decide(c, cands, in)
 	unlock := func() {}
 	if d == nil && (term != nil || c.GUIPrompt && !inv.Batch) {
 		// Ask one at a time: git runs several ssh at once for fetch --jobs
 		// and submodules. The one before us may have saved an answer.
 		unlock = h.Prompter.Lock(c.PromptTimeout + 5)
-		if gitDir != "" {
+		if gitDir != "" && !everyTime {
 			if in.SavedID = h.Repos.SavedAccount(gitDir); in.SavedID != "" {
 				d = resolve.Decide(c, cands, in)
 			}
@@ -80,11 +81,28 @@ func (h *Hook) Run(args []string) int {
 		if label == "" {
 			label = inv.Host
 		}
-		def := resolve.DefaultAmong(c, cands)
+		if everyTime {
+			label += " (this repo asks every time)"
+		}
+		def := resolve.DefaultAmong(c, cands) // nil: no default; the answer is saved
 		if term != nil {
 			d = term.Ask(label, cands, def, c.PromptTimeout)
 		} else if c.GUIPrompt && !inv.Batch {
 			d = h.Prompter.Dialog(label, cands, def, c.PromptTimeout)
+		}
+		switch {
+		case d != nil && everyTime:
+			d.Save = false // the repo asked to be asked every time
+		case d != nil && def == nil:
+			d.Save = true // with no default, an answer becomes the repo's account
+		}
+		if d == nil && def == nil {
+			// No default to fall back on, and guessing could log in (and
+			// later commit) as the wrong account: stop.
+			unlock()
+			fmt.Fprintf(h.Notice, "gitswitch: no account chosen for %s, and you have no default account, so git did not connect.\n"+
+				"gitswitch: inside the repo run `gitswitch use <account>`, set a default with `gitswitch default <account>`, or run the git command in a terminal to be asked.\n", label)
+			return 255
 		}
 		if d == nil {
 			d = &resolve.Decision{Account: def, Reason: resolve.Default}

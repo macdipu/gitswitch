@@ -651,7 +651,7 @@ Everywhere
   1-5 or Tab / ←→   switch page          ↑↓ PgUp PgDn   move
   q or Ctrl+C       quit                  ?              this help
 Accounts
-  a add   e edit   R rename   t test login   k public key   K use another key   d default
+  a add   e edit   R rename   t test login   k public key   K use another key   d default (again: no default, always ask)
   p passphrase to agent   x remove (then y keeps the key files, Shift+D deletes them too)
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
@@ -870,7 +870,12 @@ func (t *tui) keyAccounts(k string) {
 		t.suspend(func() { err = t.app.Keys.AddToAgent(acc.ID) })
 		t.say(err, "Key loaded; IDEs won't need the passphrase.")
 	case "d":
-		if a != nil {
+		// d on the default turns the default off: every new repo asks,
+		// and the answer is saved for it.
+		if a != nil && strings.EqualFold(a.ID, t.cfg.Default) {
+			t.say(t.app.Accounts.SetDefault(""), "Default removed: a new repo asks once and remembers the answer.")
+			t.reload()
+		} else if a != nil {
 			t.say(t.app.Accounts.SetDefault(a.ID), a.ID+" is now the default.")
 			t.reload()
 		}
@@ -938,19 +943,31 @@ func (t *tui) keyRepos(k string) {
 		if r == nil {
 			return
 		}
-		opts := []string{"Ask (follow rules)"}
+		opts := []string{"Follow rules and default", "Ask every time"}
 		for _, a := range t.cfg.Accounts {
 			opts = append(opts, a.ID+"  "+a.Email)
 		}
 		gd := r.GitDir
 		idx := i
-		t.picker = &picker{title: "Account for " + filepath.Base(r.Path), options: opts, sel: indexOfPrefix(opts, r.Saved),
+		sel := 0
+		if strings.EqualFold(r.Saved, account.AskEveryTime) {
+			sel = 1
+		}
+		for j, a := range t.cfg.Accounts {
+			if strings.EqualFold(a.ID, r.Saved) {
+				sel = j + 2
+			}
+		}
+		t.picker = &picker{title: "Account for " + filepath.Base(r.Path), options: opts, sel: sel,
 			pick: func(p int) error {
 				if p == 0 {
 					_, _ = t.app.Accounts.SetRepoAccount(gd, "")
-					t.say(nil, "This repo will follow rules or ask.")
+					t.say(nil, "This repo follows your rules and default, or asks once.")
+				} else if p == 1 {
+					_, _ = t.app.Accounts.SetRepoAccount(gd, account.AskEveryTime)
+					t.say(nil, "This repo asks on every pull and push.")
 				} else {
-					a := t.cfg.Accounts[p-1]
+					a := t.cfg.Accounts[p-2]
 					removed, err := t.app.Accounts.SetRepoAccount(gd, a.ID)
 					if err != nil {
 						return err
@@ -1047,18 +1064,6 @@ func (t *tui) keyRepos(k string) {
 				return nil
 			}}}
 	}
-}
-
-func indexOfPrefix(opts []string, id string) int {
-	if id == "" {
-		return 0
-	}
-	for i, o := range opts {
-		if strings.HasPrefix(o, id+"  ") {
-			return i
-		}
-	}
-	return 0
 }
 
 // ---------------- history ----------------
@@ -1599,6 +1604,9 @@ func (t *tui) drawAccounts() ([]string, int) {
 	if len(c.Accounts) == 0 {
 		return append(l, " No accounts yet. Press a to add your first one."), -1
 	}
+	if c.Default == "" && len(c.Accounts) > 1 {
+		l = append(l, "\x00"+cDim+" No default account: a new repo asks once and remembers the answer. d on an account makes it the default."+cReset, "\x00")
+	}
 	// Columns are as wide as their longest value, and every row keeps room
 	// for " (default)", so the default account does not push its row right.
 	wID, wEmail, wHost := 14, 30, 14
@@ -1640,7 +1648,7 @@ func (t *tui) drawRepos() ([]string, int) {
 	if len(t.repos) == 0 {
 		return append(l, " No repos found. Press f to add the folder where you keep your projects, or a to add one repo."), -1
 	}
-	why := map[string]string{"saved": "saved", "owner-rule": "owner rule", "folder-rule": "folder rule", "only-account": "only account", "asks": "asks on next push", "": "no account for this host"}
+	why := map[string]string{"saved": "saved", "owner-rule": "owner rule", "folder-rule": "folder rule", "only-account": "only account", "asks": "asks on next push", "asks-every-time": "asks on every push", "": "no account for this host"}
 	for i, r := range t.repos {
 		on := i == t.sel[tabRepos]
 		star := "  "
