@@ -19,6 +19,7 @@
     --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59; }
 }
 *{box-sizing:border-box}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 [hidden]{display:none !important}
 body{margin:0;min-height:100vh;display:grid;grid-template-columns:232px 1fr}
 button,input,select{font:inherit;color:inherit}
@@ -42,6 +43,7 @@ nav button:focus-visible{outline:2px solid var(--focus)}
 .side-foot{margin-top:auto;font-size:12px;color:var(--muted);padding:0 6px}
 
 main{padding:28px 36px 60px;max-width:1080px;width:100%}
+h1:focus{outline:none}
 h1{font-size:24px;font-weight:650;margin:0 0 4px;letter-spacing:-.01em}
 .lead{color:var(--muted);margin:0 0 22px;max-width:68ch}
 section[hidden]{display:none}
@@ -240,7 +242,7 @@ dialog .row-actions{justify-content:flex-end}
     <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 4v18M19 4v6c0 4-12 4-12 9" fill="none" stroke="var(--a0)" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="4.5" r="2.6" fill="var(--a1)"/><circle cx="7" cy="21.5" r="2.6" fill="var(--a0)"/></svg>
     GitSwitch
   </div>
-  <nav aria-label="Main">
+  <nav aria-label="Pages">
     <button data-tab="accounts" aria-current="page">Accounts</button>
     <button data-tab="repos">Repos</button>
     <button data-tab="history">History</button>
@@ -263,7 +265,7 @@ dialog .row-actions{justify-content:flex-end}
   </section>
 
   <section id="tab-accounts">
-    <h1>Accounts</h1>
+    <h1 tabindex="-1">Accounts</h1>
     <p class="lead">Each account has its own SSH key and commit email. GitSwitch picks one for every clone, pull and push.</p>
     <div class="row-actions" style="margin-bottom:16px"><button class="btn primary" id="addAcctBtn">Add account</button></div>
     <form class="card" id="acctForm" hidden>
@@ -284,7 +286,7 @@ dialog .row-actions{justify-content:flex-end}
   </section>
 
   <section id="tab-repos" hidden>
-    <h1>Repos</h1>
+    <h1 tabindex="-1">Repos</h1>
     <p class="lead">Choose an account for each repo. Repos set to "Ask" follow your rules, then ask on the next pull or push. Adding or removing a repo here only changes GitSwitch's list, never the repo.</p>
     <form class="card" id="folderForm" style="grid-template-columns:1fr auto auto;align-items:end">
       <label>Folder with your projects<input name="path" placeholder="~/work or D:\Projects" required></label>
@@ -306,7 +308,7 @@ dialog .row-actions{justify-content:flex-end}
   </section>
 
   <section id="tab-history" hidden>
-    <h1>History</h1>
+    <h1 tabindex="-1">History</h1>
     <p class="lead">Every commit with the account that made it. Click a commit to see what you can do with it.</p>
     <div class="toolbar">
       <select id="histRepo" aria-label="Repo"></select>
@@ -365,7 +367,7 @@ dialog .row-actions{justify-content:flex-end}
   </section>
 
   <section id="tab-rules" hidden>
-    <h1>Rules</h1>
+    <h1 tabindex="-1">Rules</h1>
     <p class="lead">Rules pick the account automatically, so most repos never ask. A repo's own saved account always wins over rules.</p>
     <form class="card" id="ruleForm">
       <label>When<select name="kind"><option value="owner">the GitHub owner or org is</option><option value="folder">the repo is inside the folder</option></select></label>
@@ -377,7 +379,7 @@ dialog .row-actions{justify-content:flex-end}
   </section>
 
   <section id="tab-settings" hidden>
-    <h1>Settings</h1>
+    <h1 tabindex="-1">Settings</h1>
     <p class="lead">GitSwitch has no background process. Git starts it for a moment on each network command, and this window runs only while it is open.</p>
     <form class="card" id="setForm">
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
@@ -455,6 +457,9 @@ function show(tab){
   if (tab === 'repos') loadRepos();
   if (tab === 'history') fillRepoSelect();
   if (tab === 'settings') loadChecks();
+  // Clicked in the sidebar: move focus to the new page, so keyboard and
+  // screen reader users continue there.
+  if (document.activeElement?.closest('nav')) $('#tab-' + tab + ' h1')?.focus();
 }
 
 async function refresh(){
@@ -626,11 +631,11 @@ function renderAccounts(){
         <button class="btn" data-act="test">Test</button>
         <button class="btn" data-act="key">Public key</button>
         <details class="more"><summary class="btn" aria-label="More actions for ${esc(a.id)}">More ▾</summary>
-          <div class="menu" role="menu">
-            <button role="menuitem" data-act="edit">Edit…</button>
-            <button role="menuitem" data-act="rename">Rename…</button>
-            ${a.id !== c.default ? '<button role="menuitem" data-act="default">Make default</button>' : ''}
-            <hr><button role="menuitem" class="danger" data-act="remove">Remove…</button>
+          <div class="menu">
+            <button data-act="edit">Edit…</button>
+            <button data-act="rename">Rename…</button>
+            ${a.id !== c.default ? '<button data-act="default">Make default</button>' : ''}
+            <hr><button class="danger" data-act="remove">Remove…</button>
           </div>
         </details>
       </div>
@@ -678,6 +683,14 @@ $('#accounts').addEventListener('click', async e => {
     refresh();
   }
 });
+
+// Esc or a click elsewhere closes an open More menu; Esc puts focus back
+// on its button.
+document.addEventListener('keydown', e => {
+  const m = e.key === 'Escape' && document.querySelector('details.more[open]');
+  if (m){ e.stopPropagation(); m.removeAttribute('open'); m.querySelector('summary').focus(); }
+}, true);
+document.addEventListener('click', e => document.querySelectorAll('details.more[open]').forEach(m => { if (!m.contains(e.target)) m.removeAttribute('open'); }));
 
 let formMode = 'new';
 async function loadKeyList(){
@@ -1032,7 +1045,7 @@ function renderHistory(){
     const svg = `<svg width="${W}" height="${RH}" aria-hidden="true"><g stroke="var(--muted)" stroke-opacity=".55" stroke-width="2" fill="none">${lines}</g>
       <circle cx="${x(c.col)}" cy="${RH/2}" r="5.5" fill="${c.flagged ? 'var(--bad)' : col}" ${c.unpushed ? 'stroke="var(--panel)" stroke-width="2"' : ''}/>
       ${c.unpushed ? `<circle cx="${x(c.col)}" cy="${RH/2}" r="8" fill="none" stroke="${c.flagged ? 'var(--bad)' : col}" stroke-width="1.2" stroke-dasharray="2 2"/>` : ''}</svg>`;
-    const chip = `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>`;
+    const chip = `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}${c.flagged ? '<span class="sr-only"> (wrong account for this repo)</span>' : ''}</span>`;
     const refs = c.refs ? `<span class="refs">${esc(c.refs)}</span>` : '';
     const sel = picked.has(c.hash);
     return `<div class="hrow${c.flagged ? ' flag' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
@@ -1091,6 +1104,15 @@ function renderDetails(){
   d.hidden = false;
   showDetail($('#histRepo').value, c.hash);
 }
+// reflow joins the lines of each paragraph of a commit message: messages
+// are wrapped at ~72 columns, which wraps again, raggedly, in the narrow
+// panel. List items, indented lines and trailers (Key: value) keep their
+// own lines.
+function reflow(text){
+  const own = l => /^\s*([-*•]|\d+[.)])\s|^\s{2,}|^[\w-]+: \S/.test(l);
+  return text.split(/\n\s*\n/).map(p => p.split('\n').reduce((out, l) =>
+    out && !own(l) && !own(out.split('\n').pop()) ? out + ' ' + l.trim() : (out ? out + '\n' : '') + l, '')).join('\n\n');
+}
 // The rest of the message and the changed files, read when a commit is
 // selected and kept for the session (a commit never changes).
 const detailCache = new Map();
@@ -1103,7 +1125,7 @@ async function showDetail(gd, hash){
     catch (e) { if (el()) el().innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
   }
   const box = el(); if (!box) return; // another commit was picked meanwhile
-  const body = d.message.split('\n').slice(1).join('\n').trim();
+  const body = reflow(d.message.split('\n').slice(1).join('\n').trim());
   const n = d.files.length + d.more;
   box.innerHTML = (body ? `<pre class="cmsg">${esc(body)}</pre>` : '')
     + `<details class="cfiles"${n <= 12 ? ' open' : ''}><summary>${n} file${n === 1 ? '' : 's'} changed <span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span></summary>
@@ -1183,13 +1205,13 @@ async function loadChecks(){
   if (!$('#checks').children.length) $('#checks').innerHTML = '<p class="hint">Checking…</p>';
   const cs = await act(() => api('GET', '/api/doctor'));
   if (!cs) return;
-  const row = c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
+  const row = c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}" aria-hidden="true"></span><span class="sr-only">${c.ok ? 'OK:' : 'Problem:'}</span>
     <div><div>${esc(c.title)}</div><div class="hint">${esc(c.detail)}</div></div>${c.canFix ? `<button class="btn" data-fix="${esc(c.id)}">Fix</button>` : ''}</div>`;
   const bad = cs.filter(c => !c.ok), good = cs.filter(c => c.ok);
   const open = $('#checks details')?.open ? ' open' : '';
   $('#checks').innerHTML = (bad.length
       ? bad.map(row).join('')
-      : `<div class="checks-sum"><span class="dot" style="background:var(--ok)"></span><strong>All ${cs.length} checks passed</strong></div>`)
+      : `<div class="checks-sum"><span class="dot" style="background:var(--ok)" aria-hidden="true"></span><strong>All ${cs.length} checks passed</strong></div>`)
     + (good.length ? `<details class="checks-more"${open}><summary>${bad.length ? `Show the ${good.length} passing check${good.length === 1 ? '' : 's'}` : 'Show details'}</summary>${good.map(row).join('')}</details>` : '');
 }
 // Settings save on change: there is no Save button to forget.
