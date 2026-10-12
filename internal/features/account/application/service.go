@@ -112,7 +112,8 @@ func (s *Service) Rename(oldID, newID string) (int, error) {
 }
 
 // SetDefault sets the account used when nothing else decides. "" removes
-// the default: repos with nothing saved ask, and remember the answer.
+// the default: repos with nothing saved ask; an answer is saved for the
+// repo only when you tick it (2! or "always").
 func (s *Service) SetDefault(id string) error { return s.Store.SetDefault(id) }
 
 // GenerateKey creates a new key for an existing account.
@@ -172,7 +173,7 @@ func (s *Service) AddScanFolder(p string) error       { return s.Store.AddScanFo
 func (s *Service) RemoveScanFolder(p string) error    { return s.Store.RemoveScanFolder(p) }
 
 // SetRepoAccount saves an account for a repo. "" removes it (the repo
-// follows rules and the default again, or asks once), and
+// follows rules and the default again, or asks), and
 // account.AskEveryTime makes the repo ask on every connection. It returns
 // a removed repo-level core.sshCommand, if there was one.
 func (s *Service) SetRepoAccount(gitDir, id string) (string, error) {

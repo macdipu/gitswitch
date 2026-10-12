@@ -134,18 +134,18 @@ git clone git@github.com:owner/repo.git
 
 For each repo, GitSwitch checks in this order and uses the first match:
 
-1. The account saved for the repo (`gitswitch use work`). Cloning saves the account you chose for the clone.
+1. The account saved for the repo (`gitswitch use work`, or ticked when asked). `gitswitch repo clone --account` saves it for the new repo.
 2. An **owner rule**: `owner:my-company` matches every repo of that org, even during `git clone`.
 3. A **folder rule**: `folder:~/work`.
 4. In a terminal, it **asks**. A typo asks again. When git runs several connections at once (`fetch --jobs`, submodules), they ask one at a time.
 5. With no terminal (e.g. an IDE's Source Control panel, a background job, or `GIT_TERMINAL_PROMPT=0`), a **small popup** asks.
 6. If nobody answers: the **default account**, when you have set one, for that connection only. With no default, git does not connect, so nothing is ever pushed as a guessed account. Nothing hangs waiting for an answer, and ssh's `BatchMode=yes` never asks.
 
-**The default account is optional.** Without one (the normal case), the answer you give the first time is saved for that repo, so each repo asks once. With one, `Enter` picks it, and an answer is saved only if you add `!` (`2!`).
+**The default account is optional.** An answer is used for that connection only; it is saved for the repo only when you tick **always use it for this repo** in the popup, or add `!` in a terminal (`2!`). Without a default (the normal case), Enter alone is not an answer. With one, Enter picks it.
 
 | | Set | Remove |
 | --- | --- | --- |
-| Global default | `gitswitch default work`, or Accounts → "When a repo has no account yet" | `gitswitch default --none` (ask, and remember per repo) |
+| Global default | `gitswitch default work`, or Accounts → "When a repo has no account yet" | `gitswitch default --none` (repos with nothing saved ask) |
 | One repo | `gitswitch use work`, or the Repos page | `gitswitch forget` (follow rules and the default again) |
 | One repo, always ask | `gitswitch use --ask`, or "Ask every time" on the Repos page | `gitswitch forget` |
 

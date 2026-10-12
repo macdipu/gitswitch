@@ -544,7 +544,7 @@ function renderWizard(){
       <p class="lead">From now on, clone and push with normal addresses like <code>git@github.com:owner/repo.git</code>. GitSwitch picks the account.</p>
       <div class="card"><ol>
         <li>Accounts: ${c.accounts.map(a => `<strong>${esc(a.id)}</strong> (${esc(a.email)})`).join(', ') || 'none yet'}.</li>
-        ${c.accounts.length > 1 ? (!c.default ? `<li>When a repo has no account yet, git asks you which one to use the first time and remembers your answer for that repo.</li>`
+        ${c.accounts.length > 1 ? (!c.default ? `<li>When a repo has no account yet, git asks you which one to use. Tick “always” (or add <strong>!</strong> in a terminal) to save it for that repo.</li>`
           : `<li>When a repo has no account yet, git asks you which one to use the first time. Add <strong>!</strong> to your answer to remember it. To always ask and remember, choose “Ask me” on the Accounts page.</li>`)
           : `<li>Every repo on ${esc(c.accounts[0]?.host || 'the host')} uses <strong>${esc(d || '')}</strong>. Add another account when you need one.</li>`}
         <li>Rules choose accounts automatically by GitHub owner or folder, so most repos never ask. Set them on the Rules page.</li></ol></div>
@@ -624,8 +624,8 @@ function renderAccounts(){
   if (!S.accounts?.length){ el.innerHTML = '<div class="empty">No accounts yet. Add your work account first, then your personal one.</div>'; return; }
   // What happens for a repo with no saved account and no rule.
   const defRow = S.accounts.length < 2 ? '' : `<div class="defrow"><label for="defSel">When a repo has no account yet</label>
-      <select id="defSel"><option value="">Ask me, and remember the answer for that repo</option>${S.accounts.map(a => `<option value="${esc(a.id)}"${a.id === c.default ? ' selected' : ''}>Ask, and use ${esc(a.id)} if nobody answers</option>`).join('')}</select>
-      <span class="hint">${!c.default ? 'Each new repo asks once; with no answer git does not connect, so nothing is pushed as the wrong account.' : 'Answers are used once unless you add ! (terminal) or tick “always”.'}</span></div>`;
+      <select id="defSel"><option value="">Ask me (no default)</option>${S.accounts.map(a => `<option value="${esc(a.id)}"${a.id === c.default ? ' selected' : ''}>Ask, and use ${esc(a.id)} if nobody answers</option>`).join('')}</select>
+      <span class="hint">${!c.default ? 'Tick “always” when asked (or add ! in a terminal) to save the account for that repo. With no answer git does not connect, so nothing is pushed as the wrong account.' : 'Answers are used once unless you add ! (terminal) or tick “always”.'}</span></div>`;
   el.innerHTML = defRow + S.accounts.map(a => `
     <div class="acct" data-id="${esc(a.id)}">
       <div class="stripe" style="background:${colorOf(a.id)}"></div>
@@ -653,7 +653,7 @@ function renderAccounts(){
 $('#accounts').addEventListener('change', async e => {
   if (e.target.id !== 'defSel') return;
   const id = e.target.value;
-  await act(() => api('POST', '/api/default', {id}), id ? id + ' is now the default' : 'No default: each new repo asks once and remembers the answer');
+  await act(() => api('POST', '/api/default', {id}), id ? id + ' is now the default' : 'No default: repos with nothing saved will ask');
   refresh();
 });
 $('#accounts').addEventListener('click', async e => {
@@ -684,7 +684,7 @@ $('#accounts').addEventListener('click', async e => {
   } else if (b.dataset.act === 'edit'){
     openForm(a);
   } else if (b.dataset.act === 'nodefault'){
-    await act(() => api('POST', '/api/default', {id:''}), 'No default: a new repo asks once and remembers the answer'); refresh();
+    await act(() => api('POST', '/api/default', {id:''}), 'No default: repos with nothing saved will ask'); refresh();
   } else if (b.dataset.act === 'default'){
     await act(() => api('POST', '/api/default', {id}), id + ' is now the default'); refresh();
   } else if (b.dataset.act === 'rename'){
@@ -768,7 +768,7 @@ const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<but
 function renderRepos(){
   if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found. Add a projects folder, or an existing repo.</div>'; return; }
   const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', default:'default',
-    asks: S.config.default ? 'asks on next push' : 'asks on next push, then remembers', 'asks-every-time':'asks on every push', '':'no matching account'};
+    asks: 'asks on next push', 'asks-every-time':'asks on every push', '':'no matching account'};
   $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
     repos.map((r, i) => r.missing ? `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="Pin to the top">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.path)}</div></td>

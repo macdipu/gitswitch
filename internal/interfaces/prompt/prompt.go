@@ -31,8 +31,7 @@ func Terminal(t *terminal.Terminal, label string, cands []account.Account, def *
 // ask asks until the answer names an account or the time runs out. A typo
 // is asked again rather than guessed: guessing would push as the wrong
 // account. With no default account (def nil) Enter alone is not an answer,
-// the answer is marked to be saved (the hook decides), and no answer
-// returns nil.
+// and no answer returns nil. Only an answer ending in ! is saved.
 func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *account.Account, timeout time.Duration) *resolve.Decision {
 	fmt.Fprintf(w, "\nGit account for %s?\n", label)
 	if def != nil {
@@ -41,11 +40,7 @@ func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *
 	for i, a := range cands {
 		fmt.Fprintf(w, "  %d  %-16s %s\n", i+1, a.ID, a.Email)
 	}
-	if def != nil {
-		fmt.Fprintf(w, "Type a number for this time, or add ! to always use it for this repo (e.g. 2!): ")
-	} else {
-		fmt.Fprintf(w, "Type a number or an account name: ")
-	}
+	fmt.Fprintf(w, "Type a number for this time, or add ! to always use it for this repo (e.g. 2!): ")
 	retry := func(s string) {
 		if def != nil {
 			fmt.Fprintf(w, "%q is not a choice. Press Enter for %s, or type 1-%d or an account name: ", strings.TrimSpace(s), def.ID, len(cands))
@@ -86,9 +81,6 @@ func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *
 				return none("no answer")
 			}
 			if d := parseAnswer(s, cands, def); d != nil {
-				if def == nil {
-					d.Save = true
-				}
 				return d
 			}
 			retry(s)

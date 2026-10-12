@@ -48,7 +48,7 @@ func (x *CLI) cmdAccount(args []string) error {
 			x.sayf("%s %-14s %-28s %-14s %s\n", mark, a.ID, a.Email, a.Host, a.Key)
 		}
 		if c.Default == "" {
-			x.say("(no default account: new repos ask once, and the answer is saved)")
+			x.say("(no default account: repos with nothing saved ask)")
 		} else {
 			x.say("(* = default)")
 		}
@@ -363,7 +363,7 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 	}
 	x.say("Hook:    ", orNone(x.app.Setup.Hook()))
 	if c.Default == "" {
-		x.say("Default:  none (new repos ask once, and the answer is saved)")
+		x.say("Default:  none (repos with nothing saved ask)")
 	} else {
 		x.say("Default: ", c.Default)
 	}

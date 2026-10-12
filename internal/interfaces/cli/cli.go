@@ -38,7 +38,7 @@ Accounts
   gitswitch key agent <id>          load the key into the OS agent / Keychain once
   gitswitch test [<id>]             check each key logs in, and as whom
   gitswitch default <id>            account used when nothing else decides
-  gitswitch default --none          remove the default: new repos ask once and remember the answer
+  gitswitch default --none          remove the default: repos with nothing saved always ask
 
 Repos and rules
   gitswitch use <id> [--once]       set this repo's account (and its commit name/email)
@@ -186,7 +186,7 @@ func (x *CLI) dispatch(args []string) error {
 			if err := x.app.Accounts.SetDefault(""); err != nil {
 				return err
 			}
-			x.say("No default account: a repo with no saved account or rule asks once, and your answer is saved for that repo.")
+			x.say("No default account: a repo with no saved account or rule asks every time. Answer 2! (or tick \"always\") to save it for that repo.")
 			return nil
 		}
 		if err := x.app.Accounts.SetDefault(rest[0]); err != nil {

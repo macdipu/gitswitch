@@ -871,9 +871,9 @@ func (t *tui) keyAccounts(k string) {
 		t.say(err, "Key loaded; IDEs won't need the passphrase.")
 	case "d":
 		// d on the default turns the default off: every new repo asks,
-		// and the answer is saved for it.
+		// and an answer is saved only when ticked (2!).
 		if a != nil && strings.EqualFold(a.ID, t.cfg.Default) {
-			t.say(t.app.Accounts.SetDefault(""), "Default removed: a new repo asks once and remembers the answer.")
+			t.say(t.app.Accounts.SetDefault(""), "Default removed: repos with nothing saved ask; answer 2! to save it for the repo.")
 			t.reload()
 		} else if a != nil {
 			t.say(t.app.Accounts.SetDefault(a.ID), a.ID+" is now the default.")
@@ -962,7 +962,7 @@ func (t *tui) keyRepos(k string) {
 			pick: func(p int) error {
 				if p == 0 {
 					_, _ = t.app.Accounts.SetRepoAccount(gd, "")
-					t.say(nil, "This repo follows your rules and default, or asks once.")
+					t.say(nil, "This repo follows your rules and default, or asks.")
 				} else if p == 1 {
 					_, _ = t.app.Accounts.SetRepoAccount(gd, account.AskEveryTime)
 					t.say(nil, "This repo asks on every pull and push.")
@@ -1605,7 +1605,7 @@ func (t *tui) drawAccounts() ([]string, int) {
 		return append(l, " No accounts yet. Press a to add your first one."), -1
 	}
 	if c.Default == "" && len(c.Accounts) > 1 {
-		l = append(l, "\x00"+cDim+" No default account: a new repo asks once and remembers the answer. d on an account makes it the default."+cReset, "\x00")
+		l = append(l, "\x00"+cDim+" No default account: repos with nothing saved ask; 2! saves the answer for the repo. d makes an account the default."+cReset, "\x00")
 	}
 	// Columns are as wide as their longest value, and every row keeps room
 	// for " (default)", so the default account does not push its row right.

@@ -282,16 +282,16 @@ func TestSSHArgsWithoutAKey(t *testing.T) {
 	}
 }
 
-// With no default account, an answer is saved for the repo even without
-// "!", and with nobody to answer git does not connect at all.
+// With no default account, an answer is used (and saved only when the
+// user ticked it), and with nobody to answer git does not connect at all.
 func TestHookWithNoDefault(t *testing.T) {
 	h, st, id, r, tr, p, _ := newHook()
 	st.c.Default = ""
 	p.term = true
 	p.answer = &resolve.Decision{Account: &work, Reason: resolve.Prompt}
 	h.Run(gitArg)
-	if r.saved["/src/api/.git"] != "work" || len(id.applied) != 1 || len(tr.ran) != 1 {
-		t.Fatalf("answer not saved: saved=%v applied=%v ran=%v", r.saved, id.applied, tr.ran)
+	if len(r.saved) != 0 || len(id.applied) != 1 || len(tr.ran) != 1 || !strings.HasPrefix(tr.ran[0], "-i /keys/work ") {
+		t.Fatalf("an unticked answer is used, not saved: saved=%v applied=%v ran=%v", r.saved, id.applied, tr.ran)
 	}
 
 	h, st, id, r, tr, p, notice := newHook()

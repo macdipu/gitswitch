@@ -106,7 +106,7 @@ func (x *CLI) wizard() error {
 	if len(c.Accounts) > 1 {
 		x.say("\nAccounts:", strings.Join(c.SortedIDs(), ", "))
 		x.say("A default account is used when a repo has no saved account or rule and nobody can be asked.")
-		x.say("Type none to have no default: every new repo asks, and your answer is saved for it.")
+		x.say("Type none to have no default: repos with nothing saved ask each time (answer 2! to save it for the repo).")
 		if d := ask("Default account", c.Default); d != "" {
 			if strings.EqualFold(d, "none") {
 				d = ""

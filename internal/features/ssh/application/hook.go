@@ -84,17 +84,14 @@ func (h *Hook) Run(args []string) int {
 		if everyTime {
 			label += " (this repo asks every time)"
 		}
-		def := resolve.DefaultAmong(c, cands) // nil: no default; the answer is saved
+		def := resolve.DefaultAmong(c, cands) // nil: no default to fall back on
 		if term != nil {
 			d = term.Ask(label, cands, def, c.PromptTimeout)
 		} else if c.GUIPrompt && !inv.Batch {
 			d = h.Prompter.Dialog(label, cands, def, c.PromptTimeout)
 		}
-		switch {
-		case d != nil && everyTime:
+		if d != nil && everyTime {
 			d.Save = false // the repo asked to be asked every time
-		case d != nil && def == nil:
-			d.Save = true // with no default, an answer becomes the repo's account
 		}
 		if d == nil && def == nil {
 			// No default to fall back on, and guessing could log in (and
