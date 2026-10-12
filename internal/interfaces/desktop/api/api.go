@@ -4,9 +4,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -56,6 +58,10 @@ func Handler(a *bootstrap.App, pickFolder func(title string) (string, error)) ht
 			http.NotFound(w, r)
 			return
 		}
+		if err := checkJSON(w, r); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
 		defer func() {
 			if p := recover(); p != nil {
 				writeJSON(w, nil, fmt.Errorf("bad request: %v", p))
@@ -100,9 +106,20 @@ func (s *server) routes() map[string]handler {
 			b := body(r)
 			return nil, a.Accounts.AddRule(account.Rule{Kind: str(b, "kind"), Pattern: str(b, "pattern"), Account: str(b, "account")})
 		},
+		// The rule is named by its values, not its place in the list, so a
+		// page showing an older list cannot remove a different rule.
 		"POST /api/rule/remove": func(r *http.Request) (any, error) {
-			i, _ := body(r)["index"].(float64)
-			return nil, a.Accounts.RemoveRuleAt(int(i))
+			b := body(r)
+			rule := account.Rule{Kind: str(b, "kind"), Pattern: str(b, "pattern"), Account: str(b, "account")}
+			if rule.Kind == "" || rule.Pattern == "" || rule.Account == "" {
+				return nil, errors.New("say which rule to remove: kind, pattern and account")
+			}
+			for _, x := range a.Accounts.Config().Rules {
+				if x == rule {
+					return nil, a.Accounts.RemoveRule(rule)
+				}
+			}
+			return nil, errors.New("that rule is no longer there; the list has been reloaded")
 		},
 		"POST /api/settings":      s.settings,
 		"POST /api/folder":        func(r *http.Request) (any, error) { return nil, a.Accounts.AddScanFolder(str(body(r), "path")) },
@@ -221,6 +238,9 @@ func (s *server) routes() map[string]handler {
 			}
 			return map[string]string{"url": u}, process.OpenBrowser(u)
 		}),
+		// The health checks start several programs, so the page asks for
+		// them only on the Settings page.
+		"GET /api/doctor":      func(r *http.Request) (any, error) { return a.Doctor.Run(false), nil },
 		"POST /api/doctor/fix": func(r *http.Request) (any, error) { return nil, a.Doctor.Fix(str(body(r), "id")) },
 		"POST /api/install":    func(r *http.Request) (any, error) { return nil, a.Setup.Install(nil) },
 	}
@@ -244,7 +264,6 @@ func (s *server) state(r *http.Request) (any, error) {
 		"config":    c,
 		"accounts":  accts,
 		"installed": s.app.Setup.Installed(),
-		"doctor":    s.app.Doctor.Run(false),
 		"home":      filesystem.HomeDir(),
 	}, nil
 }
@@ -270,9 +289,9 @@ func (s *server) saveAccount(r *http.Request) (any, error) {
 func (s *server) startClone(r *http.Request) (any, error) {
 	b := body(r)
 	url, account := str(b, "url"), str(b, "account")
-	dir := str(b, "parent")
+	dir := filesystem.ExpandHome(str(b, "parent"))
 	if name := str(b, "name"); dir != "" && name != "" {
-		dir = filepath.Join(filesystem.ExpandHome(dir), name)
+		dir = filepath.Join(dir, name)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -346,10 +365,37 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": v})
 }
 
+// checkJSON rejects a request body that is not a JSON object, before any
+// handler acts on it; an empty body counts as {}. The body is put back for
+// body() to read.
+func checkJSON(w http.ResponseWriter, r *http.Request) error {
+	if r.Body == nil || r.Method == http.MethodGet {
+		return nil
+	}
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		return errors.New("the request is too large")
+	}
+	r.Body = io.NopCloser(bytes.NewReader(b))
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("the request is not valid JSON: %v", err)
+	}
+	return nil
+}
+
+// body is the request's JSON object; checkJSON has already turned away
+// anything else.
 func body(r *http.Request) map[string]any {
 	m := map[string]any{}
 	if r.Body != nil {
-		_ = json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&m)
+		_ = json.NewDecoder(r.Body).Decode(&m)
+	}
+	if m == nil { // the body was null
+		m = map[string]any{}
 	}
 	return m
 }

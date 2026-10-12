@@ -379,6 +379,7 @@ function show(tab){
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
   if (tab === 'repos') loadRepos();
   if (tab === 'history') fillRepoSelect();
+  if (tab === 'settings') loadChecks();
 }
 
 async function refresh(){
@@ -485,7 +486,7 @@ $('#acctForm').onsubmit = async e => {
   f.hidden = true; await refresh();
   if (gen) document.querySelector(`.acct[data-id="${CSS.escape(r.id)}"] [data-act=key]`)?.click();
 };
-$('#installBtn').onclick = async () => { await act(() => api('POST','/api/install'), 'Installed. Every terminal and IDE now uses GitSwitch.'); refresh(); };
+$('#installBtn').onclick = async () => { await act(() => api('POST','/api/install'), 'Installed. Every terminal and IDE now uses GitSwitch.'); refresh(); if (!$('#tab-settings').hidden) loadChecks(); };
 
 // ---- repos ----
 async function loadRepos(){
@@ -518,7 +519,7 @@ function renderRepos(){
       <td>${repoActions(r, i)}</td></tr>` : `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="${r.pinned ? 'Unpin' : 'Pin to the top'}">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono" title="${esc(r.path)}">${esc(r.branch || 'detached HEAD')} · ${esc(r.remote || 'no remote')}</div></td>
       <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${acctOptions(r.saved, r.saved ? 'Ask (follow rules)' : 'Ask (follow rules)')}</select></td>
-      <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && !r.saved ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${why[r.reason] || r.reason}` : (why[r.reason] ?? esc(r.reason))}</td>
+      <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && !r.saved ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${esc(why[r.reason] || r.reason)}` : (why[r.reason] ?? esc(r.reason))}</td>
       <td class="${r.emailBad ? 'status-bad' : 'hint'}">${esc(r.email || 'not set yet')}${r.emailBad ? ' (wrong account)' : ''}</td>
       <td>${repoActions(r, i)}</td></tr>`).join('') + '</tbody></table>';
 }
@@ -573,7 +574,9 @@ $('#addRepo').onclick = async () => {
   if (r){ toast('Added ' + r.path); await refresh(); loadRepos(); }
 };
 $('#browseFolder').onclick = async () => { const p = await pickFolder('Choose your projects folder'); if (p) $('#folderForm').path.value = p; };
-$('#folderForm').onsubmit = async e => { e.preventDefault(); await act(() => api('POST','/api/folder',{path:e.target.path.value}), 'Folder added'); e.target.reset(); await refresh(); loadRepos(); };
+$('#folderForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
+  if (await act(() => api('POST','/api/folder',{path:f.path.value}), 'Folder added') === undefined) return; // keep the typed path to correct it
+  f.reset(); await refresh(); loadRepos(); };
 $('#folders').addEventListener('click', async e => { const p = e.target.dataset.rmfolder; if (!p) return; await act(() => api('POST','/api/folder/remove',{path:p})); await refresh(); loadRepos(); });
 
 // ---- history ----
@@ -590,7 +593,10 @@ async function fillRepoSelect(){
   const fa = $('#filterPanel').account;
   fa.innerHTML = '<option value="">Any account</option>' + S.config.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
   fa.value = F.account;
-  if (repos.length && !$('#history').dataset.loaded) loadHistory();
+  const gone = cur && $('#histRepo').value !== cur; // the shown repo was removed or moved
+  if (gone){ picked.clear(); H = null; R = null; delete $('#history').dataset.loaded; }
+  if (!ok.length){ if (gone){ $('#history').innerHTML = ''; $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = ''; renderToolbar(); renderDetails(); } return; }
+  if (gone || !$('#history').dataset.loaded) loadHistory();
 }
 $('#histRepo').onchange = () => { picked.clear(); H = null; loadHistory(); };
 $('#histReload').onclick = () => loadHistory();
@@ -907,18 +913,26 @@ function renderRules(){
 }
 $('#ruleForm').kind.onchange = e => { const f = e.target.value === 'folder'; $('#patLabel').firstChild.textContent = f ? 'Folder' : 'Owner or org'; $('#ruleForm').pattern.placeholder = f ? '~/work' : 'acme-corp'; };
 $('#ruleForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
-  if (await act(() => api('POST','/api/rule',{kind:f.kind.value, pattern:f.pattern.value, account:f.account.value}), 'Rule added') !== undefined){ f.pattern.value=''; } refresh(); };
-$('#rules').addEventListener('click', async e => { const i = e.target.dataset.rule; if (i === undefined) return; await act(() => api('POST','/api/rule/remove',{index:+i}), 'Rule removed'); refresh(); });
+  if (await act(() => api('POST','/api/rule',{kind:f.kind.value, pattern:f.pattern.value, account:f.account.value}), 'Rule added') !== undefined){ f.pattern.value=''; refresh(); } };
+// A rule is removed by its values, so a list that changed meanwhile cannot remove another one.
+$('#rules').addEventListener('click', async e => { const i = e.target.dataset.rule; if (i === undefined) return; const r = S.config.rules[+i]; if (!r) return;
+  await act(() => api('POST','/api/rule/remove',{kind:r.kind, pattern:r.pattern, account:r.account}), 'Rule removed'); refresh(); });
 
 // ---- settings ----
 function renderSettings(){
   const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout;
-  $('#checks').innerHTML = S.doctor.map(c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
+}
+// The health checks start several programs, so they run only while Settings is shown.
+async function loadChecks(){
+  if (!$('#checks').children.length) $('#checks').innerHTML = '<p class="hint">Checking…</p>';
+  const cs = await act(() => api('GET', '/api/doctor'));
+  if (!cs) return;
+  $('#checks').innerHTML = cs.map(c => `<div class="check"><span class="dot" style="background:${c.ok ? 'var(--ok)' : 'var(--bad)'}"></span>
     <div><div>${esc(c.title)}</div><div class="hint">${esc(c.detail)}</div></div>${c.canFix ? `<button class="btn" data-fix="${esc(c.id)}">Fix</button>` : ''}</div>`).join('');
 }
 $('#setForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
   await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:+f.promptTimeout.value}), 'Settings saved'); refresh(); };
-$('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); });
+$('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); loadChecks(); });
 
 refresh().catch(e => toast(e.message, true));
 </script>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -64,6 +65,58 @@ func TestHandler(t *testing.T) {
 	data, _ := m["data"].(map[string]any)
 	if w.Code != 200 || data["version"] != bootstrap.Version {
 		t.Fatalf("GET /api/state = %d %v", w.Code, m)
+	}
+}
+
+// Bad JSON is refused before anything runs, and rules are removed by
+// value, so an outdated page cannot remove the wrong rule.
+func TestRulesAndBadJSON(t *testing.T) {
+	home := t.TempDir()
+	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": home,
+		"GIT_CONFIG_GLOBAL": filepath.Join(home, ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GITSWITCH_TEST_NO_SYSTEM": "1"} {
+		t.Setenv(k, v)
+	}
+	t.Chdir(home) // not inside this source repo
+	h := Handler(bootstrap.New(false, nil), nil)
+	for _, b := range []string{`{"id":`, `[1,2]`, `"text"`} {
+		if w, m := call(t, h, "POST", "/api/default", b); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "not valid JSON") {
+			t.Fatalf("POST %s = %d %v, want a JSON error", b, w.Code, m)
+		}
+	}
+	post := func(path, body string) (int, string) {
+		w, m := call(t, h, "POST", path, body)
+		e, _ := m["error"].(string)
+		return w.Code, e
+	}
+	if c, e := post("/api/account", `{"mode":"new","id":"work","email":"w@x.example","host":"github.com"}`); c != 200 {
+		t.Fatalf("add account = %d %s", c, e)
+	}
+	for _, p := range []string{"acme", "beta"} {
+		if c, e := post("/api/rule", `{"kind":"owner","pattern":"`+p+`","account":"work"}`); c != 200 {
+			t.Fatalf("add rule = %d %s", c, e)
+		}
+	}
+	rules := func() []any {
+		_, m := call(t, h, "GET", "/api/state", "")
+		data, _ := m["data"].(map[string]any)
+		cfg, _ := data["config"].(map[string]any)
+		rs, _ := cfg["rules"].([]any)
+		return rs
+	}
+	if c, _ := post("/api/rule/remove", `{"index":0}`); c != 400 {
+		t.Fatalf("remove by index = %d, want 400", c)
+	}
+	if c, _ := post("/api/rule/remove", `{"kind":"owner","pattern":"gone","account":"work"}`); c != 400 || len(rules()) != 2 {
+		t.Fatalf("removing a missing rule = %d, rules %v", c, rules())
+	}
+	if c, e := post("/api/rule/remove", `{"kind":"owner","pattern":"beta","account":"work"}`); c != 200 {
+		t.Fatalf("remove rule = %d %s", c, e)
+	}
+	if rs := rules(); len(rs) != 1 || rs[0].(map[string]any)["pattern"] != "acme" {
+		t.Fatalf("rules after remove = %v", rs)
+	}
+	if w, m := call(t, h, "GET", "/api/doctor", ""); w.Code != 200 || m["data"] == nil {
+		t.Fatalf("GET /api/doctor = %d %v", w.Code, m)
 	}
 }
 
