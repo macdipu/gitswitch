@@ -12,7 +12,7 @@ import (
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
-	"github.com/macdipu/gitswitch/internal/interfaces/desktop/window"
+	"github.com/macdipu/gitswitch/internal/features/setup"
 	"github.com/macdipu/gitswitch/internal/interfaces/tui"
 	"github.com/macdipu/gitswitch/internal/platform/terminal"
 )
@@ -166,7 +166,7 @@ func (x *CLI) dispatch(args []string) error {
 	case "setup":
 		return x.wizard()
 	case "ui", "gui":
-		return window.Run(x.app)
+		return setup.OpenApp()
 	case "tui":
 		return tui.Run(x.app)
 	case "account":
@@ -267,8 +267,8 @@ func (x *CLI) firstRun() error {
 	if err := x.app.Setup.Install(x.report()); err != nil {
 		return err
 	}
-	if window.Available {
-		return window.Run(x.app)
+	if setup.AppInstalled() {
+		return setup.OpenApp()
 	}
 	return tui.Run(x.app)
 }

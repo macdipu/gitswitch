@@ -3,6 +3,7 @@
 package setup
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,12 +20,14 @@ import (
 )
 
 // Installer performs install and uninstall. Report receives progress
-// messages for the user; it may be nil.
+// messages for the user; it may be nil. Version is written into the macOS
+// app bundle.
 type Installer struct {
-	Git    *gitinfra.Runner
-	FS     *filesystem.FS
-	Store  *accountinfra.Store
-	Report func(string)
+	Git     *gitinfra.Runner
+	FS      *filesystem.FS
+	Store   *accountinfra.Store
+	Version string
+	Report  func(string)
 }
 
 func (in *Installer) say(a ...any) {
@@ -55,6 +58,74 @@ func Dir() string {
 // InstalledPath is where the installed program lives.
 func InstalledPath() string { return filepath.Join(Dir(), ExeName()) }
 
+// AppExeName is the desktop app's file name on this OS. It is not
+// "GitSwitch.exe": Windows file names ignore case, so that would be the
+// same file as gitswitch.exe.
+func AppExeName() string {
+	if runtime.GOOS == "windows" {
+		return "gitswitch-app.exe"
+	}
+	return "gitswitch-app"
+}
+
+// AppBundle is the macOS app bundle the desktop app is installed in, and
+// "" on other systems.
+func AppBundle() string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	return filepath.Join(filesystem.HomeDir(), "Applications", "GitSwitch.app")
+}
+
+// AppPath is where the installed desktop app lives. The hook program and
+// the app are separate files, so git never loads the window code.
+func AppPath() string {
+	if b := AppBundle(); b != "" {
+		return filepath.Join(b, "Contents", "MacOS", AppExeName())
+	}
+	return filepath.Join(Dir(), AppExeName())
+}
+
+// AppInstalled reports whether the desktop app is installed.
+func AppInstalled() bool {
+	_, err := os.Stat(AppPath())
+	return err == nil
+}
+
+// ErrNoApp is returned by OpenApp when the desktop app is not installed.
+var ErrNoApp = errors.New("the desktop app is not installed on this computer (it needs a desktop, and on Linux WebKitGTK 4.1). Run `gitswitch` for the terminal app, or run the installer again to add the desktop app")
+
+// OpenApp starts the desktop app without waiting for it. A running app
+// comes to the front instead of opening a second window. Without an
+// installed app it tries gitswitch-app next to this program (a dev build).
+func OpenApp() error {
+	if AppInstalled() {
+		return process.StartApp(AppPath(), AppBundle())
+	}
+	if self, err := os.Executable(); err == nil {
+		dev := filepath.Join(filepath.Dir(self), AppExeName())
+		if _, err := os.Stat(dev); err == nil {
+			return process.StartApp(dev, "")
+		}
+	}
+	return ErrNoApp
+}
+
+// hookSource is the program to install as the git hook. Run from the
+// desktop app (its install button), that is gitswitch next to the app, or
+// the one already installed.
+func hookSource(self string) (string, error) {
+	if !samePath(filepath.Base(self), AppExeName()) {
+		return self, nil
+	}
+	for _, p := range []string{filepath.Join(filepath.Dir(self), ExeName()), InstalledPath()} {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("the gitswitch program is missing (looked next to %s and at %s); run the installer again", self, InstalledPath())
+}
+
 // Installed reports whether git currently runs through gitswitch.
 func (in *Installer) Installed() bool {
 	return in.Git.GlobalGet("core.sshCommand") == account.HookValue(InstalledPath())
@@ -82,18 +153,25 @@ func (in *Installer) install() error {
 		return err
 	}
 	self, _ = filepath.EvalSymlinks(self)
+	src, err := hookSource(self)
+	if err != nil {
+		return err
+	}
 	dest := InstalledPath()
 	if !in.FS.DryRun {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return err
 		}
 	}
-	if !samePath(self, dest) && !in.FS.Dry("copy "+self+" -> "+dest) {
-		if err := copyExe(self, dest); err != nil {
+	if !samePath(src, dest) && !in.FS.Dry("copy "+src+" -> "+dest) {
+		if err := copyExe(src, dest); err != nil {
 			return fmt.Errorf("copy to %s: %v", dest, err)
 		}
 	}
 	in.say("Installed", dest)
+	if err := in.installApp(self, src); err != nil {
+		in.say("Could not install the desktop app:", err)
+	}
 
 	prev, _ := in.Git.Global("--get", "core.sshCommand")
 	if prev != "" && !account.IsHook(prev) {
@@ -121,16 +199,78 @@ func (in *Installer) install() error {
 	if err := in.addToPath(filepath.Dir(dest)); err != nil {
 		in.say("Could not add to PATH:", err)
 	}
-	in.addAppShortcut(dest)
+	if AppInstalled() {
+		in.addAppShortcut(AppPath())
+	}
 	if runtime.GOOS == "windows" {
 		in.say("Tip: run `gitswitch doctor` to check the Windows ssh-agent service.")
 	}
 	return nil
 }
 
+// installApp copies the desktop app to AppPath when one came with the
+// download: the running program itself, or gitswitch-app next to the hook
+// program. Servers and `go install` have none, and keep the terminal app.
+func (in *Installer) installApp(self, hookSrc string) error {
+	src := filepath.Join(filepath.Dir(hookSrc), AppExeName())
+	if samePath(filepath.Base(self), AppExeName()) {
+		src = self
+	}
+	if _, err := os.Stat(src); err != nil {
+		return nil
+	}
+	dest := AppPath()
+	if samePath(src, dest) {
+		return nil
+	}
+	if in.FS.Dry("copy " + src + " -> " + dest) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	if err := copyExe(src, dest); err != nil {
+		return err
+	}
+	if b := AppBundle(); b != "" {
+		if err := filesystem.WriteAtomic(filepath.Join(b, "Contents", "Info.plist"), []byte(infoPlist(in.Version)), 0o644); err != nil {
+			return err
+		}
+	}
+	in.say("Installed the desktop app:", map[bool]string{true: AppBundle(), false: dest}[AppBundle() != ""])
+	return nil
+}
+
+// infoPlist describes the macOS app bundle, so GitSwitch shows up in
+// Launchpad, Spotlight and the Dock.
+func infoPlist(version string) string {
+	v := strings.TrimPrefix(version, "v")
+	if v == "" || v == "dev" {
+		v = "0.0.0"
+	}
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>GitSwitch</string>
+	<key>CFBundleDisplayName</key><string>GitSwitch</string>
+	<key>CFBundleIdentifier</key><string>com.macdipu.gitswitch</string>
+	<key>CFBundleExecutable</key><string>` + AppExeName() + `</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>` + v + `</string>
+	<key>CFBundleVersion</key><string>` + v + `</string>
+	<key>LSMinimumSystemVersion</key><string>11.0</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
+	<key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+`
+}
+
 // addAppShortcut adds "GitSwitch" to the Start menu (Windows) or the app
-// menu (Linux) so the GUI can be opened without a terminal.
-func (in *Installer) addAppShortcut(exe string) {
+// menu (Linux), opening the desktop app. macOS needs none: the app bundle
+// in ~/Applications is found by Launchpad and Spotlight.
+func (in *Installer) addAppShortcut(app string) {
 	if process.NoSystemChanges() || in.FS.Dry("add GitSwitch to the app menu") {
 		return
 	}
@@ -138,7 +278,7 @@ func (in *Installer) addAppShortcut(exe string) {
 	case "windows":
 		lnk := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "GitSwitch.lnk")
 		ps := `$s = (New-Object -ComObject WScript.Shell).CreateShortcut('` + strings.ReplaceAll(lnk, "'", "''") + `'); ` +
-			`$s.TargetPath = '` + strings.ReplaceAll(exe, "'", "''") + `'; $s.Arguments = 'ui'; $s.WindowStyle = 7; $s.Description = 'Manage git accounts'; $s.Save()`
+			`$s.TargetPath = '` + strings.ReplaceAll(app, "'", "''") + `'; $s.Description = 'Manage git accounts'; $s.Save()`
 		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps)
 		process.HideWindow(cmd)
 		if cmd.Run() == nil {
@@ -147,12 +287,19 @@ func (in *Installer) addAppShortcut(exe string) {
 	case "linux":
 		dir := filepath.Join(filesystem.HomeDir(), ".local", "share", "applications")
 		if os.MkdirAll(dir, 0o755) == nil {
-			entry := "[Desktop Entry]\nType=Application\nName=GitSwitch\nComment=Manage git accounts\nExec=" + exe + " ui\nTerminal=false\nCategories=Development;\n"
+			entry := "[Desktop Entry]\nType=Application\nName=GitSwitch\nComment=Manage git accounts\nExec=" + desktopQuote(app) + "\nTerminal=false\nCategories=Development;\n"
 			if os.WriteFile(filepath.Join(dir, "gitswitch.desktop"), []byte(entry), 0o644) == nil {
 				in.say("Added GitSwitch to your applications menu.")
 			}
 		}
 	}
+}
+
+// desktopQuote quotes a path for the Exec line of a .desktop file, so a
+// home folder with spaces still works.
+func desktopQuote(p string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", `\$`)
+	return `"` + r.Replace(p) + `"`
 }
 
 // Uninstall gives git its previous settings back. With purge it also
@@ -214,6 +361,11 @@ func (in *Installer) Uninstall(purge bool, report func(string)) error {
 		case "linux":
 			_ = in.FS.Remove(filepath.Join(filesystem.HomeDir(), ".local", "share", "applications", "gitswitch.desktop"))
 		}
+	}
+	if b := AppBundle(); b != "" {
+		_ = in.FS.RemoveAll(b)
+	} else {
+		_ = in.FS.Remove(AppPath())
 	}
 	in.say("gitswitch is no longer used by git. You can delete", InstalledPath())
 	return nil

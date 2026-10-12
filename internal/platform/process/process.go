@@ -115,3 +115,21 @@ func CopyToClipboard(s string) bool {
 	cmd.Stdin = strings.NewReader(s)
 	return cmd.Run() == nil
 }
+
+// StartApp opens the desktop app and does not wait for it. On macOS a
+// bundle opens through `open`, so the app gets its Dock icon and focus.
+// The app keeps running after the terminal that started it closes.
+func StartApp(path, bundle string) error {
+	if NoSystemChanges() {
+		return nil
+	}
+	cmd := exec.Command(path)
+	if bundle != "" {
+		cmd = exec.Command("open", bundle)
+	}
+	detach(cmd)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}

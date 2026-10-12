@@ -19,7 +19,7 @@ Git account for my-company/api?
 Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 2!
 ```
 
-- **One file, one-time install.** A single binary for Windows, macOS and Linux. Keeps working after restarts and updates.
+- **One-time install.** One command installs the terminal program and the desktop app on Windows, macOS and Linux. Keeps working after restarts and updates.
 - **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (~15 ms, ~10 MB), then it exits.
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
 - **History you can act on:** the account behind every commit; revert, drop, roll back and cherry-pick with each step explained; switch branches and pull; search by message, author, account or date. Pushed history is never rewritten.
@@ -67,7 +67,7 @@ Run the same line again to update. To pin a version, set `GITSWITCH_VERSION=v1.2
 <details>
 <summary>Manual install</summary>
 
-Download `gitswitch-<os>-<cpu>` for your computer from the [Releases page](https://github.com/macdipu/gitswitch/releases) and run it with `install`. On Windows you can simply double-click it. Run with no command in a terminal, it asks before it connects to git.
+Download `gitswitch-<os>-<cpu>` and, for the desktop app, `gitswitch-app-<os>-<cpu>` for your computer from the [Releases page](https://github.com/macdipu/gitswitch/releases). Rename them to `gitswitch` and `gitswitch-app` (add `.exe` on Windows), put both in one folder and run `gitswitch install`: it installs both. On Windows you can simply double-click `gitswitch.exe`. Run with no command in a terminal, it asks before it connects to git.
 
 </details>
 
@@ -78,6 +78,8 @@ Download `gitswitch-<os>-<cpu>` for your computer from the [Releases page](https
 go install github.com/macdipu/gitswitch/cmd/gitswitch@latest
 gitswitch install
 ```
+
+This installs the terminal program only. The desktop app needs cgo and build tags; see [Development](#development).
 
 </details>
 
@@ -192,7 +194,9 @@ Both edit the same settings. A change in one shows up in the other.
 | Runs in | the terminal | the system web view (WebView2, WebKit, WebKitGTK) |
 | Closes | press `q` | close the window |
 
-On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora). The installer picks a build without the window when it is missing, or when the desktop build does not start, so servers need nothing extra. The desktop build runs on Ubuntu 22.04 and newer, and other systems with glibc 2.35 or newer.
+The terminal program (`gitswitch`) and the desktop app (`gitswitch-app`) are two files, installed together. Git only ever runs `gitswitch`, which is small and has no window code, so the desktop app never slows down a clone, pull or push.
+
+On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora). The installer skips the app when WebKitGTK is missing or the app does not start, so servers need nothing extra; install WebKitGTK and run the installer again to add it. The desktop app runs on Ubuntu 22.04 and newer, and other systems with glibc 2.35 or newer. `GITSWITCH_CLI_ONLY=1` installs only the terminal program.
 
 <details>
 <summary>Terminal app keys</summary>
@@ -323,6 +327,7 @@ gitswitch completions powershell | Out-String | Invoke-Expression      # $PROFIL
 `gitswitch install` does this once:
 
 - Copies itself to a fixed folder (`%LOCALAPPDATA%\GitSwitch` on Windows, `~/.local/bin` on macOS and Linux) and adds it to your PATH.
+- Installs the desktop app when it came with the download: next to `gitswitch` on Windows and Linux (with a Start menu or app menu entry), as `~/Applications/GitSwitch.app` on macOS.
 - Sets git's global `core.sshCommand` to GitSwitch. Every program that runs git reads this setting, which is why it works in every terminal and IDE without per-app setup.
 - Sets `user.useConfigOnly = true` and moves your global `user.email` aside, so a commit can never silently use the wrong email.
 
@@ -340,23 +345,23 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is organised.
 ## Uninstall
 
 ```sh
-gitswitch uninstall           # restores your previous git settings
+gitswitch uninstall           # restores your previous git settings and removes the desktop app
 gitswitch uninstall --purge   # also deletes your saved accounts
 ```
 
 ## Development
 
-Requires Go 1.25 or newer. The desktop window uses [Wails](https://wails.io) and needs cgo on macOS and Linux (Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev`).
+Requires Go 1.25 or newer. The desktop app uses [Wails](https://wails.io) and needs cgo on macOS and Linux (Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev`).
 
 ```sh
-go build -o gitswitch ./cmd/gitswitch                                 # no window, no cgo
-go build -tags desktop,production -o gitswitch ./cmd/gitswitch        # with the window (macOS, Windows)
-go build -tags desktop,production,webkit2_41 -o gitswitch ./cmd/gitswitch   # with the window (Linux)
+CGO_ENABLED=0 go build -o gitswitch ./cmd/gitswitch                                  # git hook, CLI, terminal app
+go build -tags desktop,production -o gitswitch-app ./cmd/gitswitch-app             # desktop app (macOS, Windows)
+go build -tags desktop,production,webkit2_41 -o gitswitch-app ./cmd/gitswitch-app  # desktop app (Linux)
 go test ./...
 ./build.sh v1.0.0             # every target this machine can build + SHA256SUMS into dist/
 ```
 
-Releases build macOS and Linux on their own runners, since the window needs cgo there. Linux builds on Ubuntu 22.04, so the desktop build also starts on older systems (see `.github/workflows/release.yml`).
+Put `gitswitch-app` next to `gitswitch` and `gitswitch ui` opens it. Releases build the desktop app for macOS and Linux on their own runners, since it needs cgo there. Linux builds on Ubuntu 22.04, so the app also starts on older systems (see `.github/workflows/release.yml`).
 
 ### Architecture
 

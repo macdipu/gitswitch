@@ -58,7 +58,7 @@ func New(dryRun bool, out io.Writer) *App {
 	store := &accountinfra.Store{Git: git, FS: fs}
 	reader := &repoinfra.Reader{Git: git}
 	keys := &sshinfra.Keys{FS: fs}
-	installer := &setup.Installer{Git: git, FS: fs, Store: store}
+	installer := &setup.Installer{Git: git, FS: fs, Store: store, Version: Version}
 	return &App{
 		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},

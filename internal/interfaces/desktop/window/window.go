@@ -1,8 +1,9 @@
 //go:build desktop
 
-// Package window is the desktop window: the app page (package api) in the
-// system web view through Wails. Without the `desktop` build tag it is left
-// out (nowindow.go), so plain builds need no cgo.
+// Package window is the desktop app (cmd/gitswitch-app): the app page
+// (package api) in the system web view through Wails. Without the `desktop`
+// build tag the window is left out (nowindow.go), so plain builds need no
+// cgo.
 package window
 
 import (
@@ -16,16 +17,12 @@ import (
 	"github.com/macdipu/gitswitch/internal/bootstrap"
 	"github.com/macdipu/gitswitch/internal/interfaces/desktop/api"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
-	"github.com/macdipu/gitswitch/internal/platform/process"
 )
 
-// Available reports whether this build has the desktop window.
-const Available = true
-
 // Run opens the app window and returns when it is closed. A second
-// `gitswitch ui` brings the open window to the front instead.
+// launch (`gitswitch ui`, the app menu) brings the open window to the
+// front instead.
 func Run(a *bootstrap.App) error {
-	process.DetachConsole() // started from the Start menu: drop the empty console
 	var ctx context.Context
 	pick := func(title string) (string, error) {
 		return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title, DefaultDirectory: filesystem.HomeDir(), CanCreateDirectories: true})

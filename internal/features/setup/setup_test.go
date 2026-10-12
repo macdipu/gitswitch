@@ -107,3 +107,34 @@ func TestUninstallKeepsANewGlobalEmail(t *testing.T) {
 		t.Errorf("user.email = %q, want it restored", e)
 	}
 }
+
+func TestHookSource(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := t.TempDir()
+	cli, app := filepath.Join(dir, ExeName()), filepath.Join(dir, AppExeName())
+	if got, err := hookSource(cli); err != nil || got != cli {
+		t.Errorf("from gitswitch: %q, %v", got, err)
+	}
+	if _, err := hookSource(app); err == nil {
+		t.Error("from the app with no gitswitch anywhere: want an error")
+	}
+	_ = os.WriteFile(cli, []byte("hook"), 0o755)
+	if got, err := hookSource(app); err != nil || got != cli {
+		t.Errorf("from the app with gitswitch next to it: %q, %v", got, err)
+	}
+}
+
+func TestDesktopQuote(t *testing.T) {
+	if got := desktopQuote(`/home/a b/$x"y`); got != `"/home/a b/\$x\"y"` {
+		t.Errorf("desktopQuote = %s", got)
+	}
+}
+
+func TestInfoPlistVersion(t *testing.T) {
+	for v, want := range map[string]string{"v1.2.3": "1.2.3", "dev": "0.0.0", "": "0.0.0"} {
+		if p := infoPlist(v); !strings.Contains(p, "<string>"+want+"</string>") {
+			t.Errorf("infoPlist(%q) lacks %s", v, want)
+		}
+	}
+}

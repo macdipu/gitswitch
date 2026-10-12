@@ -7,13 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
-	"unsafe"
-)
-
-var (
-	kernel32        = syscall.NewLazyDLL("kernel32.dll")
-	getConsoleProcs = kernel32.NewProc("GetConsoleProcessList")
-	freeConsole     = kernel32.NewProc("FreeConsole")
 )
 
 // ExecReplace runs ssh with git's stdin/stdout and returns its exit code.
@@ -36,11 +29,8 @@ func HideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 }
 
-// DetachConsole closes the console window when it was opened only for us
-// (Start menu shortcut, double-click), not when run from a terminal.
-func DetachConsole() {
-	var pids [2]uint32
-	if n, _, _ := getConsoleProcs.Call(uintptr(unsafe.Pointer(&pids[0])), 2); n == 1 {
-		_, _, _ = freeConsole.Call()
-	}
+// detach starts the program without our console (DETACHED_PROCESS) and
+// outside our Ctrl+C group (CREATE_NEW_PROCESS_GROUP).
+func detach(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x00000008 | 0x00000200}
 }

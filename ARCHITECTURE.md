@@ -20,7 +20,8 @@ fails the build when an import breaks the rules below.
 ## Layout
 
 ```text
-cmd/gitswitch/                main: calls interfaces/cli
+cmd/gitswitch/                main of the program git runs: calls interfaces/cli (hook, CLI, terminal app)
+cmd/gitswitch-app/            main of the desktop app: calls interfaces/desktop/window
 internal/
   bootstrap/                  builds and wires everything; App (use cases for the front ends), Version, the ssh hook entry
   features/
@@ -57,7 +58,7 @@ internal/
     desktop/
       api/                    the page and its JSON API (no cgo; tested everywhere)
       assets/                 index.html, built into the program
-      window/                 the Wails window (`desktop` build tag) or a stub
+      window/                 the desktop app: Main, and the Wails window (`desktop` build tag) or a stub
     prompt/                   "which account?" on the terminal or a native popup (implements ssh.Prompter)
   platform/
     filesystem/               home/config/cache folders, path comparison, dry-run file changes, lock files
@@ -83,7 +84,7 @@ naturally: `account.Account`, `accountapp.Service`, `accountinfra.Store`,
 | Interfaces | `interfaces/*` | application (through `bootstrap.App`), domain types, feature modules, platform. Never infrastructure. |
 | Bootstrap | `bootstrap` | everything except `cmd`. |
 | Platform | `platform/*` | other platform packages only. |
-| Command | `cmd/gitswitch` | `interfaces/cli` only. |
+| Command | `cmd/gitswitch`, `cmd/gitswitch-app` | `interfaces/cli` only, and `interfaces/desktop/window` only. |
 
 Domain packages may use other features' domain types (a repo knows its
 account), but never in a circle; `test/architecture` checks that too.
@@ -113,6 +114,25 @@ through the `repo.Reader` and `ssh.KeyTool` ports.
 
 The TUI and the desktop API call the same `app.Repos.Clone`.
 
+## Two programs: gitswitch and gitswitch-app
+
+Git runs `gitswitch` on every clone, pull, push and fetch, so it must stay
+small, static and fast. The desktop app will grow into a full git client.
+They are therefore two programs built from this one module and installed
+together:
+
+- `gitswitch` (`cmd/gitswitch`): the ssh hook, the CLI, the terminal app,
+  setup and doctor. Always built with `CGO_ENABLED=0` and no tags.
+- `gitswitch-app` (`cmd/gitswitch-app`): the desktop window. `gitswitch ui`
+  and the app menu entries start it (`setup.OpenApp`).
+
+The installers download both into one folder and run `gitswitch install`,
+which copies the hook program, then the app next to it, to their fixed
+places (`setup.InstalledPath`, `setup.AppPath`). `test/architecture`
+checks that nothing `cmd/gitswitch` imports reaches the desktop packages or
+Wails, and that the ssh hook use case does not reach the git client
+features or any front end.
+
 ## Desktop window
 
 `interfaces/desktop/window` shows one HTML page
@@ -128,15 +148,18 @@ token or background server. Two consequences:
   cross-compilable; release builds add `-tags desktop,production` (plus
   `webkit2_41` on Linux). The `api` package builds either way, so its tests
   need no cgo.
-- On Linux the window links WebKitGTK. Linux releases also ship a static
-  `-cli` build without the window, which `install.sh` picks when WebKitGTK is
-  missing or the desktop build does not start, because git runs this same
-  binary on every clone, pull and push.
+- On Linux the window links WebKitGTK. `install.sh` skips the app when
+  WebKitGTK is missing or the app does not start (`gitswitch-app --version`);
+  `gitswitch` itself never links it.
 
 ## Rules
 
 1. **Imports follow the table above.** `test/architecture` enforces it, for
-   the files of every OS and build tag.
+   the files of every OS and build tag. **The hook stays small:** nothing
+   `cmd/gitswitch` imports may reach `interfaces/desktop` or Wails, and
+   `ssh/application` may not reach history, refs, repository, setup, doctor
+   or any front end. New git client features go in their own feature
+   packages and are reached only from the front ends.
 2. **Front ends hold no logic.** They call use cases on `bootstrap.App` and
    display the results. If a screen needs something new, add a use case.
 3. **Use cases depend on ports.** A use case that needs the outside world

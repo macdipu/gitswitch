@@ -4,7 +4,7 @@
 # Options (environment variables):
 #   GITSWITCH_VERSION=v1.2.0   install a specific release instead of the latest
 #   GITSWITCH_REPO=owner/repo  install from a fork
-#   GITSWITCH_CLI_ONLY=1       Linux: install the build without the desktop window
+#   GITSWITCH_CLI_ONLY=1       install only the terminal programs, not the desktop app
 set -eu
 
 REPO="${GITSWITCH_REPO:-macdipu/gitswitch}"
@@ -33,19 +33,23 @@ if [ "$OS" = darwin ] && [ "$ARCH" = amd64 ] && [ "$(sysctl -n hw.optional.arm64
 fi
 
 EXT=""; [ "$OS" = windows ] && EXT=".exe"
-ASSET="gitswitch-$OS-$ARCH$EXT"
-# On Linux the desktop window needs WebKitGTK, and a program linked to a
-# missing library cannot start at all (git runs gitswitch for every pull and
-# push). Without WebKitGTK, install the static build that has no window.
+ASSET="gitswitch-$OS-$ARCH$EXT"         # git hook, CLI and terminal app
+APP_ASSET="gitswitch-app-$OS-$ARCH$EXT" # desktop app
+# On Linux the desktop app needs WebKitGTK; without it, install only the
+# terminal programs.
 has_webkit() {
-  { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so\.0'; } ||
-    for f in /usr/lib/libwebkit2gtk-4.1.so.0 /usr/lib*/libwebkit2gtk-4.1.so.0 /usr/lib/*/libwebkit2gtk-4.1.so.0; do
-      [ -e "$f" ] && return 0
-    done
+  PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so\.0' && return 0
+  for f in /usr/lib/libwebkit2gtk-4.1.so.0 /usr/lib*/libwebkit2gtk-4.1.so.0 /usr/lib/*/libwebkit2gtk-4.1.so.0; do
+    [ -e "$f" ] && return 0
+  done
   return 1
 }
-if [ "$OS" = linux ] && { [ -n "${GITSWITCH_CLI_ONLY:-}" ] || ! has_webkit; }; then
-  ASSET="$ASSET-cli"
+WANT_APP=1
+if [ -n "${GITSWITCH_CLI_ONLY:-}" ]; then
+  WANT_APP=""
+elif [ "$OS" = linux ] && ! has_webkit; then
+  WANT_APP=""
+  say "WebKitGTK 4.1 is not installed, so the desktop app is skipped (install libwebkit2gtk-4.1-0 and run this again to add it)."
 fi
 
 if [ -n "${GITSWITCH_BASE_URL:-}" ]; then
@@ -72,53 +76,55 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 
 fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" || fail "could not download SHA256SUMS"
 
-# ---- download and verify one file ----
+# ---- download and verify one file: get <asset> <name to save as> ----
+# Returns 1 when the release has no such file (an older release).
 get() {
-  say "Downloading $1 ($VERSION)..."
-  fetch "$BASE/$1" "$TMP/$1" || fail "download failed: $BASE/$1"
   EXPECTED="$(grep " $1\$" "$TMP/SHA256SUMS" | awk '{print $1}' | head -n 1)"
-  [ -n "$EXPECTED" ] || fail "no checksum for $1 in SHA256SUMS"
+  [ -n "$EXPECTED" ] || return 1
+  say "Downloading $1 ($VERSION)..."
+  fetch "$BASE/$1" "$TMP/bin/$2" || fail "download failed: $BASE/$1"
   if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$TMP/$1" | awk '{print $1}')"
+    ACTUAL="$(sha256sum "$TMP/bin/$2" | awk '{print $1}')"
   elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL="$(shasum -a 256 "$TMP/$1" | awk '{print $1}')"
+    ACTUAL="$(shasum -a 256 "$TMP/bin/$2" | awk '{print $1}')"
   else
     fail "sha256sum or shasum is needed to verify the download"
   fi
   [ "$ACTUAL" = "$EXPECTED" ] || fail "checksum mismatch for $1 (expected $EXPECTED, got $ACTUAL). Nothing was installed."
   say "Checksum OK."
-  chmod +x "$TMP/$1"
+  chmod +x "$TMP/bin/$2"
   if [ "$OS" = darwin ]; then
-    xattr -d com.apple.quarantine "$TMP/$1" 2>/dev/null || true
+    xattr -d com.apple.quarantine "$TMP/bin/$2" 2>/dev/null || true
   fi
 }
-starts() { "$TMP/$1" version >/dev/null 2>&1; }
+mkdir -p "$TMP/bin"
 
-get "$ASSET"
+get "$ASSET" "gitswitch$EXT" || fail "no checksum for $ASSET in SHA256SUMS"
 # Make sure the program starts here before git depends on it: git runs it
-# on every pull and push. A Linux desktop build can fail to start when a
-# library is missing or too old; the build without the window has none.
-if ! starts "$ASSET"; then
-  case "$ASSET" in
-    gitswitch-linux-*-cli) fail "$ASSET does not start on this system. Nothing was installed." ;;
-    gitswitch-linux-*)
-      say "The desktop build does not start on this system; using the build without the window."
-      ASSET="$ASSET-cli"
-      get "$ASSET"
-      starts "$ASSET" || fail "$ASSET does not start on this system. Nothing was installed."
-      ;;
-    *) fail "$ASSET does not start on this system. Nothing was installed." ;;
-  esac
+# on every clone, pull and push.
+"$TMP/bin/gitswitch$EXT" version >/dev/null 2>&1 || fail "$ASSET does not start on this system. Nothing was installed."
+
+HAVE_APP=""
+if [ -n "$WANT_APP" ]; then
+  if ! get "$APP_ASSET" "gitswitch-app$EXT"; then
+    say "This release has no separate desktop app; installing the terminal programs."
+  elif [ "$OS" = windows ] || "$TMP/bin/gitswitch-app$EXT" --version >/dev/null 2>&1; then
+    HAVE_APP=1
+  else
+    # A library it needs is missing or too old. The terminal app still works.
+    say "The desktop app does not start on this system; installing the terminal programs only."
+    rm -f "$TMP/bin/gitswitch-app$EXT"
+  fi
 fi
 
-# ---- install: the program copies itself to its fixed folder and hooks into git ----
-"$TMP/$ASSET" install
+# ---- install: gitswitch copies itself (and gitswitch-app next to it) to
+# their fixed folders, hooks into git and adds the app to the app menu ----
+"$TMP/bin/gitswitch$EXT" install
 
 say ""
 say "Done. Open a new terminal, then run:"
 say "  gitswitch        terminal app"
-case "$ASSET" in
-  *-cli) say "  (no desktop window: install libwebkit2gtk-4.1-0 and run this again for \`gitswitch ui\`)" ;;
-  *)     say "  gitswitch ui     desktop app" ;;
-esac
+if [ -n "$HAVE_APP" ]; then
+  say "  gitswitch ui     desktop app (also in your applications menu)"
+fi
 say "  gitswitch setup  step-by-step setup"

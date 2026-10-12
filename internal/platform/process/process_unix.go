@@ -23,5 +23,5 @@ func ExecReplace(bin string, args []string) int {
 
 func HideWindow(cmd *exec.Cmd) {}
 
-// DetachConsole does nothing: Unix GUI launches have no console window.
-func DetachConsole() {}
+// detach starts the program in its own session, away from the terminal.
+func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }

@@ -45,6 +45,14 @@ var allowed = map[role][]role{
 	command:        {interfaces},
 }
 
+// mains lists what each program's main package may import: gitswitch (the
+// git hook, CLI and terminal app) starts the command line, gitswitch-app
+// starts the desktop window.
+var mains = map[string][]string{
+	"cmd/gitswitch":     {"internal/interfaces/cli"},
+	"cmd/gitswitch-app": {"internal/interfaces/desktop/window"},
+}
+
 // Standard-library packages a role must not use: domain code stays pure,
 // and use cases reach processes, the network and the OS through ports or
 // the platform packages.
@@ -163,8 +171,8 @@ func TestDependencyRules(t *testing.T) {
 			}
 			// Front ends reach features only through their use cases and
 			// domain types; bootstrap.App hands them the use cases.
-			if from == command && dep != "internal/interfaces/cli" {
-				t.Errorf("%s imports %s: main only starts the command line", pkg, dep)
+			if from == command && !contains(mains[pkg], dep) {
+				t.Errorf("%s imports %s: this main may import only %v", pkg, dep, mains[pkg])
 			}
 		}
 	}
@@ -273,9 +281,9 @@ func TestCoreDoesNotPrint(t *testing.T) {
 	})
 }
 
-func contains(list []role, r role) bool {
+func contains[T comparable](list []T, x T) bool {
 	for _, v := range list {
-		if v == r {
+		if v == x {
 			return true
 		}
 	}
@@ -289,4 +297,61 @@ func indexOf(list []string, s string) int {
 		}
 	}
 	return -1
+}
+
+// reach lists every package of this module that pkg imports, directly or
+// not, each with the import chain that reaches it.
+func reach(graph map[string]map[string]bool, pkg string) map[string][]string {
+	chains := map[string][]string{pkg: {pkg}}
+	queue := []string{pkg}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for path := range graph[cur] {
+			dep, ok := strings.CutPrefix(path, module)
+			if !ok {
+				continue
+			}
+			if _, seen := chains[dep]; !seen {
+				chains[dep] = append(append([]string{}, chains[cur]...), dep)
+				queue = append(queue, dep)
+			}
+		}
+	}
+	return chains
+}
+
+// Git runs the gitswitch program on every clone, pull and push, so it
+// must never contain the desktop app (Wails, the system web view, cgo).
+// The app is its own program, cmd/gitswitch-app.
+func TestHookProgramHasNoDesktop(t *testing.T) {
+	graph := imports(t)
+	for pkg, chain := range reach(graph, "cmd/gitswitch") {
+		if strings.HasPrefix(pkg, "internal/interfaces/desktop") {
+			t.Errorf("gitswitch includes the desktop app: %s", strings.Join(chain, " -> "))
+		}
+		for path := range graph[pkg] {
+			if strings.HasPrefix(path, "github.com/wailsapp/") {
+				t.Errorf("gitswitch includes Wails: %s -> %s", strings.Join(chain, " -> "), path)
+			}
+		}
+	}
+}
+
+// The ssh hook use case stays small: it may not depend on the git client
+// features or any front end, so it can keep starting in milliseconds as
+// the app grows.
+func TestSSHHookStaysSmall(t *testing.T) {
+	banned := []string{
+		"internal/features/history", "internal/features/refs", "internal/features/repository",
+		"internal/features/doctor", "internal/features/setup",
+		"internal/interfaces/cli", "internal/interfaces/tui", "internal/interfaces/desktop",
+	}
+	for pkg, chain := range reach(imports(t), "internal/features/ssh/application") {
+		for _, b := range banned {
+			if pkg == b || strings.HasPrefix(pkg, b+"/") {
+				t.Errorf("the ssh hook depends on %s: %s", b, strings.Join(chain, " -> "))
+			}
+		}
+	}
 }

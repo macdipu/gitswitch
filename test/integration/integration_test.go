@@ -709,15 +709,60 @@ func TestCloneByURL(t *testing.T) {
 	}
 }
 
-// The test binary is built without -tags desktop: `gitswitch ui` must explain
-// that instead of failing obscurely (the window itself serves no network port).
-func TestUIWithoutWindowExplains(t *testing.T) {
+// Without the desktop app installed (servers, `go install`), `gitswitch ui`
+// must say so instead of failing obscurely.
+func TestUIWithoutAppExplains(t *testing.T) {
 	e := newEnv(t)
 	cmd := exec.Command(gsBin, "ui")
 	cmd.Env = e.vars
 	out, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(out), "without the desktop window") {
+	if err == nil || !strings.Contains(string(out), "desktop app is not installed") {
 		t.Fatalf("gitswitch ui = %v, %q", err, out)
+	}
+}
+
+// The installers download gitswitch and gitswitch-app into one folder and
+// run `gitswitch install`, which installs both. Uninstall removes the app.
+func TestInstallAddsTheDesktopApp(t *testing.T) {
+	e := newEnv(t)
+	dl := filepath.Join(e.root, "download")
+	must(t, os.MkdirAll(dl, 0o755))
+	b, err := os.ReadFile(gsBin)
+	must(t, err)
+	gs := filepath.Join(dl, "gitswitch"+exeSuffix())
+	must(t, os.WriteFile(gs, b, 0o755))
+	must(t, os.WriteFile(filepath.Join(dl, "gitswitch-app"+exeSuffix()), []byte("the app"), 0o755))
+
+	app := filepath.Join(e.home, ".local", "bin", "gitswitch-app")
+	switch runtime.GOOS {
+	case "darwin":
+		app = filepath.Join(e.home, "Applications", "GitSwitch.app", "Contents", "MacOS", "gitswitch-app")
+	case "windows":
+		app = filepath.Join(e.root, "localappdata", "GitSwitch", "gitswitch-app.exe")
+	}
+	if out, err := e.run(e.root, gs, "install"); err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+	if got, err := os.ReadFile(app); err != nil || string(got) != "the app" {
+		t.Fatalf("app not installed at %s: %v", app, err)
+	}
+	if runtime.GOOS == "darwin" {
+		plist, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(app)), "Info.plist"))
+		if err != nil || !strings.Contains(string(plist), "<string>gitswitch-app</string>") {
+			t.Fatalf("Info.plist: %v\n%s", err, plist)
+		}
+	}
+	if out, err := e.run(e.root, gsBin, "ui"); err != nil {
+		t.Fatalf("gitswitch ui with the app installed: %v\n%s", err, out)
+	}
+	if out, _ := e.run(e.root, gsBin, "doctor"); !strings.Contains(out, "Desktop app") {
+		t.Errorf("doctor does not mention the desktop app:\n%s", out)
+	}
+	if out, err := e.run(e.root, gsBin, "uninstall"); err != nil {
+		t.Fatalf("uninstall: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(app); !os.IsNotExist(err) {
+		t.Errorf("uninstall left the app at %s", app)
 	}
 }
 

@@ -55,6 +55,13 @@ func (d *Doctor) Run(deep bool) []Check {
 	add("hook", "Git runs through gitswitch", hook == account.HookValue(dest) && statErr == nil,
 		"core.sshCommand = "+orNone(hook), true)
 
+	// Information only: servers and `go install` have no desktop app.
+	app := "not installed (terminal app only)"
+	if setup.AppInstalled() {
+		app = map[bool]string{true: setup.AppBundle(), false: setup.AppPath()}[setup.AppBundle() != ""]
+	}
+	add("app", "Desktop app", true, app, false)
+
 	uco, _ := d.Git.Global("--get", "user.useConfigOnly")
 	add("useconfigonly", "Commits need a repo email (user.useConfigOnly)", uco == "true",
 		"stops commits with a missing or guessed email", true)
