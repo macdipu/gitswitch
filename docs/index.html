@@ -218,7 +218,7 @@ always use it for this repo (e.g. 2!): <span class="h">2!</span></pre>
         <div class="card">
           <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
           <h3>Built-in health check</h3>
-          <p><code>gitswitch doctor</code> finds settings that make git skip GitSwitch or log in as the wrong account, and fixes them.</p>
+          <p><code>gitswitch doctor</code> finds settings that make git skip GitSwitch or log in as the wrong account, and fixes what it can. When a login test, clone or other GitSwitch command fails, it says what happened and what to do.</p>
         </div>
       </div>
     </div>
@@ -227,7 +227,7 @@ always use it for this repo (e.g. 2!): <span class="h">2!</span></pre>
   <section id="install">
     <div class="wrap">
       <h2>Install</h2>
-      <p class="sub">The installer detects your system, downloads the matching binary from the latest release, verifies its SHA-256 checksum and installs it.</p>
+      <p class="sub">The installer detects your system, downloads the matching binary from the latest release, verifies its SHA-256 checksum, checks that it starts on your system and installs it.</p>
 
       <div class="tabs" role="tablist" data-group="install">
         <button role="tab" aria-selected="true" data-tab="unix">macOS / Linux / WSL</button>
@@ -243,7 +243,7 @@ gitswitch install</pre><button class="copy">Copy</button></div>
       <div class="steps">
         <div>
           <h3>1. Run the setup wizard</h3>
-          <p>Add each account, create or pick an SSH key, add it on GitHub, and GitSwitch checks the login for you.</p>
+          <p>Add each account, create or pick an SSH key, add it on GitHub, and GitSwitch checks the login for you. Prefer a window? <code>gitswitch ui</code> opens the desktop app, which walks you through the same steps the first time.</p>
           <div class="cmd"><pre>gitswitch setup</pre><button class="copy">Copy</button></div>
         </div>
         <div>
@@ -269,14 +269,14 @@ gitswitch rule add folder:~/personal personal</pre><button class="copy">Copy</bu
   <section id="how" class="alt">
     <div class="wrap">
       <h2>How an account is chosen</h2>
-      <p class="sub">For each repo, GitSwitch checks in this order and uses the first match. It also sets the repo's <code>user.name</code> and <code>user.email</code>.</p>
+      <p class="sub">For each repo, GitSwitch checks in this order and uses the first match. It also sets the repo's <code>user.name</code> and <code>user.email</code>, unless the default was used only because nobody answered.</p>
       <ol class="order">
         <li><span><strong>The account saved for the repo</strong> (<code>gitswitch use work</code>).</span></li>
         <li><span><strong>An owner rule:</strong> <code>owner:my-company</code> matches every repo of that org, even during <code>git clone</code>.</span></li>
         <li><span><strong>A folder rule:</strong> <code>folder:~/work</code>.</span></li>
-        <li><span><strong>In a terminal, it asks.</strong> Type <code>2</code> for this time only, or <code>2!</code> to save it for the repo.</span></li>
-        <li><span><strong>With no terminal</strong> (e.g. an IDE's Source Control panel), a small popup asks.</span></li>
-        <li><span><strong>Otherwise, the default account.</strong> Nothing ever hangs waiting for an answer.</span></li>
+        <li><span><strong>In a terminal, it asks.</strong> Type <code>2</code> for this time only, or <code>2!</code> to save it for the repo. A typo asks again, and parallel fetches ask one at a time.</span></li>
+        <li><span><strong>With no terminal</strong> (e.g. an IDE's Source Control panel, a background job, or <code>GIT_TERMINAL_PROMPT=0</code>), a small popup asks.</span></li>
+        <li><span><strong>Otherwise, the default account.</strong> Nothing ever hangs waiting for an answer, and ssh's <code>BatchMode=yes</code> never asks.</span></li>
       </ol>
     </div>
   </section>

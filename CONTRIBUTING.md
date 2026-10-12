@@ -45,11 +45,13 @@ window. Clean up by closing the terminal and `rm -rf /tmp/gs-sandbox`.
 
 ### Docker: Linux desktop (Webtop)
 
-`sandbox/compose.yaml` runs an Ubuntu desktop at http://localhost:3000 (only
-reachable from your machine). The desktop user's home is `sandbox/config/`,
-which git ignores because it holds SSH private keys. The repo's `dist/` is
-mounted read-only at `/opt/gitswitch`: you build on the host and run the
-result on the desktop. Run these from the repo root.
+`sandbox/compose.yaml` runs an Ubuntu desktop at http://localhost:3000
+(https on port 3001). Both ports are published on every network interface,
+so other machines on your network can reach the desktop too: stop it when
+you are done. The desktop user's home is `sandbox/config/`, which git
+ignores because it holds SSH private keys. `sandbox/workspace/` is shared
+with the desktop at `/workspace`. You build on the host and copy the result
+into the container. Run these from the repo root.
 
 1. Start the desktop:
 
@@ -75,13 +77,14 @@ result on the desktop. Run these from the repo root.
    window):
 
    ```
-   docker exec gitswitch-desktop bash -c 'apt-get update && apt-get install -y openssh-client zenity libwebkit2gtk-4.1-0'
+   docker exec linux-desktop bash -c 'apt-get update && apt-get install -y openssh-client zenity libwebkit2gtk-4.1-0'
    ```
 
-4. Install gitswitch for the desktop user:
+4. Copy it in and install it for the desktop user:
 
    ```
-   docker exec -u abc -e HOME=/config gitswitch-desktop /opt/gitswitch/gitswitch-linux install
+   docker cp dist/gitswitch-linux linux-desktop:/tmp/gitswitch-linux
+   docker exec -u abc -e HOME=/config linux-desktop /tmp/gitswitch-linux install
    ```
 
 5. Open http://localhost:3000, open a terminal from the app menu and run
@@ -132,12 +135,18 @@ If you want to build one:
   `test/architecture` fails for a package without a role or with an import
   the rules don't allow.
 - Keep messages plain and specific: say what happened and how to fix it.
+  For a git or ssh error people often hit, add a case to
+  `internal/features/git/domain/explain.go`; the CLI, terminal app and
+  desktop app all show it.
+- Pin any new GitHub Action to a full commit SHA, with the version in a
+  comment, like the existing workflows.
 - CI must pass on Linux, macOS and Windows.
 
 ## Publishing a release (maintainers)
 
 1. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
 2. The `release` workflow runs the tests, builds every binary (macOS and
-   Linux on their own runners, for the desktop window) plus `SHA256SUMS`, and
+   Linux on their own runners, for the desktop window; Linux on Ubuntu 22.04
+   so it starts on older systems) plus `SHA256SUMS`, and
    attaches them to the GitHub release.
 3. The one-line installers always fetch the latest release.

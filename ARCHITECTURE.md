@@ -31,7 +31,7 @@ internal/
     identity/
       domain/                 resolve: which account a repo uses (pure decision, table-tested)
     git/
-      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links
+      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links; Explain (git and ssh errors in plain words)
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
     repository/
       domain/                 Info, Remote; ports Reader, Locator, Cloner, ListStore
@@ -48,7 +48,7 @@ internal/
     ssh/
       domain/                 ssh command line from git, key help per host, login greeting; ports KeyTool, HookRepos, Transport, Prompter
       application/            Hook (git runs it on every clone/pull/push/fetch); Keys (show, list, test, agent)
-      infrastructure/         Keys (ssh-keygen, ssh-add, ssh -T); hook adapters (current repo, probe file, real ssh)
+      infrastructure/         Keys (ssh-keygen, or an ed25519 pair made in Go when there is no terminal; ssh-add, ssh -T; known hosts via ssh -G); hook adapters (current repo, probe file, real ssh)
     setup/                    install and uninstall (single package, see below)
     doctor/                   health checks and repairs (single package, see below)
   interfaces/
@@ -60,9 +60,9 @@ internal/
       window/                 the Wails window (`desktop` build tag) or a stub
     prompt/                   "which account?" on the terminal or a native popup (implements ssh.Prompter)
   platform/
-    filesystem/               home/config/cache folders, path comparison, dry-run file changes
+    filesystem/               home/config/cache folders, path comparison, dry-run file changes, lock files
     process/                  start ssh, browser, file manager, editor, clipboard; hidden console windows
-    terminal/                 open the terminal, raw keys, window size (per-OS build tags)
+    terminal/                 open the terminal (only in the foreground), raw keys, window size (per-OS build tags)
 ```
 
 Packages are named after their layer (`domain`, `application`,
@@ -130,7 +130,8 @@ token or background server. Two consequences:
   need no cgo.
 - On Linux the window links WebKitGTK. Linux releases also ship a static
   `-cli` build without the window, which `install.sh` picks when WebKitGTK is
-  missing, because git runs this same binary on every clone, pull and push.
+  missing or the desktop build does not start, because git runs this same
+  binary on every clone, pull and push.
 
 ## Rules
 
