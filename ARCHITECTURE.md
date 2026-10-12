@@ -30,7 +30,7 @@ internal/
       application/            add, edit, rename, remove accounts; keys of an account; rules; settings; a repo's account
       infrastructure/         Store: accounts, rules and settings in git config; identity files; key paths
     identity/
-      domain/                 resolve: which account a repo uses (pure decision, table-tested)
+      domain/                 resolve: which account a repo uses (saved, ask every time, rules, the optional default; pure, table-tested)
     git/
       domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links; Explain (git and ssh errors in plain words)
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
@@ -39,8 +39,8 @@ internal/
       application/            the repo list: show, add, clone, remove, pin, open
       infrastructure/         Reader (find repos on disk, read them with git), Cloner
     history/
-      domain/                 commits, graph lanes, the wrong-account rule, filters and dates, line rendering; port Log
-      application/            commit graph with accounts and filters; fix authors; revert, drop, roll back, cherry-pick; web links
+      domain/                 commits, graph lanes, the wrong-account rule, filters and dates, line rendering, commit details (numstat); port Log
+      application/            commit graph with accounts and filters (paged: History.More); commit details; fix authors; revert, drop, roll back, cherry-pick; web links
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/
       domain/                 Head (branch, HEAD, upstream, ahead/behind), Branch; port Refs
@@ -185,7 +185,8 @@ token or background server. Two consequences:
 | --- | --- |
 | `internal/**/..._test.go` | Unit tests next to the code (URL parsing, account decisions, graph layout, ssh arguments, key input, the desktop API). |
 | `test/integration` | Builds the real program and runs real `git clone/pull/push` through it against local repos via a fake ssh. |
-| `test/architecture` | Enforces the import rules above, checks domain features have no cycles, and that core code never prints. |
+| `test/architecture` | Enforces the import rules above, checks domain features have no cycles, that core code never prints, and that the `gitswitch` program and the ssh hook stay free of desktop and git-client code. |
+| `test/screenshots` | Not a test: `run.sh` regenerates the README screenshots from demo data (see CONTRIBUTING.md). |
 
 Run everything with `go test ./...`. CI runs it on Linux, macOS and Windows.
 

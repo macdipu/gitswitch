@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stands in for ssh in the demo recordings (gifs.sh): answers GitSwitch's
+# login test the way GitHub does, so no network or real account is needed.
+prev=""; key=""
+for a in "$@"; do
+  [ "$prev" = "-i" ] && key="$a"
+  [ "$a" = "-G" ] && exec ssh "$@"   # host lookups go to the real ssh
+  prev="$a"
+done
+case "$key" in
+  *personal*) user=alexrivera ;;
+  *client*)   user=alex-globex ;;
+  *)          user=alex-acme ;;
+esac
+echo "Hi $user! You've successfully authenticated, but GitHub does not provide shell access." >&2
+exit 1

@@ -13,16 +13,16 @@ GitSwitch picks the right SSH key and commit email for every clone, pull and pus
 $ git push
 
 Git account for my-company/api?
-  [Enter] personal   (default)
   1  personal         you@gmail.com
   2  work             you@company.com
 Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 2!
+gitswitch: work saved for this repo
 ```
 
 - **One-time install.** One command installs the terminal program and the desktop app on Windows, macOS and Linux. Keeps working after restarts and updates.
-- **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (~15 ms, ~10 MB), then it exits.
+- **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (a few milliseconds and about 6 MB of memory, measured on Linux), then it exits.
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
-- **History you can act on:** the account behind every commit; revert, drop, roll back and cherry-pick with each step explained; switch branches and pull; search by message, author, account or date. Pushed history is never rewritten.
+- **History you can act on:** the account behind every commit, its full message and changed files; revert, drop, roll back and cherry-pick with each step explained; switch branches and pull; search by message, author, account or date. Pushed history is never rewritten.
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
 
 <picture>
@@ -48,7 +48,7 @@ Type a number for this time, or add ! to always use it for this repo (e.g. 2!): 
 
 ## Install
 
-The installer detects your system, downloads the matching binary from the [latest release](https://github.com/macdipu/gitswitch/releases/latest), verifies its SHA-256 checksum, checks that it starts on your system and installs it.
+The installer detects your system, downloads the matching programs (`gitswitch` and the desktop app) from the [latest release](https://github.com/macdipu/gitswitch/releases/latest), verifies their SHA-256 checksums, checks that they start on your system and installs them. On Linux without WebKitGTK it installs only `gitswitch` (see [Terminal app and desktop app](#terminal-app-and-desktop-app)).
 
 **macOS, Linux, WSL, Git Bash**
 
@@ -108,13 +108,13 @@ The wizard connects GitSwitch to git, then for each account:
 1. Asks for a short name, the commit name and email.
 2. Creates a new SSH key (or uses one you already have) and shows the public key with a link to GitHub's **New SSH key** page.
 3. Waits while you add the key, then logs in to check it (`Connected: work is alex-acme on github.com`).
-4. Lets you pick the default account and add rules, so most repos never need to ask.
+4. Lets you add rules, so most repos never need to ask, and optionally pick a default account (type `none`, or press Enter to keep none).
 5. Asks for the folder where you keep your projects, so the apps can list your repos.
 
 Or script it, one command per account:
 
 ```sh
-gitswitch account add work --email you@company.com --name "Your Name" --key new --default
+gitswitch account add work --email you@company.com --name "Your Name" --key new
 gitswitch account add personal --email you@gmail.com --key new
 gitswitch key show work --open        # copies the public key, opens GitHub's SSH key page
 gitswitch test                        # checks each key logs in, and as whom
@@ -213,9 +213,9 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 
 | Page | Keys |
 | --- | --- |
-| Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default · `p` load passphrase into agent · `x` remove (then `y` keeps the key files, `D` deletes them too) |
-| Repos | Enter choose account · `h` history · `c` clone by URL · `f` add projects folder · `a` add one repo · `p` pin · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
-| History | `/` filter · `b` switch branch · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
+| Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `x` remove (then `y` keeps the key files, `D` deletes them too) |
+| Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `f` add projects folder · `a` add one repo · `p` pin · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
+| History | Enter commit details · `m` load more · `/` filter · `b` switch branch · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check · `r` runs the health checks again |
 
@@ -227,11 +227,11 @@ When the terminal app creates a key or tests a login, it steps aside so `ssh-key
 
 ## IDE notes
 
-- **VS Code:** nothing to set. The integrated terminal prompts; the Source Control panel uses rules, the popup or the default.
+- **VS Code:** nothing to set. The integrated terminal prompts; the Source Control panel uses the repo's saved account, rules, the popup, or your default if you set one.
 - **Android Studio / IntelliJ / other JetBrains IDEs:** if your version has **Settings → Version Control → Git → SSH executable**, choose **Native**. The Built-in option ignores git's settings.
 - **Key passphrases:** IDEs can't type a passphrase for you. Run `gitswitch key agent <account>` once in a terminal to store it in the OS agent or macOS Keychain.
 - **Windows:** the Windows `ssh-agent` service remembers passphrases. `gitswitch doctor` tells you if it is off and how to turn it on (one admin command).
-- **WSL:** WSL is a separate Linux system with its own git. Install the Linux binary inside WSL too.
+- **WSL:** WSL is a separate Linux system with its own git. Run the install line inside WSL too.
 
 ## Commit history and branches
 
@@ -245,6 +245,7 @@ Find commits with filters. Text, author and dates search the whole history, not 
 gitswitch log --author ana --since "2 weeks ago"      # author name or email
 gitswitch log --grep login --until 2024-06-30         # message; both ends of a date range are included
 gitswitch log --account work                          # commits made with one of your accounts
+gitswitch log -n 200                                  # more than the latest 40 commits
 ```
 
 Work with branches and commits, always with the repo's account:
@@ -265,7 +266,7 @@ gitswitch browse 1a2b3c4             # open the commit on GitHub, GitLab, Bitbuc
 
 `drop`, `rollback` and `fix-author` refuse when the branch pushes to a remote branch this clone has no copy of (a single-branch clone, or a branch deleted on the server), since they can't tell what is pushed; `update` explains the same case. `fix-author` also refuses when a merge brought pushed commits in after your first not-pushed one: run `git pull --rebase` first. `switch upstream/main` is refused while your local `main` pulls from `origin/main`; it tells you how to make a separate branch. `browse` only opens commits that are on a remote branch. The stash is not shown as history.
 
-The apps' History page has all of this, and the desktop app's toolbar says when the remote branch is missing from the clone. In the desktop app, click a commit to see what you can do with it (each action explains itself), Ctrl/⌘-click several to cherry-pick them, and search with words or tokens like `author:ana since:7d`. Keys: `/` search, `j`/`k` move, `b` branch, `Esc` clear.
+The apps' History page has all of this, and the desktop app's toolbar says when the remote branch is missing from the clone. In the desktop app, click a commit to see its full message, the files it changed and what you can do with it (each action explains itself), Ctrl/⌘-click several to cherry-pick them, and search with words or tokens like `author:ana since:7d`. Keys: `/` search, `j`/`k` move, `b` branch, `Esc` clear. In the terminal app, Enter shows a commit's message and files. Both apps show the latest 300–400 commits first, with "Load more" (`m` in the terminal app) for older ones.
 
 ## Repo list
 
@@ -294,6 +295,7 @@ Adding or removing a repo changes only GitSwitch's list. The repo's files, remot
 - `~/.ssh/config` blocks that add other keys for your git hosts
 - host keys not yet recorded (a first push from an IDE would fail)
 - Windows ssh-agent service off, missing key files, a global commit email
+- whether the desktop app is installed (for information; servers don't need it)
 
 In the apps, the checks run when you open Settings (`r` runs them again in the terminal app).
 
@@ -307,11 +309,11 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | --- | --- |
 | Setup | `install`, `setup`, `uninstall [--purge]` |
 | Apps | `tui`, `ui` |
-| Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default`, `test` |
+| Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test` |
 | Keys | `key new\|show\|pick\|agent` |
-| Repos | `use`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin` |
+| Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
-| History | `log [--author\|--grep\|--since\|--until\|--account]`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `browse` |
+| History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `browse` |
 | Branches | `branch`, `switch`, `update` |
 | Diagnostics | `doctor [--fix]` |
 | Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>` |
@@ -344,8 +346,8 @@ All settings live in git config, so the terminal, the desktop app and git always
 
 | Scope | File | Keys |
 | --- | --- | --- |
-| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default`, `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.editor` |
-| Per repo | `.git/config` | `gitswitch.account` |
+| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default` (only if you set one), `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.editor` |
+| Per repo | `.git/config` | `gitswitch.account` (an account, or `ask` for ask every time) |
 
 **Security:** GitSwitch never stores passphrases or tokens. Keys made without a terminal (for example in the desktop app) are created inside GitSwitch, so the passphrase never appears on a command line. The desktop app serves its page inside the process: it opens no network port.
 

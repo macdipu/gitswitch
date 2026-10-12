@@ -151,8 +151,11 @@ If you want to build one:
 
 `test/screenshots/run.sh [version]` regenerates the desktop app pictures in
 `docs/images` (every page, light and dark) from made-up accounts and repos,
-with Docker. Run it after a change to the desktop page, and commit the
-images with the change.
+with Docker. `test/screenshots/gifs.sh [version]` records `setup.gif` and
+`tui.gif` with [VHS](https://github.com/charmbracelet/vhs) the same way (a
+fake ssh answers the login test, so nothing goes over the network). Run
+them after a change to what the apps show, and commit the images with the
+change.
 
 ## Publishing a release (maintainers)
 

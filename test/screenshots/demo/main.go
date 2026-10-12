@@ -1,8 +1,9 @@
 // Command demo serves the desktop app's page and API over HTTP with made-up
 // accounts and repos, for the README screenshots (see ../run.sh). It
-// builds its own home folder and changes nothing outside it.
+// builds its own home folder and changes nothing outside it. With "-" as
+// the address it only builds the home folder (for ../gifs.sh).
 //
-//	demo <empty folder> <address>
+//	demo <empty folder> <address>|-
 package main
 
 import (
@@ -24,7 +25,7 @@ var home string
 
 func main() {
 	if len(os.Args) != 3 {
-		log.Fatal("usage: demo <empty folder> <address>")
+		log.Fatal("usage: demo <empty folder> <address>|-")
 	}
 	home, _ = filepath.Abs(os.Args[1])
 	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config"),
@@ -33,6 +34,9 @@ func main() {
 	}
 	os.Unsetenv("GIT_CONFIG_GLOBAL")
 	seed()
+	if os.Args[2] == "-" {
+		return
+	}
 	log.Printf("demo GitSwitch %s on http://%s", bootstrap.Version, os.Args[2])
 	log.Fatal(http.ListenAndServe(os.Args[2], api.Handler(bootstrap.New(false, io.Discard), nil)))
 }
