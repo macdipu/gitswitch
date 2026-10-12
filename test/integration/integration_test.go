@@ -845,6 +845,19 @@ func TestRewritesRefuseWhenTheRemoteBranchIsUnknown(t *testing.T) {
 	}
 }
 
+// Rules can be removed by value, so a script never removes the wrong one.
+func TestRuleRemoveByValue(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.gs("rule", "add", "folder:~/work", "me")
+	e.gsErr(e.root, "no owner rule", "rule", "remove", "owner:acme")
+	e.gs("rule", "remove", "owner:Acme-Corp/")
+	e.gs("rule", "remove", "folder:~/work")
+	if out := e.gs("rule", "list"); !strings.Contains(out, "No rules") {
+		t.Fatalf("rules left:\n%s", out)
+	}
+}
+
 // gsErr runs gitswitch and expects it to fail with want in its output.
 func (e *env) gsErr(dir, want string, args ...string) {
 	e.t.Helper()

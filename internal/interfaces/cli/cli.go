@@ -43,7 +43,7 @@ Repos and rules
   gitswitch forget                  make this repo ask again
   gitswitch rule add owner:<org> <id>     e.g. owner:acme-corp client-acme
   gitswitch rule add folder:<path> <id>   e.g. folder:~/work polygon
-  gitswitch rule list | remove <n>
+  gitswitch rule list | remove owner:<org>|folder:<path>|<n>
   gitswitch repo list [--pinned] [--json]   repos in your project folders plus ones you added
   gitswitch repo clone <url> [folder] [--account <id>]   clone with the right account from the start
   gitswitch repo add [path]         add an existing repo to the list (nothing in it changes)

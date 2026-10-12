@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
 
@@ -305,12 +307,27 @@ func (x *CLI) cmdRule(args []string) error {
 		x.say("Rule added.")
 		return nil
 	case "remove", "rm":
-		var n int
 		if len(args) != 2 {
-			return usageErr("gitswitch rule remove <number>")
+			return usageErr("gitswitch rule remove owner:<org>|folder:<path>|<number>")
 		}
+		// By value: scripts can't remove the wrong rule after the list changed.
+		if kind, pat, ok := strings.Cut(args[1], ":"); ok {
+			if kind == "folder" {
+				p, err := filepath.Abs(filesystem.ExpandHome(pat))
+				if err != nil {
+					return err
+				}
+				pat = filepath.ToSlash(p)
+			}
+			if err := x.app.Accounts.RemoveRuleFor(kind, pat); err != nil {
+				return err
+			}
+			x.say("Rule removed.")
+			return nil
+		}
+		var n int
 		if _, err := fmt.Sscan(args[1], &n); err != nil {
-			return errors.New("give the rule number from `gitswitch rule list`")
+			return errors.New("give the rule as owner:<org> or folder:<path>, or its number from `gitswitch rule list`")
 		}
 		return x.app.Accounts.RemoveRuleAt(n - 1)
 	}

@@ -207,6 +207,20 @@ func TestRemoveRuleAt(t *testing.T) {
 	}
 }
 
+func TestRemoveRuleFor(t *testing.T) {
+	s, st, _, _ := newService()
+	st.c.Rules = []account.Rule{{Kind: "owner", Pattern: "Acme", Account: "work"}, {Kind: "folder", Pattern: "/src/acme", Account: "work"}}
+	if err := s.RemoveRuleFor("folder", "acme"); err == nil {
+		t.Error("an owner pattern must not match a folder rule")
+	}
+	if err := s.RemoveRuleFor("owner", "/acme/"); err != nil || len(st.c.Rules) != 1 || st.c.Rules[0].Kind != "folder" {
+		t.Errorf("err=%v rules=%v", err, st.c.Rules)
+	}
+	if err := s.RemoveRuleFor("owner", "acme"); err == nil || !strings.Contains(err.Error(), "rule list") {
+		t.Errorf("removing a missing rule: err=%v", err)
+	}
+}
+
 func TestRepoAccount(t *testing.T) {
 	s, _, ra, _ := newService()
 	if _, err := s.SetRepoAccount("/r/.git", "work"); err != nil || ra.saved["/r/.git"] != "work" {

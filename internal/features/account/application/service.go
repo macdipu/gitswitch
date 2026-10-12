@@ -141,6 +141,22 @@ func (s *Service) UseKey(id, path string) error {
 func (s *Service) AddRule(r account.Rule) error    { return s.Store.AddRule(r) }
 func (s *Service) RemoveRule(r account.Rule) error { return s.Store.RemoveRule(r) }
 
+// RemoveRuleFor removes the rule of a kind for a pattern, matched the way
+// AddRule stores it: owner names without slashes, letter case ignored.
+// Folder patterns must already be absolute. Unlike a list position, it
+// can't remove the wrong rule after the list changed.
+func (s *Service) RemoveRuleFor(kind, pattern string) error {
+	if kind == "owner" {
+		pattern = strings.Trim(strings.TrimSpace(pattern), "/")
+	}
+	for _, r := range s.Config().Rules {
+		if r.Kind == kind && strings.EqualFold(r.Pattern, pattern) {
+			return s.Store.RemoveRule(r)
+		}
+	}
+	return fmt.Errorf("no %s rule for %q (see `gitswitch rule list`)", kind, pattern)
+}
+
 // RemoveRuleAt removes the rule at a 0-based position in Config().Rules.
 func (s *Service) RemoveRuleAt(i int) error {
 	rules := s.Config().Rules
