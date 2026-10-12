@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
@@ -55,13 +56,27 @@ type form struct {
 type picker struct {
 	title   string
 	options []string
-	sel     int
+	sel     int    // position in shown()
+	off     int    // first shown option on screen
+	filter  string // typed text narrows the list
 	pick    func(i int) error
+}
+
+// shown lists the options that match the filter, as indexes into options.
+func (p *picker) shown() []int {
+	f := strings.ToLower(p.filter)
+	var out []int
+	for i, o := range p.options {
+		if strings.Contains(strings.ToLower(o), f) {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 type confirmBox struct {
 	text    string
-	actions map[string]func() error // key -> action; anything else cancels
+	actions map[string]func() error // key -> action; n or Esc cancels, other keys do nothing
 }
 
 type viewer struct {
@@ -69,6 +84,7 @@ type viewer struct {
 	lines []string
 	url   string
 	copy  string
+	off   int // first line on screen
 }
 
 type tui struct {
@@ -79,7 +95,8 @@ type tui struct {
 	app     *bootstrap.App
 	repos   []repo.Info
 	scanned bool
-	checks  []doctor.Check
+	checks  []doctor.Check // the health checks; run only on the Settings page
+	hooked  bool           // git runs through gitswitch
 
 	histDir   string
 	histLines []string
@@ -98,11 +115,13 @@ type tui struct {
 	confirm *confirmBox
 	view    *viewer
 
-	tty       *terminal.TTYState
+	in        *bufio.Reader // the only reader of stdin, also while suspended
+	tty       atomic.Pointer[terminal.TTYState]
 	w, h      int
 	quit      bool
+	err       error // why the app had to stop
 	mu        sync.Mutex
-	suspended bool
+	suspended atomic.Bool
 }
 
 func Run(a *bootstrap.App) error {
@@ -110,34 +129,50 @@ func Run(a *bootstrap.App) error {
 	if err != nil {
 		return fmt.Errorf("%v (try `gitswitch ui` for the desktop app)", err)
 	}
-	t := &tui{tty: st, app: a}
-	fmt.Print("\x1b[?1049h\x1b[?25l") // alternate screen, hide cursor
-	defer func() {
-		fmt.Print("\x1b[?25h\x1b[?1049l")
-		terminal.RestoreTTY(t.tty)
-	}()
+	t := &tui{app: a, in: bufio.NewReader(os.Stdin)}
+	t.tty.Store(st)
+	enterScreen()
+	defer t.restore()
+	// Asked to stop (kill, the window closing): give the terminal back first.
+	// Ctrl+C while suspended goes to the command that is running instead.
+	stopQuit := terminal.WatchQuit(func(s os.Signal) {
+		if s == os.Interrupt && t.suspended.Load() {
+			return
+		}
+		t.restore()
+		os.Exit(1)
+	})
+	defer stopQuit()
 	t.reload()
 	t.histDir = a.Repos.Current()
-	in := bufio.NewReader(os.Stdin)
-	buf := make([]byte, 64)
 	stop := terminal.WatchResize(func() {
 		t.mu.Lock()
-		if !t.suspended && !t.quit {
+		defer t.mu.Unlock()
+		defer func() { // a panic here would skip Run's restore
+			if p := recover(); p != nil {
+				t.restore()
+				panic(p)
+			}
+		}()
+		if !t.suspended.Load() && !t.quit {
 			t.draw()
 		}
-		t.mu.Unlock()
 	})
 	defer stop()
+	buf := make([]byte, 64)
+	var pending []byte // the start of a key split across reads
 	for !t.quit {
 		t.mu.Lock()
 		t.draw()
 		t.mu.Unlock()
-		n, err := in.Read(buf)
+		n, err := t.in.Read(buf)
 		if err != nil {
-			return nil
+			return t.err
 		}
+		keys, rest := parseKeys(append(pending, buf[:n]...), n == len(buf))
+		pending = append([]byte(nil), rest...)
 		t.mu.Lock()
-		for _, k := range parseKeys(buf[:n]) {
+		for _, k := range keys {
 			t.handle(k)
 			if t.quit {
 				break
@@ -145,12 +180,35 @@ func Run(a *bootstrap.App) error {
 		}
 		t.mu.Unlock()
 	}
-	return nil
+	return t.err
 }
 
+func enterScreen() { fmt.Print("\x1b[?1049h\x1b[?25l") } // alternate screen, hide cursor
+func leaveScreen() { fmt.Print("\x1b[?25h\x1b[?1049l") }
+
+// restore leaves the app's screen and puts the terminal back as it was.
+func (t *tui) restore() {
+	leaveScreen()
+	terminal.RestoreTTY(t.tty.Load())
+}
+
+// reload reads the settings again. The health checks start several
+// programs, so they run only while the Settings page is shown.
 func (t *tui) reload() {
 	t.cfg = t.app.Accounts.Config()
-	t.checks = t.app.Doctor.Run(false)
+	t.hooked = t.app.Setup.Installed()
+	if t.tab == tabSettings {
+		t.checks = t.app.Doctor.Run(false)
+	}
+	t.clampSel()
+}
+
+// clampSel keeps every page's selection on a row that exists, after a
+// list got shorter.
+func (t *tui) clampSel() {
+	for tab := range t.sel {
+		t.sel[tab] = max(0, min(t.sel[tab], t.rowsOf(tab)-1))
+	}
 }
 
 func (t *tui) say(err error, ok string) {
@@ -164,25 +222,39 @@ func (t *tui) say(err error, ok string) {
 // suspend leaves the TUI so a command can use the terminal normally
 // (ssh-keygen passphrase, ssh login), then comes back.
 func (t *tui) suspend(f func()) {
-	t.suspended = true
-	defer func() { t.suspended = false }()
-	fmt.Print("\x1b[?25h\x1b[?1049l")
-	terminal.RestoreTTY(t.tty)
+	t.suspended.Store(true)
+	defer t.suspended.Store(false)
+	t.restore()
 	f()
 	fmt.Print("\nPress Enter to go back to GitSwitch...")
-	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
-	st, _ := terminal.MakeRaw()
-	t.tty = st
-	fmt.Print("\x1b[?1049h\x1b[?25l")
+	if t.in != nil {
+		_, _ = t.in.ReadString('\n') // the same reader as the app, so no keys are lost
+	}
+	st, err := terminal.MakeRaw()
+	if err != nil {
+		t.tty.Store(nil)
+		t.quit, t.err = true, fmt.Errorf("could not switch the terminal back to the app: %v", err)
+		return
+	}
+	t.tty.Store(st)
+	enterScreen()
 }
 
 // ---------------- keys ----------------
 
-func parseKeys(b []byte) []string {
-	var keys []string
+// parseKeys turns the bytes read from the terminal into key names. A key
+// cut off at the end (an escape sequence or a character split across two
+// reads) comes back as rest, to be put in front of the next read. full
+// means the read filled its buffer, so a lone Esc at the end may be the
+// start of a sequence rather than the Esc key.
+func parseKeys(b []byte, full bool) (keys []string, rest []byte) {
+	const maxSeq = 32 // longer is not a key: drop it
 	for len(b) > 0 {
 		if b[0] == 0x1b {
 			if len(b) == 1 {
+				if full {
+					return keys, b
+				}
 				keys = append(keys, "esc")
 				break
 			}
@@ -192,7 +264,10 @@ func parseKeys(b []byte) []string {
 					j++
 				}
 				if j >= len(b) {
-					break
+					if len(b) > maxSeq {
+						return keys, nil
+					}
+					return keys, b
 				}
 				seq := string(b[2 : j+1])
 				b = b[j+1:]
@@ -243,6 +318,9 @@ func parseKeys(b []byte) []string {
 				b = b[1:]
 				continue
 			}
+			if !utf8.FullRune(b) {
+				return keys, b
+			}
 			r, size := utf8.DecodeRune(b)
 			keys = append(keys, string(r))
 			b = b[size:]
@@ -250,7 +328,7 @@ func parseKeys(b []byte) []string {
 		}
 		b = b[1:]
 	}
-	return keys
+	return keys, nil
 }
 
 func (t *tui) handle(k string) {
@@ -262,15 +340,23 @@ func (t *tui) handle(k string) {
 	case t.view != nil:
 		t.handleView(k)
 	case t.confirm != nil:
+		// Only the keys the question names do something, so a stray key
+		// neither confirms nor cancels. Case matters (D is not d), except y.
 		c := t.confirm
-		t.confirm = nil
-		if f, ok := c.actions[strings.ToLower(k)]; ok {
+		f, ok := c.actions[k]
+		if !ok && k == "Y" {
+			f, ok = c.actions["y"]
+		}
+		switch {
+		case ok:
+			t.confirm = nil
 			t.msg = ""
 			if err := f(); err != nil || t.msg == "" {
 				t.say(err, "Done.")
 			}
 			t.reload()
-		} else {
+		case k == "n" || k == "N" || k == "esc":
+			t.confirm = nil
 			t.say(nil, "Cancelled.")
 		}
 	case t.picker != nil:
@@ -284,9 +370,23 @@ func (t *tui) handle(k string) {
 
 func (t *tui) handleView(k string) {
 	v := t.view
+	page := t.overlayRows()
 	switch k {
 	case "esc", "enter", "q":
 		t.view = nil
+	case "up", "k":
+		v.off = max(0, v.off-1)
+	case "down", "j":
+		v.off++ // drawing stops it at the last page
+	case "pgup":
+		v.off = max(0, v.off-page)
+	case "pgdn", " ":
+		v.off += page
+	case "home", "g":
+		v.off = 0
+	case "end", "G":
+		v.off = 1 << 30 // drawing stops it at the last page
+
 	case "c":
 		if v.copy != "" && process.CopyToClipboard(v.copy) {
 			t.say(nil, "Copied to clipboard.")
@@ -300,23 +400,48 @@ func (t *tui) handleView(k string) {
 
 func (t *tui) handlePicker(k string) {
 	p := t.picker
+	n := len(p.shown())
+	page := max(1, t.pickerRows())
 	switch k {
-	case "up", "k":
-		if p.sel > 0 {
-			p.sel--
+	case "up":
+		p.sel = max(0, p.sel-1)
+	case "down":
+		p.sel = max(0, min(n-1, p.sel+1))
+	case "pgup":
+		p.sel = max(0, p.sel-page)
+	case "pgdn":
+		p.sel = max(0, min(n-1, p.sel+page))
+	case "home":
+		p.sel = 0
+	case "end":
+		p.sel = max(0, n-1)
+	case "esc": // clears the filter first, then closes
+		if p.filter != "" {
+			p.filter, p.sel = "", 0
+		} else {
+			t.picker = nil
 		}
-	case "down", "j":
-		if p.sel < len(p.options)-1 {
-			p.sel++
+	case "backspace":
+		if p.filter != "" {
+			_, size := utf8.DecodeLastRuneInString(p.filter)
+			p.filter, p.sel = p.filter[:len(p.filter)-size], 0
 		}
-	case "esc", "q":
-		t.picker = nil
+	case "ctrl-u":
+		p.filter, p.sel = "", 0
 	case "enter":
+		shown := p.shown()
+		if p.sel >= len(shown) {
+			return
+		}
 		t.picker = nil
-		if err := p.pick(p.sel); err != nil {
+		if err := p.pick(shown[p.sel]); err != nil {
 			t.say(err, "")
 		}
 		t.reload()
+	default:
+		if utf8.RuneCountInString(k) == 1 {
+			p.filter, p.sel = p.filter+k, 0
+		}
 	}
 }
 
@@ -380,8 +505,13 @@ func indexOf(list []string, v string) int {
 	return 0
 }
 
-func (t *tui) rows() int {
-	switch t.tab {
+func (t *tui) rows() int { return t.rowsOf(t.tab) }
+
+func (t *tui) rowsOf(tab int) int {
+	if t.cfg == nil {
+		return 0
+	}
+	switch tab {
 	case tabAccounts:
 		return len(t.cfg.Accounts)
 	case tabRepos:
@@ -405,14 +535,18 @@ func (t *tui) switchTab(i int) {
 	if t.tab == tabHistory && t.histLines == nil {
 		t.loadHistory()
 	}
+	if t.tab == tabSettings {
+		t.checks = t.app.Doctor.Run(false)
+		t.clampSel()
+	}
 }
 
 func (t *tui) handleMain(k string) {
 	n := t.rows()
-	page := t.h - 6
+	page := max(1, t.h-6)
 	s := &t.sel[t.tab]
 	switch k {
-	case "q", "esc":
+	case "q": // not Esc: a second Esc after closing a form must not quit
 		t.quit = true
 		return
 	case "tab", "right":
@@ -467,10 +601,10 @@ func (t *tui) handleMain(k string) {
 const helpText = `
 Everywhere
   1-5 or Tab / ←→   switch page          ↑↓ PgUp PgDn   move
-  q or Esc          quit                  ?              this help
+  q or Ctrl+C       quit                  ?              this help
 Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default
-  p passphrase to agent   x remove (then d to also delete key files)
+  p passphrase to agent   x remove (then y keeps the key files, Shift+D deletes them too)
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
@@ -481,9 +615,13 @@ History
 Rules
   a add rule   x remove rule
 Settings
-  Enter toggle or fix the selected item
+  Enter toggle or fix the selected item   r run the health checks again
 In forms
   Tab / ↑↓ next field   ←→ change choice   Enter next / save   Esc cancel   Ctrl+U clear field
+In lists that pop up (branch, repo, key)
+  type to filter   ↑↓ PgUp PgDn choose   Enter select   Esc clear the filter, then close
+Questions
+  y yes (or the key the question names)   n or Esc no; other keys do nothing
 `
 
 // ---------------- accounts ----------------
@@ -690,10 +828,10 @@ func (t *tui) keyAccounts(k string) {
 		if a != nil {
 			id := a.ID
 			acc := *a
-			t.confirm = &confirmBox{"Remove " + id + " and its rules?  y = remove, keep key files · d = remove AND delete key files · any other key cancels",
+			t.confirm = &confirmBox{"Remove " + id + " and its rules?  y = remove, keep the key files · D (Shift+d) = remove AND delete the key files · n or Esc = cancel",
 				map[string]func() error{
 					"y": func() error { t.sel[tabAccounts] = 0; _, err := t.app.Accounts.Remove(id, false); return err },
-					"d": func() error {
+					"D": func() error {
 						t.sel[tabAccounts] = 0
 						if _, err := t.app.Accounts.Remove(id, true); err != nil {
 							return err
@@ -886,8 +1024,9 @@ func (t *tui) loadHistory() {
 		t.head = &h
 	}
 	rows, h, err := t.app.History.Rows(t.histDir, 300, t.flagged, true, t.filter)
-	if err != nil {
-		t.histLines, t.histRows = []string{}, nil
+	if err != nil { // show nothing rather than the previous repo's header
+		t.histLines, t.histRows, t.hist, t.head = []string{}, nil, nil, nil
+		t.marked = map[string]bool{}
 		t.say(err, "")
 		return
 	}
@@ -914,16 +1053,18 @@ func (t *tui) keyHistory(k string) {
 		if !t.scanned {
 			t.scanRepos()
 		}
-		if len(t.repos) == 0 {
+		var opts, dirs []string
+		for _, r := range t.repos {
+			if !r.Missing { // its folder is gone: there is no history to show
+				opts, dirs = append(opts, r.Path), append(dirs, r.GitDir)
+			}
+		}
+		if len(opts) == 0 {
 			t.say(fmt.Errorf("no repos found; add a projects folder on the Repos page (key f)"), "")
 			return
 		}
-		var opts []string
-		for _, r := range t.repos {
-			opts = append(opts, r.Path)
-		}
 		t.picker = &picker{title: "Show history for", options: opts, pick: func(i int) error {
-			t.histDir = t.repos[i].GitDir
+			t.histDir = dirs[i]
 			t.loadHistory()
 			return nil
 		}}
@@ -1166,11 +1307,19 @@ func (t *tui) keyRules(k string) {
 // ---------------- settings ----------------
 
 func (t *tui) keySettings(k string) {
+	if k == "r" {
+		t.reload()
+		t.say(nil, "Checked again.")
+		return
+	}
 	if k != "enter" && k != " " {
 		return
 	}
 	i := t.sel[tabSettings]
 	switch {
+	case i-2 >= len(t.checks): // the list changed under the selection
+		t.clampSel()
+		return
 	case i == 0:
 		t.say(t.app.Accounts.SetSetting("guiPrompt", fmt.Sprint(!t.cfg.GUIPrompt)), "Saved.")
 	case i == 1:
@@ -1207,8 +1356,13 @@ const (
 
 func (t *tui) color(id string) string { return "\x1b[" + history.AccountColor(t.cfg, id) + "m" }
 
+// The smallest screen drawn. A smaller window shows the top-left part
+// instead of breaking the layout.
+const minW, minH = 40, 12
+
 func (t *tui) draw() {
-	t.w, t.h = terminal.TermSize()
+	w, h := terminal.TermSize()
+	t.w, t.h = max(w, minW), max(h, minH)
 	var out []string
 	// header
 	head := " " + cBold + "GitSwitch" + cReset + "  "
@@ -1242,14 +1396,11 @@ func (t *tui) draw() {
 	for hdr < len(lines) && strings.HasPrefix(lines[hdr], "\x00") {
 		hdr++
 	}
-	view := body - hdr
+	view := max(1, body-hdr)
 	if sel >= 0 {
-		if sel < *o {
-			*o = sel
-		}
-		if sel >= *o+view {
-			*o = sel - view + 1
-		}
+		*o = scrollTo(*o, sel, view, len(lines)-hdr)
+	} else {
+		*o = 0
 	}
 	for i := 0; i < hdr; i++ {
 		out = append(out, strings.TrimPrefix(lines[i], "\x00"))
@@ -1271,11 +1422,11 @@ func (t *tui) draw() {
 	}
 	// status + help
 	status := ""
-	if t.msg != "" {
+	if msg := history.CleanText(t.msg); msg != "" { // messages can quote git's output
 		if t.msgErr {
-			status = cRed + " " + t.msg + cReset
+			status = cRed + " " + msg + cReset
 		} else {
-			status = cGreen + " " + t.msg + cReset
+			status = cGreen + " " + msg + cReset
 		}
 	}
 	out = append(out[:min(len(out), t.h-2)], status, cDim+" "+t.footer()+cReset)
@@ -1296,16 +1447,19 @@ func (t *tui) footer() string {
 		return "Tab next field · ←→ change choice · Enter save · Esc cancel"
 	}
 	if t.picker != nil {
-		return "↑↓ choose · Enter select · Esc cancel"
+		return "type to filter · ↑↓ choose · Enter select · Esc cancel"
 	}
 	if t.confirm != nil {
-		return "y yes · n no"
+		if _, ok := t.confirm.actions["D"]; ok {
+			return "y remove, keep key files · D remove and delete key files · n or Esc cancel"
+		}
+		return "y yes · n or Esc no"
 	}
 	if t.view != nil {
 		if t.view.copy != "" {
-			return "c copy · o open link · Enter close"
+			return "c copy · o open link · ↑↓ scroll · Enter close"
 		}
-		return "Enter close"
+		return "↑↓ PgUp PgDn scroll · Enter close"
 	}
 	switch t.tab {
 	case tabAccounts:
@@ -1317,7 +1471,7 @@ func (t *tui) footer() string {
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}
-	return "Enter toggle / fix · ? help · q quit"
+	return "Enter toggle / fix · r check again · ? help · q quit"
 }
 
 func mark(on bool) string {
@@ -1363,7 +1517,7 @@ func (t *tui) drawAccounts() ([]string, int) {
 	return l, t.sel[tabAccounts]
 }
 
-func (t *tui) installed() bool { return t.app.Setup.Installed() }
+func (t *tui) installed() bool { return t.hooked }
 
 func boldIf(on bool) string {
 	if on {
@@ -1428,7 +1582,7 @@ func (t *tui) drawHistory() ([]string, int) {
 		}
 		l = append(l, "\x00 "+cBold+h.Repo.Path+cReset+"  account: "+acct+"  "+flag+cDim+fmt.Sprintf("  %d not pushed", h.Unpushed)+cReset+filter)
 		if t.head != nil {
-			l = append(l, "\x00 branch: "+cBold+t.head.Describe()+cReset)
+			l = append(l, "\x00 branch: "+cBold+history.CleanText(t.head.Describe())+cReset)
 		}
 		if t.filter.Active() {
 			l = append(l, "\x00 "+cYellow+"filter: "+t.filter.Describe()+cReset+cDim+fmt.Sprintf("  %d commit(s) · / to change", len(h.Commits))+cReset)
@@ -1498,19 +1652,40 @@ func (t *tui) overlay() []string {
 	}
 	switch {
 	case t.view != nil:
+		v := t.view
 		var body []string
-		for _, l := range t.view.lines {
+		for _, l := range v.lines {
 			body = append(body, wrapPlain(l, min(t.w-8, 96))...)
 		}
-		return box(t.view.title, body)
+		rows := t.overlayRows()
+		if len(body) <= rows {
+			v.off = 0
+			return box(v.title, body)
+		}
+		rows-- // room for the position line
+		v.off = max(0, min(v.off, len(body)-rows))
+		page := append([]string(nil), body[v.off:v.off+rows]...)
+		page = append(page, cDim+fmt.Sprintf("lines %d-%d of %d · ↑↓ PgUp PgDn to scroll", v.off+1, v.off+rows, len(body))+cReset)
+		return box(v.title, page)
 	case t.confirm != nil:
 		return box("Confirm", wrapPlain(t.confirm.text, min(t.w-8, 96)))
 	case t.picker != nil:
-		var body []string
-		for i, o := range t.picker.options {
-			body = append(body, mark(i == t.picker.sel)+o+cReset)
+		p := t.picker
+		shown := p.shown()
+		rows := t.pickerRows()
+		p.sel = max(0, min(p.sel, len(shown)-1))
+		p.off = scrollTo(p.off, p.sel, rows, len(shown))
+		body := []string{"Filter: " + p.filter + cRev + " " + cReset + cDim + "  type to narrow the list" + cReset, ""}
+		for j := p.off; j < len(shown) && j < p.off+rows; j++ {
+			body = append(body, mark(j == p.sel)+p.options[shown[j]]+cReset)
 		}
-		return box(t.picker.title, body)
+		switch {
+		case len(shown) == 0:
+			body = append(body, "  No match. Backspace changes the filter, Esc clears it.")
+		case len(shown) > rows:
+			body = append(body, cDim+fmt.Sprintf("  %d-%d of %d", p.off+1, min(len(shown), p.off+rows), len(shown))+cReset)
+		}
+		return box(p.title, body)
 	case t.form != nil:
 		var body []string
 		for i, f := range t.form.fields {
@@ -1536,6 +1711,26 @@ func (t *tui) overlay() []string {
 		return box(t.form.title, body)
 	}
 	return nil
+}
+
+// overlayRows is how many lines fit inside a box: the screen less the
+// header, status and footer lines and the box's own borders.
+func (t *tui) overlayRows() int { return max(1, t.h-6) }
+
+// pickerRows is how many options fit, below the filter line and above
+// the position line.
+func (t *tui) pickerRows() int { return max(1, t.overlayRows()-3) }
+
+// scrollTo returns the first row to show of n so that row sel is among
+// the rows shown.
+func scrollTo(off, sel, rows, n int) int {
+	if sel < off {
+		off = sel
+	}
+	if sel >= off+rows {
+		off = sel - rows + 1
+	}
+	return max(0, min(off, n-rows))
 }
 
 // ---------------- text helpers (ANSI aware) ----------------
