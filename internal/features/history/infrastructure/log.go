@@ -102,11 +102,34 @@ func (l *Log) Graph(gitDir string, n int, color bool) (string, error) {
 }
 
 func (l *Log) LocalCommits(wt string) ([]string, error) {
+	if err := l.upstreamKnown(wt); err != nil {
+		return nil, err
+	}
 	out, err := l.Git.Run("-C", wt, "rev-list", "--reverse", "HEAD", "--not", "--remotes")
 	if err != nil {
 		return nil, err
 	}
 	return strings.Fields(out), nil
+}
+
+// upstreamKnown refuses to judge what is pushed when the branch is set to
+// push to a remote branch git has no local copy of: a single-branch or
+// shallow clone after `git push -u`, a narrowed fetch refspec, or a remote
+// branch deleted after merging. Its commits may be on the server even
+// though no remote-tracking ref contains them.
+func (l *Log) upstreamKnown(wt string) error {
+	b := l.Branch(wt)
+	if b == "" {
+		return nil
+	}
+	r, _ := l.Git.Run("-C", wt, "config", "--get", "branch."+b+".remote")
+	if r == "" || r == "." {
+		return nil
+	}
+	if _, err := l.Git.Run("-C", wt, "rev-parse", "--verify", "-q", b+"@{upstream}"); err != nil {
+		return fmt.Errorf("%s pushes to %s, but this clone has no copy of that remote branch (it may be a single-branch clone, or the branch was deleted on the server), so gitswitch can't tell which commits are pushed; run `git fetch %s` and try again, or revert instead", b, r, r)
+	}
+	return nil
 }
 
 func (l *Log) AuthorEmail(wt, hash string) string {
@@ -119,11 +142,32 @@ func (l *Log) HeadAuthorName(wt string) string {
 	return name
 }
 
-func (l *Log) RewriteAuthor(wt, name, email, first string) error {
+func (l *Log) Rewritten(wt, first string) ([]string, error) {
+	args := []string{"-C", wt, "rev-list", "HEAD"}
+	if p, err := l.Git.Run("-C", wt, "rev-parse", "--verify", "-q", first+"^"); err == nil && p != "" {
+		args = append(args, "^"+p)
+	}
+	out, err := l.Git.Run(append(args, "--")...)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(out), nil
+}
+
+func (l *Log) RewriteAuthor(wt, name, email, first string, wrong []string) error {
 	git := l.Git
+	if len(wrong) == 0 {
+		return nil
+	}
 	safe := strings.NewReplacer(`"`, "", "`", "", "$", "", `\`, "").Replace
 	author := safe(name) + " <" + safe(email) + ">"
-	execLine := `if [ "$(git log -1 --format=%ae)" != "` + safe(email) + `" ]; then git commit --amend --allow-empty --no-edit --no-verify --author="` + author + `"; fi`
+	// Only commits by one of the wrong emails are amended. Any other commit
+	// the rebase replays (a teammate's, say) keeps its author.
+	pats := make([]string, len(wrong))
+	for i, e := range wrong {
+		pats[i] = `"` + safe(e) + `"`
+	}
+	execLine := `case "$(git log -1 --format=%ae)" in ` + strings.Join(pats, "|") + `) git commit --amend --allow-empty --no-edit --no-verify --author="` + author + `";; esac`
 	args := []string{"-C", wt, "-c", "user.email=" + email, "-c", "user.name=" + name,
 		"rebase", "--rebase-merges", "--keep-empty", "--autostash", "--exec", execLine}
 	if p, err := git.Run("-C", wt, "rev-parse", "--verify", "-q", first+"^"); err == nil && p != "" {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -24,7 +25,13 @@ import (
 // Terminal asks on the user's terminal. git owns stdin/stdout (the SSH
 // protocol runs over them), so we talk to the terminal device directly.
 func Terminal(t *terminal.Terminal, label string, cands []account.Account, def *account.Account, timeout int) *resolve.Decision {
-	w := t.Out
+	return ask(t.In, t.Out, label, cands, def, time.Duration(timeout)*time.Second)
+}
+
+// ask asks until the answer names an account or the time runs out. A typo
+// is asked again rather than guessed: guessing would push as the wrong
+// account.
+func ask(in io.Reader, w io.Writer, label string, cands []account.Account, def *account.Account, timeout time.Duration) *resolve.Decision {
 	fmt.Fprintf(w, "\nGit account for %s?\n", label)
 	fmt.Fprintf(w, "  [Enter] %s   (default)\n", def.ID)
 	for i, a := range cands {
@@ -32,21 +39,47 @@ func Terminal(t *terminal.Terminal, label string, cands []account.Account, def *
 	}
 	fmt.Fprintf(w, "Type a number for this time, or add ! to always use it for this repo (e.g. 2!): ")
 
-	line := make(chan string, 1)
+	lines := make(chan string, 1)
 	go func() {
-		s, _ := bufio.NewReader(t.In).ReadString('\n')
-		line <- s
+		r := bufio.NewReader(in)
+		for {
+			s, err := r.ReadString('\n')
+			if err != nil && s == "" {
+				close(lines)
+				return
+			}
+			lines <- s
+			if err != nil {
+				close(lines)
+				return
+			}
+		}
 	}()
-	var ans string
-	select {
-	case ans = <-line:
-	case <-time.After(time.Duration(timeout) * time.Second):
-		fmt.Fprintf(w, "\n(no answer in %ds, using %s)\n", timeout, def.ID)
-		return &resolve.Decision{Account: def, Reason: resolve.Default}
+	deadline := time.After(timeout)
+	for {
+		select {
+		case s, ok := <-lines:
+			if !ok { // end of input: nobody chose
+				fmt.Fprintf(w, "\n(no answer, using %s)\n", def.ID)
+				return &resolve.Decision{Account: def, Reason: resolve.Default}
+			}
+			if d := parseAnswer(s, cands, def); d != nil {
+				return d
+			}
+			fmt.Fprintf(w, "%q is not a choice. Press Enter for %s, or type 1-%d or an account name: ", strings.TrimSpace(s), def.ID, len(cands))
+		case <-deadline:
+			fmt.Fprintf(w, "\n(no answer in %s, using %s)\n", timeout, def.ID)
+			return &resolve.Decision{Account: def, Reason: resolve.Default}
+		}
 	}
-	ans = strings.TrimSpace(ans)
+}
+
+// parseAnswer reads one answer: Enter, a number or an account name, with
+// an optional ! to save it. nil means it names no account.
+func parseAnswer(s string, cands []account.Account, def *account.Account) *resolve.Decision {
+	ans := strings.TrimSpace(s)
 	save := strings.HasSuffix(ans, "!")
-	ans = strings.TrimSuffix(ans, "!")
+	ans = strings.TrimSpace(strings.TrimSuffix(ans, "!"))
 	if ans == "" {
 		return &resolve.Decision{Account: def, Reason: resolve.Prompt, Save: save}
 	}
@@ -58,8 +91,7 @@ func Terminal(t *terminal.Terminal, label string, cands []account.Account, def *
 			return &resolve.Decision{Account: &cands[i], Reason: resolve.Prompt, Save: save}
 		}
 	}
-	fmt.Fprintf(w, "Not a choice, using %s.\n", def.ID)
-	return &resolve.Decision{Account: def, Reason: resolve.Default}
+	return nil
 }
 
 // Dialog shows a small native dialog when git runs with no terminal

@@ -477,10 +477,13 @@ type Log interface {
 	AuthorEmail(worktree, hash string) string
 	// HeadAuthorName is the author name of the latest commit.
 	HeadAuthorName(worktree string) string
-	// RewriteAuthor sets name and email as the author of the not-pushed
-	// commits from first on that used another email. Nothing changes on
-	// failure.
-	RewriteAuthor(worktree, name, email, first string) error
+	// Rewritten lists the commits a rewrite starting at first replays:
+	// every commit on the current branch after first's parent.
+	Rewritten(worktree, first string) ([]string, error)
+	// RewriteAuthor sets name and email as the author of the commits from
+	// first on whose author email is one of wrong; all others keep their
+	// author. Nothing changes on failure.
+	RewriteAuthor(worktree, name, email, first string, wrong []string) error
 
 	// Resolve finds the commit a hash (or other revision) names.
 	Resolve(worktree, rev string) (Target, error)

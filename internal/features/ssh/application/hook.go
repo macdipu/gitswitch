@@ -68,7 +68,7 @@ func (h *Hook) Run(args []string) int {
 		}
 		if d == nil {
 			d = &resolve.Decision{Account: def, Reason: resolve.Default}
-			fmt.Fprintf(h.Notice, "gitswitch: no account saved for %s, using default %q. Save one with: gitswitch use <account>\n", label, def.ID)
+			fmt.Fprintf(h.Notice, "gitswitch: no account saved for %s, using default %q for this connection only. Save one with: gitswitch use <account>\n", label, def.ID)
 		}
 	}
 	if d.Save && gitDir != "" {
@@ -76,7 +76,12 @@ func (h *Hook) Run(args []string) int {
 			fmt.Fprintf(h.Notice, "gitswitch: %s saved for this repo\n", d.Account.ID)
 		}
 	}
-	h.Identity.ApplyIdentity(gitDir, d.Account)
+	// A fallback nobody chose (timeout, no terminal, no answer) is used for
+	// this connection only. Writing it as the repo's commit identity would
+	// silently defeat user.useConfigOnly and commit as the wrong account.
+	if d.Reason != resolve.Default {
+		h.Identity.ApplyIdentity(gitDir, d.Account)
+	}
 	return h.Transport.Exec(sshBin, SSHArgs(d.Account, args, term == nil && h.Transport.HostKeyPolicy(sshBin, args) == "ask"))
 }
 

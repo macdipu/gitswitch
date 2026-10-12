@@ -96,7 +96,21 @@ func (r *Runner) WorktreeOf(gitDir string) string {
 	if strings.HasSuffix(filepath.ToSlash(gitDir), "/.git") {
 		return filepath.Dir(gitDir)
 	}
-	if out, err := r.Run("--git-dir="+gitDir, "rev-parse", "--show-toplevel"); err == nil && out != "" {
+	// A linked worktree's git dir (.git/worktrees/<name>) has no
+	// core.worktree; its "gitdir" file points at <worktree>/.git.
+	if filepath.Base(filepath.Dir(gitDir)) == "worktrees" {
+		if b, err := os.ReadFile(filepath.Join(gitDir, "gitdir")); err == nil {
+			if p := strings.TrimSpace(string(b)); p != "" {
+				if !filepath.IsAbs(p) {
+					p = filepath.Join(gitDir, p)
+				}
+				return filepath.Dir(filepath.Clean(p))
+			}
+		}
+	}
+	// -C: without core.worktree git takes the current folder as the work
+	// tree, which would be whatever folder gitswitch was started in.
+	if out, err := r.Run("-C", gitDir, "--git-dir="+gitDir, "rev-parse", "--show-toplevel"); err == nil && out != "" {
 		return out
 	}
 	return gitDir

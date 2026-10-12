@@ -154,8 +154,11 @@ func TestHookWithoutATerminalFallsBackToTheDefault(t *testing.T) {
 	if p.dialog != 0 {
 		t.Error("the dialog is off unless gitswitch.guiPrompt is set")
 	}
-	if id.applied[0] != "/src/api/.git=me" || len(r.saved) != 0 {
-		t.Errorf("applied=%v saved=%v", id.applied, r.saved)
+	if len(id.applied) != 0 || len(r.saved) != 0 {
+		t.Errorf("a default nobody chose must not become the repo's identity: applied=%v saved=%v", id.applied, r.saved)
+	}
+	if !strings.HasPrefix(tr.ran[0], "-i /keys/me ") {
+		t.Errorf("the default account's key must still be used: %q", tr.ran[0])
 	}
 	if !strings.Contains(notice.String(), `using default "me"`) {
 		t.Errorf("notice = %q", notice.String())

@@ -799,6 +799,49 @@ func (e *env) subjects(dir, rev string, n int) string {
 	return strings.ReplaceAll(e.gitIn(dir, "log", "-n", fmt.Sprint(n), "--format=%s", rev), "\n", ",")
 }
 
+// A merge that brings in a teammate's pushed commits must stop fix-author:
+// the rebase would replay, and rewrite, those pushed commits too.
+func TestFixAuthorRefusesPushedCommitsFromAMerge(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	e.clone("git@github.com:acme-corp/api.git", "mate")
+	api, mate := filepath.Join(e.root, "api"), filepath.Join(e.root, "mate")
+	e.gitIn(api, "-c", "user.email=dipu@me.example", "commit", "-q", "--allow-empty", "-m", "wrong account")
+	e.gitIn(mate, "-c", "user.email=mate@acme.example", "commit", "-q", "--allow-empty", "-m", "teammate")
+	e.gitIn(mate, "push", "-q", "origin", "main")
+	e.gitIn(api, "pull", "-q", "--no-rebase", "--no-edit", "origin", "main")
+	before := e.gitIn(api, "rev-parse", "HEAD")
+	e.gsErr(api, "already pushed", "fix-author")
+	if got := e.gitIn(api, "rev-parse", "HEAD"); got != before {
+		t.Fatal("history changed although fix-author refused")
+	}
+	// After `git pull --rebase` the local commit comes last and can be fixed.
+	e.gitIn(api, "pull", "-q", "--rebase", "origin", "main")
+	e.gsIn(api, "fix-author")
+	if got := e.gitIn(api, "log", "-2", "--format=%ae"); got != "dipu@client.example\nmate@acme.example" {
+		t.Fatalf("authors after fix:\n%s", got)
+	}
+}
+
+// In a single-branch clone a pushed branch has no remote-tracking ref, so
+// rewriting commands must refuse instead of treating its commits as local.
+func TestRewritesRefuseWhenTheRemoteBranchIsUnknown(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.git("clone", "-q", "--single-branch", "git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.gitIn(api, "switch", "-q", "-c", "feat")
+	first := e.commitFile(api, "a.txt", "a\n", "feat a")
+	e.commitFile(api, "b.txt", "b\n", "feat b")
+	e.gitIn(api, "push", "-q", "-u", "origin", "feat")
+	e.gsErr(api, "can't tell which commits are pushed", "drop", first[:7], "-y")
+	e.gsErr(api, "can't tell which commits are pushed", "rollback", first[:7], "-y")
+	if got := e.subjects(api, "HEAD", 2); got != "feat b,feat a" {
+		t.Fatalf("history changed: %s", got)
+	}
+}
+
 // gsErr runs gitswitch and expects it to fail with want in its output.
 func (e *env) gsErr(dir, want string, args ...string) {
 	e.t.Helper()

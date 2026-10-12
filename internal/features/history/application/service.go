@@ -126,10 +126,33 @@ func (s *Service) FixAuthor(gitDir string) (int, error) {
 	if len(local) == 0 {
 		return 0, nil
 	}
-	bad := 0
+	// The rebase replays every commit after the first local one. A merge
+	// can bring pushed commits into that range; replaying them would
+	// rewrite pushed history, so refuse.
+	span, err := s.Log.Rewritten(wt, local[0])
+	if err != nil {
+		return 0, err
+	}
+	isLocal := map[string]bool{}
 	for _, h := range local {
-		if history.IsWrongAccount(c, a, s.Log.AuthorEmail(wt, h), true) {
+		isLocal[h] = true
+	}
+	for _, h := range span {
+		if !isLocal[h] {
+			return 0, errors.New("a merge after your first not-pushed commit brought in commits that are already pushed, and fixing the author would rewrite them; run `git pull --rebase` so your commits come last, then try again")
+		}
+	}
+	bad := 0
+	var wrong []string
+	seen := map[string]bool{}
+	for _, h := range span {
+		e := s.Log.AuthorEmail(wt, h)
+		if history.IsWrongAccount(c, a, e, true) {
 			bad++
+			if !seen[e] {
+				seen[e] = true
+				wrong = append(wrong, e)
+			}
 		}
 	}
 	if bad == 0 {
@@ -142,7 +165,7 @@ func (s *Service) FixAuthor(gitDir string) (int, error) {
 	if name == "" {
 		name = s.Log.HeadAuthorName(wt)
 	}
-	if err := s.Log.RewriteAuthor(wt, name, a.Email, local[0]); err != nil {
+	if err := s.Log.RewriteAuthor(wt, name, a.Email, local[0], wrong); err != nil {
 		return 0, err
 	}
 	return bad, nil
@@ -201,11 +224,13 @@ func (s *Service) Rollback(gitDir, rev string) (int, history.Target, error) {
 	if len(after) == 0 {
 		return 0, t, fmt.Errorf("%s is the latest commit; there is nothing to roll back", t.Short)
 	}
+	l, err := s.Log.LocalCommits(wt)
+	if err != nil {
+		return 0, t, err
+	}
 	local := map[string]bool{}
-	if l, err := s.Log.LocalCommits(wt); err == nil {
-		for _, h := range l {
-			local[h] = true
-		}
+	for _, h := range l {
+		local[h] = true
 	}
 	for _, h := range after {
 		if !local[h] {

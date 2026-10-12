@@ -40,9 +40,10 @@ type fakeLog struct {
 	graph    string
 	graphErr error
 	local    []string
+	span     []string // what Rewritten returns; nil: local
 	emails   map[string]string
 	headName string
-	rewrote  []string // "worktree name email first"
+	rewrote  []string // "worktree name email first wrong,emails"
 
 	filter history.Filter // the last filter passed to Commits
 
@@ -112,8 +113,14 @@ func (f *fakeLog) Graph(string, int, bool) (string, error) { return f.graph, f.g
 func (f *fakeLog) LocalCommits(string) ([]string, error)   { return f.local, nil }
 func (f *fakeLog) AuthorEmail(_, hash string) string       { return f.emails[hash] }
 func (f *fakeLog) HeadAuthorName(string) string            { return f.headName }
-func (f *fakeLog) RewriteAuthor(wt, name, email, first string) error {
-	f.rewrote = append(f.rewrote, strings.Join([]string{wt, name, email, first}, " "))
+func (f *fakeLog) Rewritten(string, string) ([]string, error) {
+	if f.span != nil {
+		return f.span, nil
+	}
+	return f.local, nil
+}
+func (f *fakeLog) RewriteAuthor(wt, name, email, first string, wrong []string) error {
+	f.rewrote = append(f.rewrote, strings.Join([]string{wt, name, email, first, strings.Join(wrong, ",")}, " "))
 	return nil
 }
 
@@ -163,7 +170,7 @@ func TestFixAuthor(t *testing.T) {
 	if n, err := s.FixAuthor("/r/.git"); err != nil || n != 2 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	if len(l.rewrote) != 1 || l.rewrote[0] != "/r Head Author w@x.com c1" {
+	if len(l.rewrote) != 1 || l.rewrote[0] != "/r Head Author w@x.com c1 me@x.com,old@laptop" {
 		t.Errorf("rewrote = %q, want the head author's name (the account has none) from the oldest commit", l.rewrote)
 	}
 
@@ -172,6 +179,15 @@ func TestFixAuthor(t *testing.T) {
 	if n, err := s.FixAuthor("/r/.git"); err != nil || n != 0 || len(l.rewrote) != 0 {
 		t.Errorf("nothing to fix: n=%d err=%v rewrote=%v", n, err, l.rewrote)
 	}
+
+	// A merge brought a pushed commit into the range the rebase replays.
+	l.rewrote = nil
+	l.emails = map[string]string{"c1": "me@x.com", "c2": "w@x.com", "c3": "w@x.com"}
+	l.span = []string{"c1", "teammate", "c2", "c3"}
+	if _, err := s.FixAuthor("/r/.git"); err == nil || !strings.Contains(err.Error(), "already pushed") || len(l.rewrote) != 0 {
+		t.Errorf("pushed commit in range: err=%v rewrote=%v", err, l.rewrote)
+	}
+	l.span = nil
 
 	r.acc = nil
 	if _, err := s.FixAuthor("/r/.git"); err == nil || !strings.Contains(err.Error(), "gitswitch use") {
