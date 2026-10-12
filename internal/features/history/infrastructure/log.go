@@ -186,7 +186,7 @@ func (l *Log) RewriteAuthor(wt, name, email, first string, wrong []string) error
 		args = append(args, "--root")
 	}
 	stash := l.stashTop(wt)
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(gitinfra.Program(), args...)
 	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=:", "GIT_EDITOR=:")
 	process.HideWindow(cmd)
 	if b, err := cmd.CombinedOutput(); err != nil {

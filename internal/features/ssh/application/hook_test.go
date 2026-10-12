@@ -229,13 +229,15 @@ func TestHookStopsWhenSettingsCannotBeRead(t *testing.T) {
 }
 
 func TestHookNeverAsksInBatchMode(t *testing.T) {
-	h, st, id, _, _, p, _ := newHook()
+	h, st, id, _, tr, p, _ := newHook()
 	p.term = true
 	st.c.GUIPrompt = true
 	p.answer = &resolve.Decision{Account: &work, Reason: resolve.Prompt}
 	h.Run(append([]string{"-o", "BatchMode=yes"}, gitArg...))
-	if p.asked != 0 || p.dialog != 0 || id.applied[0] != "/src/api/.git=me" {
-		t.Errorf("asked=%d dialog=%d applied=%v", p.asked, p.dialog, id.applied)
+	// The default's key is used for this connection, but nobody chose it,
+	// so it does not become the repo's identity.
+	if p.asked != 0 || p.dialog != 0 || len(id.applied) != 0 || !strings.HasPrefix(tr.ran[0], "-i /keys/me ") {
+		t.Errorf("asked=%d dialog=%d applied=%v ran=%q", p.asked, p.dialog, id.applied, tr.ran)
 	}
 }
 
