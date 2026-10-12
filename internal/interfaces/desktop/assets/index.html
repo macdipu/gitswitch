@@ -47,6 +47,7 @@ h1{font-size:24px;font-weight:650;margin:0 0 4px;letter-spacing:-.01em}
 section[hidden]{display:none}
 
 .banner{display:flex;gap:16px;align-items:center;justify-content:space-between;border:1px solid var(--bad);background:var(--bad-soft);padding:12px 16px;border-radius:var(--radius);margin-bottom:20px}
+a.btn{color:var(--ink);text-decoration:none;display:inline-block}
 .btn{cursor:pointer;border:1px solid var(--rule);background:var(--panel);padding:6px 12px;border-radius:var(--radius);font-size:14px}
 .btn:hover{background:var(--hover)}
 .btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
@@ -168,6 +169,26 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 @media (max-width:1100px){.hist-main.open{grid-template-columns:minmax(0,1fr) 300px}}
 @media (max-width:900px){.hist-main.open{grid-template-columns:minmax(0,1fr)} .details{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:62vh;z-index:6;box-shadow:0 -6px 24px rgb(0 0 0 / .2)} .fpanel{grid-template-columns:1fr 1fr}}
 
+/* first-run setup */
+.wiz{max-width:640px}
+.wiz .wiz-steps{display:flex;gap:6px;list-style:none;padding:0;margin:0 0 22px;flex-wrap:wrap}
+.wiz-steps li{font-size:12.5px;color:var(--muted);padding:3px 10px;border:1px solid var(--rule);border-radius:999px}
+.wiz-steps li[aria-current]{color:var(--panel);background:var(--ink);border-color:var(--ink)}
+.wiz-steps li.done{color:var(--ok);border-color:var(--ok)}
+.wiz h2{font-size:20px;margin:0 0 6px}
+.wiz .lead{margin-bottom:16px}
+.wiz .card,.wiz form.card{display:block;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:18px;margin:0 0 16px}
+.wiz label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin-bottom:12px}
+.wiz label small{color:var(--muted)}
+.wiz textarea{width:100%;min-height:74px}
+.wiz ol{margin:6px 0 12px;padding-left:22px;line-height:1.6}
+.wiz .foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.wiz .skip{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;text-decoration:underline;font-size:13px}
+.hosts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.hosts button{cursor:pointer;border:1px solid var(--rule);background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:var(--radius);font-size:14px}
+.hosts button[aria-pressed=true]{border-color:var(--focus);box-shadow:inset 0 0 0 1px var(--focus)}
+.choice{display:flex;gap:8px;align-items:flex-start;flex-direction:row!important;color:var(--ink)!important;font-size:14px!important}
+.result{margin:12px 0 0}
 .toast{position:fixed;bottom:18px;right:18px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:var(--radius);font-size:14px;max-width:420px;opacity:0;transform:translateY(6px);transition:.18s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 .toast.err{background:var(--panel);color:var(--ink);border:1px solid var(--bad);border-left-width:4px;pointer-events:auto;max-width:460px;box-shadow:0 8px 24px rgb(0 0 0 / .18)}
@@ -214,12 +235,17 @@ dialog .row-actions{justify-content:flex-end}
     <button class="btn primary" id="installBtn">Install</button>
   </div>
 
+  <section id="tab-welcome" class="wiz" hidden aria-labelledby="wizTitle">
+    <ol class="wiz-steps" id="wizSteps" aria-label="Setup steps"></ol>
+    <div id="wizBody"></div>
+  </section>
+
   <section id="tab-accounts">
     <h1>Accounts</h1>
     <p class="lead">Each account has its own SSH key and commit email. GitSwitch picks one for every clone, pull and push.</p>
     <div class="row-actions" style="margin-bottom:16px"><button class="btn primary" id="addAcctBtn">Add account</button></div>
     <form class="card" id="acctForm" hidden>
-      <label>Short name<input name="id" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,31}" placeholder="work, personal, client-acme"></label>
+      <label>Short name<input name="id" required pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,31}" placeholder="work, personal, client-acme"></label>
       <label>Git host<input name="host" value="github.com"></label>
       <label>Commit name<input name="name" placeholder="Your Name"></label>
       <label>Commit email<input name="email" type="email" required placeholder="you@company.com"></label>
@@ -338,6 +364,9 @@ dialog .row-actions{justify-content:flex-end}
     </form>
     <h3>Health check</h3>
     <div class="checks" id="checks"></div>
+    <h3>Guided setup</h3>
+    <p class="hint">Walks you through connecting git, adding an account and its key, and choosing your projects folder.</p>
+    <button class="btn" id="rerunSetup">Run guided setup</button>
   </section>
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -415,6 +444,148 @@ async function refresh(){
     `<div class="lane"><i style="background:${colorOf(a.id)}"></i><div>${esc(a.id)}${a.id === c.default ? ' <span class="hint">default</span>' : ''}<small>${esc(a.email)}</small></div></div>`).join('') : '';
   renderAccounts(); renderRules(); renderSettings();
 }
+
+// ---- first-run setup ----
+// A guided setup for people new to GitSwitch, SSH keys or git: it opens on
+// its own when git is not connected yet or there is no account, and can be
+// run again from Settings. Each step uses the same API as the pages.
+const W = {step:0, acct:null};
+const wizNames = ['Welcome', 'Connect git', 'Add an account', 'Add the key', 'Projects folder', 'Done'];
+const hostPicks = [['GitHub','github.com'], ['GitLab','gitlab.com'], ['Bitbucket','bitbucket.org'], ['Other','']];
+function wizSkipped(){ try { return sessionStorage.getItem('gs.setupSkipped') === '1'; } catch { return false; } }
+function needsSetup(){ return !S.installed || !S.config.accounts.length; }
+function openWizard(step){
+  W.step = step ?? 0; W.acct = null;
+  document.querySelectorAll('nav button').forEach(b => b.removeAttribute('aria-current'));
+  document.querySelectorAll('main > section').forEach(x => x.hidden = x.id !== 'tab-welcome');
+  $('#installBanner').hidden = true;
+  renderWizard();
+}
+function closeWizard(skipped){
+  if (skipped){ try { sessionStorage.setItem('gs.setupSkipped', '1'); } catch {} }
+  $('#tab-welcome').hidden = true; show('accounts'); refresh();
+}
+function wizGo(step){ W.step = step; renderWizard(); $('#wizBody').querySelector('h2')?.focus(); }
+function renderWizard(){
+  $('#wizSteps').innerHTML = wizNames.map((n, i) => `<li${i === W.step ? ' aria-current="step"' : ''}${i < W.step ? ' class="done"' : ''}>${i < W.step ? '✓ ' : ''}${esc(n)}</li>`).join('');
+  const skip = '<button class="skip" type="button" data-w="skip">Skip setup, I\'ll do it myself</button>';
+  const body = [
+    () => `<h2 id="wizTitle" tabindex="-1">Welcome to GitSwitch</h2>
+      <p class="lead">GitSwitch lets you use several git accounts on this computer, for example work and personal, and picks the right one for every clone, pull and push. Setup takes about three minutes.</p>
+      <div class="card"><ol>
+        <li>Connect git to GitSwitch (one click).</li>
+        <li>Add an account: its email and an SSH key, which is how GitHub, GitLab or Bitbucket knows it is you.</li>
+        <li>Put the key on the account's settings page and test it.</li>
+        <li>Optionally choose the folder where you keep your projects.</li></ol></div>
+      <div class="foot"><button class="btn primary" data-w="next">Start setup</button>${skip}</div>`,
+    () => S.installed
+      ? `<h2 id="wizTitle" tabindex="-1">Git is connected</h2><p class="lead status-ok">✓ Every terminal and IDE on this computer already goes through GitSwitch.</p>
+         <div class="foot"><button class="btn primary" data-w="next">Continue</button>${skip}</div>`
+      : `<h2 id="wizTitle" tabindex="-1">Connect git to GitSwitch</h2>
+      <p class="lead">Git will start GitSwitch for a moment whenever it talks to a server, so it can pick the account. Nothing keeps running in the background.</p>
+      <div class="card"><p style="margin:0 0 6px">This changes one setting in your global git config (<code>core.sshCommand</code>) and turns on a check that stops commits with no account. Undo it any time with <code>gitswitch uninstall</code>.</p></div>
+      <div class="foot"><button class="btn primary" data-w="install">Connect git</button>${skip}</div>`,
+    () => `<h2 id="wizTitle" tabindex="-1">Add ${S.config.accounts.length ? 'another' : 'your first'} account</h2>
+      <p class="lead">One account per git identity, for example <em>work</em> with your company email and <em>personal</em> with your own.</p>
+      <form class="card" id="wizAcct" novalidate>
+        <span style="font-size:13px;color:var(--muted)">Where is this account?</span>
+        <div class="hosts" role="group" aria-label="Git host">${hostPicks.map(([n, h]) => `<button type="button" data-host="${h}" aria-pressed="${h === 'github.com'}">${n}</button>`).join('')}</div>
+        <label id="wizHostOther" hidden>Host name<input name="host" value="github.com" placeholder="git.company.com" autocomplete="off" spellcheck="false"></label>
+        <label>Short name for this account<input name="id" required pattern="[A-Za-z0-9][A-Za-z0-9_\\-]{0,31}" placeholder="work" value="${S.config.accounts.length ? '' : 'work'}" autocomplete="off" spellcheck="false"><small>Letters, digits, - or _. You will see it in prompts and lists.</small></label>
+        <label>Email for commits<input name="email" type="email" required placeholder="you@company.com" autocomplete="email"><small>Use the email your account on the host knows, so commits show up as yours.</small></label>
+        <label>Name for commits<input name="name" placeholder="Your Name" autocomplete="name"><small>Leave empty to use the name git already has.</small></label>
+        <label class="choice"><input type="radio" name="keymode" value="new" checked> <span>Create a new key for this account <small>(recommended)</small></span></label>
+        <label class="choice"><input type="radio" name="keymode" value="existing"> <span>Use a key I already have</span></label>
+        <label id="wizPass">Passphrase for the key (optional)<input name="passphrase" type="password" autocomplete="new-password"><small>Protects the key if someone copies it. GitSwitch never saves it; your computer asks for it when needed.</small></label>
+        <label id="wizKeyPath" hidden>Private key file<input name="key" list="keyList" placeholder="~/.ssh/id_ed25519" spellcheck="false"></label>
+        <div class="foot"><button class="btn primary" type="submit">Create account</button>${S.config.accounts.length ? '<button class="btn" type="button" data-w="done">Back to summary</button>' : ''}${skip}</div>
+      </form>`,
+    () => `<h2 id="wizTitle" tabindex="-1">Put the key on ${esc(W.acct.host)}</h2>
+      <p class="lead">The host needs this account's <em>public</em> key to recognise it. It is safe to share; the private key never leaves this computer.</p>
+      <div class="card" id="wizKey"><p class="hint">Loading the key…</p></div>
+      <div class="foot"><button class="btn primary" data-w="test">I've added it, test it</button><button class="btn" data-w="later">Do this later</button></div>
+      <div class="result" id="wizResult" aria-live="polite"></div>`,
+    () => `<h2 id="wizTitle" tabindex="-1">Where do you keep your projects?</h2>
+      <p class="lead">GitSwitch lists the repos in this folder so you can see and change each one's account. It only reads the folder. You can add more folders later.</p>
+      <form class="card" id="wizFolder"><label>Projects folder<span style="display:flex;gap:8px"><input name="path" style="flex:1" placeholder="${esc(S.home)}/code" spellcheck="false"><button class="btn" type="button" data-w="browse">Browse…</button></span></label>
+        <div class="foot"><button class="btn primary" type="submit">Add folder</button><button class="btn" type="button" data-w="next">Skip</button></div></form>`,
+    () => { const c = S.config, d = c.default || c.accounts[0]?.id;
+      return `<h2 id="wizTitle" tabindex="-1">You're set up</h2>
+      <p class="lead">From now on, clone and push with normal addresses like <code>git@github.com:owner/repo.git</code>. GitSwitch picks the account.</p>
+      <div class="card"><ol>
+        <li>Accounts: ${c.accounts.map(a => `<strong>${esc(a.id)}</strong> (${esc(a.email)})`).join(', ') || 'none yet'}.</li>
+        ${c.accounts.length > 1 ? `<li>When a repo has no account yet, git asks you which one to use the first time. Add <strong>!</strong> to your answer to remember it.</li>`
+          : `<li>Every repo on ${esc(c.accounts[0]?.host || 'the host')} uses <strong>${esc(d || '')}</strong>. Add another account when you need one.</li>`}
+        <li>Rules choose accounts automatically by GitHub owner or folder, so most repos never ask. Set them on the Rules page.</li></ol></div>
+      <div class="foot"><button class="btn primary" data-w="finish">Open GitSwitch</button><button class="btn" data-w="another">Add another account</button></div>`; },
+  ][W.step];
+  $('#wizBody').innerHTML = body();
+  if (W.step === 3) wizLoadKey();
+}
+async function wizLoadKey(){
+  const k = await act(() => api('GET', '/api/pubkey?id=' + encodeURIComponent(W.acct.id)));
+  if (!k){ $('#wizKey').innerHTML = '<p class="status-bad">Could not read the public key.</p>'; return; }
+  let copied = false;
+  try { await navigator.clipboard.writeText(k.key); copied = true; } catch {}
+  $('#wizKey').innerHTML = `<label>Public key${copied ? ' (already copied for you)' : ''}<textarea readonly class="mono">${esc(k.key)}</textarea></label>
+    <div class="foot" style="margin-bottom:10px"><button class="btn" data-w="copy">Copy key</button>${k.page ? `<a class="btn" href="${esc(k.page)}">Open the SSH keys page</a>` : ''}</div>
+    <ol>${(k.steps || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol>`;
+}
+$('#tab-welcome').addEventListener('click', async e => {
+  const b = e.target.closest('[data-w],[data-host]'); if (!b) return;
+  if (b.dataset.host !== undefined){
+    const f = $('#wizAcct'); b.parentNode.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    $('#wizHostOther').hidden = b.dataset.host !== ''; f.host.value = b.dataset.host; if (!b.dataset.host) f.host.focus();
+    return;
+  }
+  const w = b.dataset.w;
+  if (w === 'skip') return closeWizard(true);
+  if (w === 'next') return wizGo(W.step + 1);
+  if (w === 'done') return wizGo(5);
+  if (w === 'another') return wizGo(2);
+  if (w === 'finish') return closeWizard(false);
+  if (w === 'later'){ toast('You can test it later on the Accounts page.'); return wizGo(4); }
+  if (w === 'install'){
+    b.disabled = true; b.textContent = 'Connecting…';
+    if (await act(() => api('POST', '/api/install').then(() => true))){ await refresh(); return wizGo(2); }
+    b.disabled = false; b.textContent = 'Connect git'; return;
+  }
+  if (w === 'copy'){ const t = $('#wizKey textarea'); try { await navigator.clipboard.writeText(t.value); toast('Key copied'); } catch { await act(() => api('POST','/api/copy',{text:t.value}), 'Key copied'); } return; }
+  if (w === 'browse'){ const p = await pickFolder('Choose your projects folder'); if (p) $('#wizFolder').path.value = p; return; }
+  if (w === 'test'){
+    b.disabled = true; b.textContent = 'Testing…'; $('#wizResult').innerHTML = '';
+    const r = await act(() => api('POST', '/api/test', {id:W.acct.id}));
+    b.disabled = false; b.textContent = 'Test again';
+    if (!r) return;
+    if (r.ok){ $('#wizResult').innerHTML = `<p class="status-ok">✓ Connected to ${esc(W.acct.host)} as <strong>${esc(r.user)}</strong>.</p><div class="foot"><button class="btn primary" data-w="next">Continue</button></div>`; return; }
+    $('#wizResult').innerHTML = `<p class="status-bad">Not connected yet.</p>` + (r.hint ? hintHTML(r.hint, r.output)
+      : `<p>Check that you added the key while signed in as the right account, then test again.</p><details><summary>Details</summary><pre class="mono">${esc(r.output)}</pre></details>`);
+  }
+});
+$('#tab-welcome').addEventListener('change', e => {
+  if (e.target.name !== 'keymode') return;
+  const ex = e.target.value === 'existing'; $('#wizKeyPath').hidden = !ex; $('#wizPass').hidden = ex;
+  if (ex) act(() => api('GET', '/api/keys')).then(ks => { $('#keyList').innerHTML = (ks || []).map(k => `<option value="${esc(k.path)}">${esc(k.comment)}${k.usedBy ? ' (used by ' + esc(k.usedBy) + ')' : ''}</option>`).join(''); });
+});
+$('#tab-welcome').addEventListener('submit', async e => {
+  e.preventDefault(); const f = e.target, form = f.getAttribute('id'); // f.id is the "id" input in the account form
+  if (form === 'wizFolder'){
+    const path = f.path.value.trim(); if (!path) return wizGo(5);
+    if (await act(() => api('POST', '/api/folder', {path}).then(() => true), 'Added ' + path)){ await refresh(); wizGo(5); }
+    return;
+  }
+  if (form !== 'wizAcct') return;
+  if (!f.reportValidity()) return;
+  const gen = f.keymode.value === 'new', btn = f.querySelector('[type=submit]');
+  const data = {mode:'new', id:f.id.value.trim(), host:f.host.value.trim() || 'github.com', name:f.name.value.trim(), email:f.email.value.trim(),
+    key: gen ? '' : f.key.value.trim(), generateKey:gen, passphrase:f.passphrase.value, makeDefault:!S.config.accounts.length};
+  btn.disabled = true; btn.textContent = gen ? 'Creating the key…' : 'Saving…';
+  const r = await act(() => api('POST', '/api/account', data));
+  btn.disabled = false; btn.textContent = 'Create account';
+  if (!r) return;
+  W.acct = r; await refresh(); wizGo(3);
+});
+$('#rerunSetup').onclick = () => openWizard(S.installed ? 2 : 0);
 
 // ---- accounts ----
 function renderAccounts(){
@@ -962,7 +1133,7 @@ $('#setForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
   await act(() => api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:+f.promptTimeout.value}), 'Settings saved'); refresh(); };
 $('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); loadChecks(); });
 
-refresh().catch(e => toast(e.message, true, e.hint));
+refresh().then(() => { if (needsSetup() && !wizSkipped()) openWizard(); }).catch(e => toast(e.message, true, e.hint));
 </script>
 </body>
 </html>

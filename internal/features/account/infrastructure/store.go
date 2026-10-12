@@ -349,6 +349,10 @@ func (s *Store) AddScanFolder(p string) error {
 	if err != nil {
 		return err
 	}
+	// A typo would otherwise be saved and quietly find no repos.
+	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		return fmt.Errorf("there is no folder %s; check the path, or choose it with Browse", abs)
+	}
 	for _, f := range s.Load().ScanFolders {
 		if f == abs {
 			return nil

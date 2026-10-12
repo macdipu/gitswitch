@@ -42,6 +42,8 @@ func (x *CLI) wizard() error {
 	x.say("GitSwitch setup. Press Enter to accept the value in [brackets].")
 	if !x.app.Setup.Installed() {
 		x.say("\nStep 1: connect gitswitch to git (one time).")
+		x.say("Git will start gitswitch for a moment whenever it talks to a server, so it can pick the account.")
+		x.say("This sets core.sshCommand in your global git config; undo it any time with `gitswitch uninstall`.")
 		if err := x.app.Setup.Install(x.report()); err != nil {
 			return err
 		}
@@ -123,6 +125,21 @@ func (x *CLI) wizard() error {
 			} else {
 				x.say("Rule added.")
 			}
+		}
+	}
+	if cfg := x.app.Accounts.Config(); len(cfg.ScanFolders) == 0 && !ended {
+		x.say("\nGitSwitch can list the repos in the folder where you keep your projects (it only reads it).")
+		for {
+			p := ask("Projects folder, or Enter to skip", "")
+			if p == "" || ended {
+				break
+			}
+			if err := x.app.Accounts.AddScanFolder(p); err != nil {
+				x.say("Error:", err)
+				continue
+			}
+			x.say("Added.")
+			break
 		}
 	}
 	x.say("\nDone. Clone with normal URLs (git@github.com:owner/repo.git); gitswitch picks the account.")

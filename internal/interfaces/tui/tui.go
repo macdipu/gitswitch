@@ -145,6 +145,7 @@ func Run(a *bootstrap.App) error {
 	defer stopQuit()
 	t.reload()
 	t.histDir = a.Repos.Current()
+	t.welcome()
 	stop := terminal.WatchResize(func() {
 		t.mu.Lock()
 		defer t.mu.Unlock()
@@ -218,6 +219,26 @@ func (t *tui) say(err error, ok string) {
 	} else {
 		t.msg, t.msgErr = ok, false
 	}
+}
+
+// welcome shows first-time users the few keys that set GitSwitch up, when
+// there is no account yet.
+func (t *tui) welcome() {
+	if len(t.cfg.Accounts) > 0 {
+		return
+	}
+	t.view = &viewer{title: "Welcome to GitSwitch", lines: []string{
+		"GitSwitch picks the right git account (work, personal, ...) for every clone, pull and push.",
+		"",
+		"To set it up:",
+		"  1. On Accounts, press a to add an account. Choose \"new key\" unless you already have one.",
+		"  2. Press k to see its public key and the page to add it on (GitHub, GitLab, ...).",
+		"  3. After adding it there, press t to test the login.",
+		"  4. On Repos (2), press f to add the folder where you keep your projects.",
+		"",
+		"Prefer questions one at a time? Quit with q and run: gitswitch setup",
+		"Or use the desktop app, which has a guided setup: gitswitch ui",
+	}}
 }
 
 // explain opens a panel saying, in plain words, what a git or ssh error

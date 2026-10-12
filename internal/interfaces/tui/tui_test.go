@@ -199,3 +199,16 @@ func TestKnownErrorsAreExplained(t *testing.T) {
 		t.Errorf("an unknown error stays a status line: view=%v msg=%q", x.view, x.msg)
 	}
 }
+
+func TestWelcomeOnlyWithoutAccounts(t *testing.T) {
+	x := testTUI(t)
+	x.welcome()
+	if x.view == nil || x.view.title != "Welcome to GitSwitch" {
+		t.Fatalf("no accounts: view = %+v", x.view)
+	}
+	x.view = nil
+	x.cfg.Accounts = []account.Account{{ID: "work"}}
+	if x.welcome(); x.view != nil {
+		t.Error("with an account there is nothing to welcome")
+	}
+}
