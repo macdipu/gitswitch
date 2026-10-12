@@ -147,6 +147,13 @@ If you want to build one:
   comment, like the existing workflows.
 - CI must pass on Linux, macOS and Windows.
 
+## Screenshots
+
+`test/screenshots/run.sh [version]` regenerates the desktop app pictures in
+`docs/images` (every page, light and dark) from made-up accounts and repos,
+with Docker. Run it after a change to the desktop page, and commit the
+images with the change.
+
 ## Publishing a release (maintainers)
 
 1. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
