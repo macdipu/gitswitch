@@ -72,12 +72,15 @@ func currentGitDir(git *gitinfra.Runner, inv ssh.Invocation) string {
 		base := strings.TrimSuffix(filepath.Base(inv.RepoPath), ".git")
 		cands = append(cands, filepath.Join(wd, base, ".git"))
 	}
+	// Last, the repo we are in, but only if it is the one being fetched:
+	// cloning from inside another repo must not save or set that one.
+	cands = append(cands, git.GitDirFor(wd))
 	for _, c := range cands {
 		if hasRemote(git, c, inv.Host, inv.RepoPath) {
 			return c
 		}
 	}
-	return git.GitDirFor(wd)
+	return ""
 }
 
 func absFromWd(d string) string {
@@ -116,12 +119,13 @@ func hasRemote(git *gitinfra.Runner, gitDir, host, repoPath string) bool {
 	if _, err := os.Stat(gitDir); err != nil {
 		return false
 	}
-	out, _ := git.Run("--git-dir="+gitDir, "config", "--local", "--get-regexp", `^remote\..*\.url$`)
-	want := strings.ToLower(strings.TrimSuffix(repoPath, ".git"))
+	// `remote -v` lists fetch and push URLs after url.<base>.insteadOf.
+	out, _ := git.Run("--git-dir="+gitDir, "remote", "-v")
+	want := strings.ToLower(strings.TrimSuffix(strings.Trim(repoPath, "/"), ".git"))
 	for _, line := range strings.Split(out, "\n") {
-		if _, u, ok := strings.Cut(line, " "); ok {
-			h, p := remote.Parse(u)
-			if remote.SameHost(h, host) && strings.ToLower(strings.TrimSuffix(p, ".git")) == want {
+		if f := strings.Fields(line); len(f) >= 2 {
+			h, p := remote.Parse(f[1])
+			if remote.SameHost(h, host) && strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(p, "~"), ".git")) == want {
 				return true
 			}
 		}

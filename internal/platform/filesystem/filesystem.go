@@ -105,7 +105,45 @@ func (f *FS) WriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, perm)
+	return WriteAtomic(path, data, perm)
+}
+
+// WriteAtomic writes a file through a temporary file in the same folder
+// and renames it into place, so readers (such as git reading an include
+// file) never see it half written. An existing file keeps its mode.
+func WriteAtomic(path string, data []byte, perm os.FileMode) error {
+	if st, err := os.Stat(path); err == nil {
+		perm = st.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			tmp.Close()
+			os.Remove(name)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	ok = true
+	return nil
 }
 
 func (f *FS) Remove(path string) error {

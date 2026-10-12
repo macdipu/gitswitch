@@ -17,6 +17,7 @@ import (
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	"github.com/macdipu/gitswitch/internal/features/setup"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
+	sshinfra "github.com/macdipu/gitswitch/internal/features/ssh/infrastructure"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
@@ -102,9 +103,7 @@ func (d *Doctor) Run(deep bool) []Check {
 			map[bool]string{true: "no repo overrides it", false: fmt.Sprintf("%d repo(s) set their own core.sshCommand: %s", len(over), strings.Join(over, ", "))}[len(over) == 0], true)
 	}
 	for _, h := range uniqueHosts(c) {
-		cmd := exec.Command(process.FindSSHTool("ssh-keygen"), "-F", h)
-		process.HideWindow(cmd)
-		known := cmd.Run() == nil
+		known := sshinfra.KnownHost(sshBin, h)
 		add("knownhost-"+h, "Host key for "+h+" is recorded", known,
 			map[bool]string{true: "first connections from IDEs work", false: "run `gitswitch test` once in a terminal to record it"}[known], false)
 	}
@@ -113,7 +112,9 @@ func (d *Doctor) Run(deep bool) []Check {
 			"IdentityFile lines for "+strings.Join(hits, ", ")+" are also offered and can log you in as a different account when a key is missing on the host", false)
 	}
 	if runtime.GOOS == "windows" {
-		out, err := exec.Command("sc", "query", "ssh-agent").CombinedOutput()
+		sc := exec.Command("sc", "query", "ssh-agent")
+		process.HideWindow(sc)
+		out, err := sc.CombinedOutput()
 		running := err == nil && strings.Contains(string(out), "RUNNING")
 		add("winagent", "Windows ssh-agent service running", running,
 			"Needed to remember key passphrases. Fix (admin PowerShell): Get-Service ssh-agent | Set-Service -StartupType Automatic; Start-Service ssh-agent", false)

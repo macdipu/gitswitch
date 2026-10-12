@@ -6,6 +6,9 @@ package infrastructure
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	gossh "golang.org/x/crypto/ssh"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	accountinfra "github.com/macdipu/gitswitch/internal/features/account/infrastructure"
@@ -45,23 +50,53 @@ func (k *Keys) Generate(a *account.Account, interactive bool, passphrase string)
 	if comment == "" {
 		comment = "gitswitch-" + a.ID
 	}
-	args := []string{"-t", "ed25519", "-C", comment, "-f", path}
 	if !interactive {
-		args = append(args, "-N", passphrase, "-q")
-	}
-	cmd := exec.Command(process.FindSSHTool("ssh-keygen"), args...)
-	if interactive {
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("ssh-keygen failed: %v", err)
+		// Made here rather than with `ssh-keygen -N <passphrase>`, which
+		// would show the passphrase to every user of `ps`.
+		if err := writeKeyPair(path, comment, passphrase); err != nil {
+			return "", fmt.Errorf("could not create the key: %v", err)
 		}
 		return path, nil
 	}
-	process.HideWindow(cmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("ssh-keygen failed: %v %s", err, strings.TrimSpace(string(out)))
+	cmd := exec.Command(process.FindSSHTool("ssh-keygen"), "-t", "ed25519", "-C", comment, "-f", path)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("ssh-keygen failed: %v", err)
 	}
 	return path, nil
+}
+
+// writeKeyPair writes a new ed25519 key pair in OpenSSH's format, the same
+// files `ssh-keygen -t ed25519` makes: the private key (encrypted when a
+// passphrase is given, with bcrypt and aes256-ctr) readable only by you,
+// and the public key next to it as path.pub.
+func writeKeyPair(path, comment, passphrase string) error {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return err
+	}
+	var block *pem.Block
+	if passphrase == "" {
+		block, err = gossh.MarshalPrivateKey(priv, comment)
+	} else {
+		block, err = gossh.MarshalPrivateKeyWithPassphrase(priv, comment, []byte(passphrase))
+	}
+	if err != nil {
+		return err
+	}
+	sshPub, err := gossh.NewPublicKey(pub)
+	if err != nil {
+		return err
+	}
+	pubLine := strings.TrimSpace(string(gossh.MarshalAuthorizedKey(sshPub))) + " " + comment + "\n"
+	if err := filesystem.WriteAtomic(path+".pub", []byte(pubLine), 0o644); err != nil {
+		return err
+	}
+	if err := filesystem.WriteAtomic(path, pem.EncodeToMemory(block), 0o600); err != nil {
+		os.Remove(path + ".pub")
+		return err
+	}
+	return nil
 }
 
 // PublicKey returns the account's public key text.
@@ -197,8 +232,56 @@ func (k *Keys) Fingerprint(a *account.Account) string {
 }
 
 // KnownHost reports whether the host's key is in known_hosts.
-func (k *Keys) KnownHost(host string) bool {
-	cmd := exec.Command(process.FindSSHTool("ssh-keygen"), "-F", host)
+func (k *Keys) KnownHost(host string) bool { return KnownHost(process.FindSSH(""), host) }
+
+// KnownHost reports whether ssh would find the host's key in a known_hosts
+// file. It asks ssh (`ssh -G`) where the host really is, because
+// ~/.ssh/config may send it elsewhere: GitHub over port 443 is recorded as
+// [ssh.github.com]:443, which `ssh-keygen -F github.com` never finds.
+func KnownHost(sshBin, host string) bool {
+	name, port := host, "22"
+	var files []string
+	cmd := exec.Command(sshBin, "-G", host)
 	process.HideWindow(cmd)
-	return cmd.Run() == nil
+	if out, err := cmd.Output(); err == nil {
+		alias := ""
+		for _, l := range strings.Split(string(out), "\n") {
+			k, v, _ := strings.Cut(strings.TrimSpace(l), " ")
+			switch strings.ToLower(k) {
+			case "hostname":
+				name = v
+			case "port":
+				port = v
+			case "hostkeyalias":
+				alias = v
+			case "userknownhostsfile", "globalknownhostsfile":
+				files = append(files, strings.Fields(v)...)
+			}
+		}
+		if alias != "" && alias != "none" {
+			name = alias
+		}
+	}
+	if port != "22" && port != "" {
+		name = "[" + name + "]:" + port
+	}
+	if len(files) == 0 {
+		files = []string{""} // ssh-keygen's default, ~/.ssh/known_hosts
+	}
+	for _, f := range files {
+		args := []string{"-F", name}
+		if f != "" {
+			f = filesystem.ExpandHome(f)
+			if _, err := os.Stat(f); err != nil {
+				continue
+			}
+			args = append(args, "-f", f)
+		}
+		cmd := exec.Command(process.FindSSHTool("ssh-keygen"), args...)
+		process.HideWindow(cmd)
+		if cmd.Run() == nil {
+			return true
+		}
+	}
+	return false
 }
