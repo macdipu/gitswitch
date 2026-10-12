@@ -170,8 +170,14 @@ func (in *Installer) Uninstall(purge bool, report func(string)) error {
 	if v, _ := in.Git.Global("--get", "gitswitch.setUseConfigOnly"); v == "true" {
 		_, _ = in.Git.Global("--unset", "user.useConfigOnly")
 	}
+	// Install removed the global email. Put it back only if it is still
+	// unset: one the user set since then is theirs to keep.
 	if e, _ := in.Git.Global("--get", "gitswitch.backup.email"); e != "" {
-		_, _ = in.Git.Global("user.email", e)
+		if cur, _ := in.Git.Global("--get", "user.email"); cur == "" {
+			_, _ = in.Git.Global("user.email", e)
+		} else if cur != e {
+			in.say(fmt.Sprintf("Kept your global user.email (%s); the one gitswitch moved aside was %s.", cur, e))
+		}
 	}
 	if n, _ := in.Git.Global("--get", "gitswitch.backup.name"); n != "" {
 		if cur, _ := in.Git.Global("--get", "user.name"); cur == "" {
@@ -226,23 +232,47 @@ func copyExe(src, dst string) error {
 		return err
 	}
 	defer in.Close()
+	// Write the new program next to the old one and rename it into place, so
+	// git never runs a half-written hook (it runs on every pull and push).
+	out, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".new-*")
+	if err != nil {
+		return err
+	}
+	tmp := out.Name()
+	defer os.Remove(tmp) // a no-op once renamed
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, 0o755)
+	}
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		return os.Rename(tmp, dst)
+	}
 	// A running .exe cannot be overwritten on Windows, but it can be renamed.
+	old := dst + ".old"
+	moved := false
 	if _, err := os.Stat(dst); err == nil {
-		old := dst + ".old"
 		_ = os.Remove(old)
 		if err := os.Rename(dst, old); err != nil {
 			return err
 		}
+		moved = true
 	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
+	if err := os.Rename(tmp, dst); err != nil {
+		if moved {
+			_ = os.Rename(old, dst) // put the previous program back
+		}
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
+	return nil
 }
 
 func onPath(dir string) bool {
@@ -272,27 +302,51 @@ func (in *Installer) addToPath(dir string) error {
 		in.say("Added", dir, "to your PATH. Open a new terminal to use the `gitswitch` command.")
 		return nil
 	}
+	home := filesystem.HomeDir()
 	line := `export PATH="$HOME/.local/bin:$PATH"  # added by gitswitch`
-	rcs := []string{".zshrc", ".bashrc"}
-	if runtime.GOOS == "darwin" {
-		rcs = []string{".zshrc", ".bash_profile"}
-	}
-	for _, rc := range rcs {
-		p := filepath.Join(filesystem.HomeDir(), rc)
+	var wrote []string
+	found := false // a profile already adds ~/.local/bin
+	// appendLine adds line to a profile; create=false skips a missing file.
+	appendLine := func(rc, line string, create bool) {
+		p := filepath.Join(home, rc)
 		b, err := os.ReadFile(p)
-		if err != nil && !(rc == ".zshrc" && runtime.GOOS == "darwin") {
-			continue
+		if err != nil && !create {
+			return
 		}
 		if strings.Contains(string(b), ".local/bin") {
-			continue
+			found = true
+			return
+		}
+		if os.MkdirAll(filepath.Dir(p), 0o755) != nil {
+			return
 		}
 		f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
-			continue
+			return
 		}
-		fmt.Fprintf(f, "\n%s\n", line)
-		f.Close()
+		_, err = fmt.Fprintf(f, "\n%s\n", line)
+		if cerr := f.Close(); err == nil && cerr == nil {
+			wrote = append(wrote, "~/"+filepath.ToSlash(rc))
+		}
 	}
-	in.say("Added ~/.local/bin to your PATH. Open a new terminal to use the `gitswitch` command.")
+	if runtime.GOOS == "darwin" {
+		appendLine(".zshrc", line, true) // zsh is the default shell
+		appendLine(".bash_profile", line, false)
+	} else {
+		appendLine(".zshrc", line, false)
+		appendLine(".bashrc", line, false)
+	}
+	if st, err := os.Stat(filepath.Join(home, ".config", "fish")); err == nil && st.IsDir() {
+		appendLine(filepath.Join(".config", "fish", "conf.d", "gitswitch.fish"), "fish_add_path -g $HOME/.local/bin  # added by gitswitch", true)
+	}
+	if len(wrote) == 0 && !found {
+		appendLine(".profile", line, true) // read by login shells when nothing else is
+	}
+	switch {
+	case len(wrote) > 0:
+		in.say("Added ~/.local/bin to your PATH in " + strings.Join(wrote, ", ") + ". Open a new terminal to use the `gitswitch` command.")
+	case !found:
+		in.say("Could not add ~/.local/bin to your PATH. Add this line to your shell profile:\n  " + line)
+	}
 	return nil
 }
