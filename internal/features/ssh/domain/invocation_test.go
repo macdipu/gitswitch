@@ -18,6 +18,16 @@ func TestParseSSHArgs(t *testing.T) {
 		{[]string{"git@h.example", "git-upload-pack '~/it'\\''s.git'"}, "h.example", "it's.git", false},
 		{[]string{"-4", "-oStrictHostKeyChecking=no", "user@Host.Example", "git-upload-pack 'a/b'"}, "host.example", "a/b", false},
 	}
+	for _, args := range [][]string{{"-o", "BatchMode=yes", "git@github.com"}, {"-oBatchMode=YES", "git@github.com"}, {"-o", "batchmode yes", "git@github.com"}} {
+		if inv := Parse(args); !inv.Batch || inv.Host != "github.com" {
+			t.Errorf("%v -> batch %v host %q", args, inv.Batch, inv.Host)
+		}
+	}
+	for _, args := range [][]string{{"-o", "BatchMode=no", "git@github.com"}, {"-o", "SendEnv=GIT_PROTOCOL", "git@github.com", "git-upload-pack 'BatchMode=yes'"}} {
+		if Parse(args).Batch {
+			t.Errorf("%v should not be batch mode", args)
+		}
+	}
 	for _, c := range cases {
 		inv := Parse(c.args)
 		if inv.Host != c.host || inv.RepoPath != c.path || inv.Probe != c.probe {

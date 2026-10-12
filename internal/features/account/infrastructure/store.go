@@ -27,15 +27,27 @@ type Store struct {
 }
 
 // Load reads the current configuration (always fresh from git config).
+// When git config cannot be read it returns the defaults; LoadChecked also
+// says why.
 func (s *Store) Load() *account.Config {
+	c, _ := s.LoadChecked()
+	return c
+}
+
+// LoadChecked is Load that reports a git config git cannot read, such as a
+// broken ~/.gitconfig. Having no gitswitch settings yet is not an error.
+func (s *Store) LoadChecked() (*account.Config, error) {
 	// Lists start empty, not nil, so the apps get [] rather than null in JSON.
 	c := &account.Config{GUIPrompt: true, PromptTimeout: 60, Accounts: []account.Account{}, Rules: []account.Rule{},
 		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}}
 	accts := map[string]*account.Account{}
 	var order []string
 	out, err := s.Git.Run("config", "--global", "-z", "--get-regexp", `^gitswitch`)
-	if err != nil && out == "" {
-		return c
+	if err != nil {
+		if gitinfra.ExitCode(err) == 1 { // exit status 1: nothing matched
+			return c, nil
+		}
+		return c, fmt.Errorf("cannot read your git settings: %v", err)
 	}
 	for _, entry := range strings.Split(out, "\x00") {
 		if entry == "" {
@@ -108,7 +120,7 @@ func (s *Store) Load() *account.Config {
 		}
 		c.Accounts = append(c.Accounts, *a)
 	}
-	return c
+	return c, nil
 }
 
 // Save creates or updates an account after validating it.

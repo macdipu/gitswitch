@@ -14,7 +14,7 @@ import (
 // switch) in worktree. Git never opens an editor: commit messages are
 // kept as git writes them. On failure the error holds git's message.
 func (r *Runner) Change(worktree string, args ...string) error {
-	cmd := exec.Command("git", append([]string{"-C", worktree}, args...)...)
+	cmd := exec.Command(Program(), append([]string{"-C", worktree}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:", "GIT_TERMINAL_PROMPT=0")
 	process.HideWindow(cmd)
 	if b, err := cmd.CombinedOutput(); err != nil {

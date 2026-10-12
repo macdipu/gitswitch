@@ -12,6 +12,16 @@ type Invocation struct {
 	Host     string   // e.g. github.com
 	RepoPath string   // e.g. acme-corp/api.git
 	Probe    bool     // git's "-G" variant probe: never prompt
+	Batch    bool     // -o BatchMode=yes: nobody is there to answer
+}
+
+// batchMode reports an ssh option "BatchMode=yes" (or "BatchMode yes").
+func batchMode(opt string) bool {
+	k, v, ok := strings.Cut(strings.TrimSpace(opt), "=")
+	if !ok {
+		k, v, ok = strings.Cut(strings.TrimSpace(opt), " ")
+	}
+	return ok && strings.EqualFold(strings.TrimSpace(k), "BatchMode") && strings.EqualFold(strings.TrimSpace(v), "yes")
 }
 
 // ssh options that take a value (from ssh(1)).
@@ -30,6 +40,9 @@ func Parse(args []string) Invocation {
 		if strings.HasPrefix(a, "-") && len(a) > 1 {
 			if strings.Contains(a[1:], "G") && !strings.ContainsAny(a[1:2], argOpts) {
 				inv.Probe = true
+			}
+			if a == "-o" && i+1 < len(args) && batchMode(args[i+1]) || strings.HasPrefix(a, "-o") && batchMode(a[2:]) {
+				inv.Batch = true
 			}
 			if len(a) == 2 && strings.ContainsRune(argOpts, rune(a[1])) {
 				i++ // skip the value

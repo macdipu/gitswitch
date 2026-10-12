@@ -732,7 +732,8 @@ func TestTerminalPromptSavesAnswer(t *testing.T) {
 	e := newEnv(t)
 	var vars []string
 	for _, kv := range e.vars {
-		if !strings.HasPrefix(kv, "GITSWITCH_NO_PROMPT=") {
+		// Either one means "never ask on the terminal".
+		if !strings.HasPrefix(kv, "GITSWITCH_NO_PROMPT=") && !strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") {
 			vars = append(vars, kv)
 		}
 	}

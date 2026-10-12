@@ -2,6 +2,7 @@ package application
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,11 +13,16 @@ import (
 
 type fakeStore struct {
 	account.Store
-	c     account.Config
-	users map[string]string
+	c       account.Config
+	users   map[string]string
+	loadErr error
 }
 
 func (f *fakeStore) Load() *account.Config { c := f.c; return &c }
+func (f *fakeStore) LoadChecked() (*account.Config, error) {
+	c := f.c
+	return &c, f.loadErr
+}
 func (f *fakeStore) SetUser(id, user string) error {
 	f.users[id] = user
 	return nil
@@ -32,16 +38,23 @@ func (f *fakeIdentity) ApplyIdentity(gitDir string, a *account.Account) {
 }
 
 type fakeRepos struct {
-	gitDir string
-	saved  map[string]string
-	probed bool
+	gitDir  string
+	saved   map[string]string
+	probed  bool
+	saveErr error
 }
 
 func (f *fakeRepos) CurrentGitDir(ssh.Invocation) string { return f.gitDir }
 func (f *fakeRepos) RememberProbe()                      { f.probed = true }
 func (f *fakeRepos) SavedAccount(gitDir string) string   { return f.saved[gitDir] }
-func (f *fakeRepos) SaveAccount(gitDir, id string) error { f.saved[gitDir] = id; return nil }
-func (f *fakeRepos) Worktree(gitDir string) string       { return strings.TrimSuffix(gitDir, "/.git") }
+func (f *fakeRepos) SaveAccount(gitDir, id string) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	f.saved[gitDir] = id
+	return nil
+}
+func (f *fakeRepos) Worktree(gitDir string) string { return strings.TrimSuffix(gitDir, "/.git") }
 
 type fakeTransport struct {
 	policy string
@@ -58,10 +71,30 @@ func (f *fakeTransport) Exec(bin string, args []string) int {
 // fakePrompter answers with answer; term=false means git runs without a
 // terminal.
 type fakePrompter struct {
-	term   bool
-	answer *resolve.Decision
-	asked  int
-	dialog int
+	term     bool
+	answer   *resolve.Decision
+	asked    int
+	dialog   int
+	locked   int    // Lock calls not yet released
+	onLock   func() // runs while waiting for the lock (another process saving)
+	maxLocks int
+}
+
+func (f *fakePrompter) Lock(int) func() {
+	if f.onLock != nil {
+		f.onLock()
+	}
+	f.locked++
+	if f.locked > f.maxLocks {
+		f.maxLocks = f.locked
+	}
+	done := false
+	return func() {
+		if !done {
+			done = true
+			f.locked--
+		}
+	}
 }
 
 func (f *fakePrompter) OpenTerminal() ssh.Conversation {
@@ -175,6 +208,68 @@ func TestHookUsesTheDialogWhenEnabled(t *testing.T) {
 	h.Run(gitArg)
 	if p.dialog != 1 || id.applied[0] != "/src/api/.git=work" {
 		t.Errorf("dialog=%d applied=%v", p.dialog, id.applied)
+	}
+}
+
+func TestHookStopsWhenSettingsCannotBeRead(t *testing.T) {
+	h, st, id, _, tr, _, notice := newHook()
+	st.loadErr = errors.New("cannot read your git settings: fatal: bad config line 3")
+	if code := h.Run(gitArg); code != 255 {
+		t.Errorf("code = %d, want 255", code)
+	}
+	if len(tr.ran) != 0 || len(id.applied) != 0 {
+		t.Errorf("must not connect: ran=%q applied=%v", tr.ran, id.applied)
+	}
+	if !strings.Contains(notice.String(), "bad config line 3") {
+		t.Errorf("notice = %q", notice.String())
+	}
+	if h.Run([]string{"-G", "git@github.com"}); len(tr.ran) != 1 {
+		t.Error("git's -G probe never connects, so it still runs")
+	}
+}
+
+func TestHookNeverAsksInBatchMode(t *testing.T) {
+	h, st, id, _, _, p, _ := newHook()
+	p.term = true
+	st.c.GUIPrompt = true
+	p.answer = &resolve.Decision{Account: &work, Reason: resolve.Prompt}
+	h.Run(append([]string{"-o", "BatchMode=yes"}, gitArg...))
+	if p.asked != 0 || p.dialog != 0 || id.applied[0] != "/src/api/.git=me" {
+		t.Errorf("asked=%d dialog=%d applied=%v", p.asked, p.dialog, id.applied)
+	}
+}
+
+func TestHookUsesAnAnswerSavedWhileWaitingToAsk(t *testing.T) {
+	h, _, id, r, _, p, _ := newHook()
+	p.term = true
+	p.answer = &resolve.Decision{Account: &me, Reason: resolve.Prompt}
+	p.onLock = func() { r.saved["/src/api/.git"] = "work" } // the other gitswitch saved "always"
+	h.Run(gitArg)
+	if p.asked != 0 || id.applied[0] != "/src/api/.git=work" {
+		t.Errorf("asked=%d applied=%v", p.asked, id.applied)
+	}
+	if p.maxLocks != 1 || p.locked != 0 {
+		t.Errorf("lock taken %d, still held %d", p.maxLocks, p.locked)
+	}
+}
+
+func TestHookSaysWhenItCannotSave(t *testing.T) {
+	h, _, _, r, _, p, notice := newHook()
+	p.term = true
+	p.answer = &resolve.Decision{Account: &work, Reason: resolve.Prompt, Save: true}
+	r.saveErr = errors.New("permission denied")
+	h.Run(gitArg)
+	if !strings.Contains(notice.String(), "could not save work") || !strings.Contains(notice.String(), "permission denied") {
+		t.Errorf("notice = %q", notice.String())
+	}
+
+	h, _, _, r, _, p, notice = newHook()
+	p.term = true
+	p.answer = &resolve.Decision{Account: &work, Reason: resolve.Prompt, Save: true}
+	r.gitDir = ""
+	h.Run(gitArg)
+	if !strings.Contains(notice.String(), "no repo found to save work") {
+		t.Errorf("notice = %q", notice.String())
 	}
 }
 

@@ -32,12 +32,18 @@ type Hook struct {
 // Run is the whole hook. It returns ssh's exit code.
 func (h *Hook) Run(args []string) int {
 	inv := ssh.Parse(args)
-	c := h.Accounts.Load()
+	c, err := h.Accounts.LoadChecked()
 	sshBin := h.Transport.Find(c.SSHPath)
 
 	if inv.Probe {
 		h.Repos.RememberProbe()
 		return h.Transport.Exec(sshBin, args)
+	}
+	if err != nil {
+		// Without the settings we cannot tell which key to use. Connecting
+		// anyway could log in as the wrong account, so stop instead.
+		fmt.Fprintf(h.Notice, "gitswitch: %v\ngitswitch: stopped so git does not connect with the wrong key. Fix your git config (try `git config --global --list`), then run the command again.\n", err)
+		return 255 // what ssh returns when it cannot connect
 	}
 	cands := resolve.Candidates(c, inv.Host)
 	if inv.Host == "" || len(cands) == 0 {
@@ -45,7 +51,10 @@ func (h *Hook) Run(args []string) int {
 	}
 
 	gitDir := h.Repos.CurrentGitDir(inv)
-	term := h.Prompter.OpenTerminal()
+	var term ssh.Conversation
+	if !inv.Batch {
+		term = h.Prompter.OpenTerminal()
+	}
 	if term != nil {
 		defer term.Close()
 	}
@@ -55,6 +64,17 @@ func (h *Hook) Run(args []string) int {
 		in.Worktree = func() string { return h.Repos.Worktree(gitDir) }
 	}
 	d := resolve.Decide(c, cands, in)
+	unlock := func() {}
+	if d == nil && (term != nil || c.GUIPrompt && !inv.Batch) {
+		// Ask one at a time: git runs several ssh at once for fetch --jobs
+		// and submodules. The one before us may have saved an answer.
+		unlock = h.Prompter.Lock(c.PromptTimeout + 5)
+		if gitDir != "" {
+			if in.SavedID = h.Repos.SavedAccount(gitDir); in.SavedID != "" {
+				d = resolve.Decide(c, cands, in)
+			}
+		}
+	}
 	if d == nil {
 		label := strings.TrimSuffix(inv.RepoPath, ".git")
 		if label == "" {
@@ -63,7 +83,7 @@ func (h *Hook) Run(args []string) int {
 		def := resolve.DefaultAmong(c, cands)
 		if term != nil {
 			d = term.Ask(label, cands, def, c.PromptTimeout)
-		} else if c.GUIPrompt {
+		} else if c.GUIPrompt && !inv.Batch {
 			d = h.Prompter.Dialog(label, cands, def, c.PromptTimeout)
 		}
 		if d == nil {
@@ -71,11 +91,16 @@ func (h *Hook) Run(args []string) int {
 			fmt.Fprintf(h.Notice, "gitswitch: no account saved for %s, using default %q for this connection only. Save one with: gitswitch use <account>\n", label, def.ID)
 		}
 	}
-	if d.Save && gitDir != "" {
-		if err := h.Repos.SaveAccount(gitDir, d.Account.ID); err == nil {
+	if d.Save {
+		if gitDir == "" {
+			fmt.Fprintf(h.Notice, "gitswitch: no repo found to save %s for; using it this time only\n", d.Account.ID)
+		} else if err := h.Repos.SaveAccount(gitDir, d.Account.ID); err != nil {
+			fmt.Fprintf(h.Notice, "gitswitch: could not save %s for this repo (%v); using it this time only\n", d.Account.ID, err)
+		} else {
 			fmt.Fprintf(h.Notice, "gitswitch: %s saved for this repo\n", d.Account.ID)
 		}
 	}
+	unlock() // saved: the next one waiting can use it
 	// A fallback nobody chose (timeout, no terminal, no answer) is used for
 	// this connection only. Writing it as the repo's commit identity would
 	// silently defeat user.useConfigOnly and commit as the wrong account.

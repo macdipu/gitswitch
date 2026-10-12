@@ -5,6 +5,9 @@ package domain
 type Store interface {
 	// Load reads the current settings, always fresh.
 	Load() *Config
+	// LoadChecked is Load that also reports settings that cannot be read
+	// (a broken git config). The ssh hook uses it so it never guesses.
+	LoadChecked() (*Config, error)
 	// SuggestedName is the commit name to offer for a new account.
 	SuggestedName() string
 	// Save creates or updates an account after validating it.

@@ -57,6 +57,10 @@ type Prompter interface {
 	OpenTerminal() Conversation
 	// Dialog asks with a small native popup; nil when not answered.
 	Dialog(label string, cands []account.Account, def *account.Account, timeout int) *resolve.Decision
+	// Lock waits until no other gitswitch is asking (git runs several ssh
+	// at once for fetch --jobs and submodules), up to about wait seconds,
+	// and returns the function that lets the next one ask.
+	Lock(wait int) (unlock func())
 }
 
 // Conversation is an open terminal to ask on.

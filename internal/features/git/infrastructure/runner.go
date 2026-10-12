@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
@@ -39,7 +40,7 @@ func (r *Runner) Run(args ...string) (string, error) {
 			return "", nil
 		}
 	}
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(Program(), args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	process.HideWindow(cmd)
@@ -50,9 +51,58 @@ func (r *Runner) Run(args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return text, errors.New(msg)
+		code := -1
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		}
+		return text, &Error{Msg: msg, Code: code}
 	}
 	return text, nil
+}
+
+// Error is a failed git command: git's message, and its exit code (-1 when
+// git could not be started).
+type Error struct {
+	Msg  string
+	Code int
+}
+
+func (e *Error) Error() string { return e.Msg }
+
+// ExitCode returns git's exit code for an error from Run, or -1.
+func ExitCode(err error) int {
+	var ge *Error
+	if errors.As(err, &ge) {
+		return ge.Code
+	}
+	return -1
+}
+
+var (
+	programOnce sync.Once
+	program     string
+)
+
+// Program is the git to run. During the ssh hook git sets GIT_EXEC_PATH to
+// its own folder; the git found there is the one that started us, which
+// matters when several gits are installed (IDEs bundle their own).
+func Program() string {
+	programOnce.Do(func() {
+		program = "git"
+		d := os.Getenv("GIT_EXEC_PATH")
+		if d == "" {
+			return
+		}
+		for _, name := range []string{"git.exe", "git"} {
+			p := filepath.Join(d, name)
+			if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
+				program = p
+				return
+			}
+		}
+	})
+	return program
 }
 
 // Global runs `git config --global <args>`.
