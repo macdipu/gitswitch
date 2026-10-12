@@ -178,6 +178,28 @@ func StripANSI(s string) string {
 	return b.String()
 }
 
+// CleanText makes text read from git safe to print on a terminal: it drops
+// control characters (C0, DEL and C1), so a commit message, author or ref
+// cannot move the cursor, change colours or send escape sequences. A tab
+// becomes a space. Colour is added after cleaning.
+func CleanText(s string) string {
+	if !strings.ContainsFunc(s, isControl) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\t':
+			b.WriteByte(' ')
+		case !isControl(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func isControl(r rune) bool { return r < 0x20 || r >= 0x7f && r <= 0x9f }
+
 // ErrNoCommits is returned for a repo that has no commits yet.
 var ErrNoCommits = errors.New("this repo has no commits yet")
 
@@ -372,7 +394,7 @@ func ListRows(c *account.Config, hist *History, color bool) []Row {
 		if cm.Unpushed {
 			tail = "  " + paint(color, "2", "(not pushed)")
 		}
-		rows = append(rows, Row{fmt.Sprintf("%s %s %s %s  %s%s", paint(color, "33", cm.Short), date, tag, cm.Subject, paint(color, "2", cm.Author), tail), cm.Hash})
+		rows = append(rows, Row{fmt.Sprintf("%s %s %s %s  %s%s", paint(color, "33", cm.Short), date, tag, CleanText(cm.Subject), paint(color, "2", CleanText(cm.Author)), tail), cm.Hash})
 	}
 	if len(rows) == 0 {
 		rows = append(rows, Row{Text: "No commits match the filter."})
@@ -410,7 +432,7 @@ func FlaggedRows(hist *History, n int, color bool) []Row {
 			if cm.Unpushed {
 				state = "not pushed"
 			}
-			rows = append(rows, Row{fmt.Sprintf("%s %s  %s  (%s)", paint(color, "33", cm.Short), cm.Subject, paint(color, "31", cm.Email), state), cm.Hash})
+			rows = append(rows, Row{fmt.Sprintf("%s %s  %s  (%s)", paint(color, "33", cm.Short), CleanText(cm.Subject), paint(color, "31", CleanText(cm.Email)), state), cm.Hash})
 		}
 	}
 	if len(rows) == 0 {
@@ -450,16 +472,16 @@ func GraphRows(c *account.Config, hist *History, graph string, color bool) []Row
 		}
 		refs := ""
 		if cm.Refs != "" {
-			refs = " " + paint(color, "32", "("+cm.Refs+")")
+			refs = " " + paint(color, "32", "("+CleanText(cm.Refs)+")")
 		}
 		tail := ""
 		if cm.Flagged {
-			tail += "  " + paint(color, "31", cm.Email+" WRONG ACCOUNT")
+			tail += "  " + paint(color, "31", CleanText(cm.Email)+" WRONG ACCOUNT")
 		}
 		if cm.Unpushed {
 			tail += "  " + paint(color, "2", "(not pushed)")
 		}
-		rows = append(rows, Row{fmt.Sprintf("%s%s%s %s %s%s", prefix, paint(color, "33", cm.Short), refs, tag, cm.Subject, tail), hash})
+		rows = append(rows, Row{fmt.Sprintf("%s%s%s %s %s%s", prefix, paint(color, "33", cm.Short), refs, tag, CleanText(cm.Subject), tail), hash})
 	}
 	return rows
 }

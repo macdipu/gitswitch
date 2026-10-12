@@ -390,7 +390,7 @@ func (x *CLI) cmdLog(args []string) error {
 	}
 	x.sayf("%s  account: %s\n", h.Repo.Path, acct)
 	if head, err := x.app.Refs.Head(gd); err == nil {
-		x.say("branch:", head.Describe())
+		x.say("branch:", history.CleanText(head.Describe()))
 	}
 	if f.Active() {
 		x.sayf("filter: %s (%d commit(s))\n", f.Describe(), len(h.Commits))

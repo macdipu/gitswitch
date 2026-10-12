@@ -81,6 +81,7 @@ Add --dry-run to any command to see what it would change without changing anythi
 // CLI runs commands against the app.
 type CLI struct {
 	app *bootstrap.App
+	in  io.Reader // answers for `gitswitch setup`
 	out io.Writer
 }
 
@@ -98,7 +99,7 @@ func Run(args []string) int {
 		}
 		kept = append(kept, a)
 	}
-	x := &CLI{app: bootstrap.New(dry, os.Stdout), out: os.Stdout}
+	x := &CLI{app: bootstrap.New(dry, os.Stdout), in: os.Stdin, out: os.Stdout}
 	if err := x.dispatch(kept); err != nil {
 		fmt.Fprintln(os.Stderr, "gitswitch:", err)
 		return 1
@@ -125,15 +126,8 @@ func indexOf(args []string, f string) int {
 
 func (x *CLI) dispatch(args []string) error {
 	if len(args) == 0 {
-		// First run by double-click: install, then open the app.
 		if !x.app.Setup.Installed() {
-			if err := x.app.Setup.Install(x.report()); err != nil {
-				return err
-			}
-			if window.Available {
-				return window.Run(x.app)
-			}
-			return tui.Run(x.app)
+			return x.firstRun()
 		}
 		if interactive() {
 			return tui.Run(x.app)
@@ -235,6 +229,30 @@ func (x *CLI) dispatch(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q\n\n%s", cmd, usage)
+}
+
+// firstRun is a bare `gitswitch` before git uses it. Installing changes the
+// global git config, so it happens only when someone clearly asked: a
+// double-click (Windows opens a console just for us), or a yes typed in a
+// terminal. Scripts and pipes get told what to run instead.
+func (x *CLI) firstRun() error {
+	switch {
+	case startedByDoubleClick():
+	case interactive():
+		if !confirm("GitSwitch is not connected to git yet. Connect it now? This changes your global git config (core.sshCommand).") {
+			x.say("Not connected. Run `gitswitch install` when you are ready.")
+			return tui.Run(x.app)
+		}
+	default:
+		return errors.New("gitswitch is not connected to git yet; run `gitswitch install`, then `gitswitch setup`")
+	}
+	if err := x.app.Setup.Install(x.report()); err != nil {
+		return err
+	}
+	if window.Available {
+		return window.Run(x.app)
+	}
+	return tui.Run(x.app)
 }
 
 func (x *CLI) requireRepo() (string, error) {

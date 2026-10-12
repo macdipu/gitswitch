@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
@@ -28,7 +29,7 @@ func (x *CLI) cmdBranch(asJSON bool) error {
 		}
 		return json.NewEncoder(x.out).Encode(map[string]any{"head": h, "branches": bs})
 	}
-	x.say(h.Describe())
+	x.say(history.CleanText(h.Describe()))
 	for _, b := range bs {
 		mark := "  "
 		if b.Current {
@@ -71,7 +72,7 @@ func (x *CLI) cmdUpdate() error {
 		return err
 	}
 	if !x.app.DryRun() {
-		x.say("Updated:", h.Describe())
+		x.say("Updated:", history.CleanText(h.Describe()))
 	}
 	return nil
 }
@@ -89,7 +90,7 @@ func (x *CLI) cmdRevert(args []string) error {
 		return err
 	}
 	if !x.app.DryRun() {
-		x.say("Reverted", t.Label()+". Push when ready.")
+		x.say("Reverted", history.CleanText(t.Label())+". Push when ready.")
 	}
 	return nil
 }
@@ -115,7 +116,7 @@ func (x *CLI) cmdDrop(args []string) error {
 		return err
 	}
 	if !x.app.DryRun() {
-		x.say("Dropped", t.Label())
+		x.say("Dropped", history.CleanText(t.Label()))
 	}
 	return nil
 }
@@ -139,7 +140,7 @@ func (x *CLI) cmdRollback(args []string) error {
 		return err
 	}
 	if !x.app.DryRun() {
-		x.sayf("Rolled back to %s. The changes of %d commit(s) are now uncommitted changes.\n", t.Label(), n)
+		x.sayf("Rolled back to %s. The changes of %d commit(s) are now uncommitted changes.\n", history.CleanText(t.Label()), n)
 	}
 	return nil
 }
@@ -197,7 +198,7 @@ func (x *CLI) cmdCherryPick(args []string) error {
 	}
 	if !x.app.DryRun() {
 		for _, t := range ts {
-			x.say("Cherry-picked", t.Label())
+			x.say("Cherry-picked", history.CleanText(t.Label()))
 		}
 	}
 	return nil
