@@ -188,6 +188,21 @@ func (s SwitchSetting) Describe() string {
 	return string(s.Mode) + " (every repo)"
 }
 
+// Pushed is the result of a push.
+type Pushed struct {
+	Branch   string `json:"branch"`
+	Remote   string `json:"remote"`   // e.g. origin
+	Upstream string `json:"upstream"` // the remote branch, e.g. origin/feature-x
+	First    bool   `json:"first"`    // it was not on the remote: now the branch tracks it
+	Commits  int    `json:"commits"`  // how many commits went; 0: nothing to push
+	// Account is the gitswitch account that pushes; "" when git will ask
+	// for one.
+	Account string `json:"account"`
+	// PRURL opens a pull request for the branch on the host; "" for the
+	// remote's default branch or a host without one.
+	PRURL string `json:"prUrl"`
+}
+
 // Parked is a set of uncommitted changes left on a branch: an ordinary
 // stash entry with a message that names the branch (ParkMessage).
 type Parked struct {
@@ -354,6 +369,20 @@ type Refs interface {
 	// Pull fast-forwards the current branch from its upstream, through the
 	// repo's account. Each progress line goes to progress.
 	Pull(worktree string, progress func(string)) error
+	// PushTarget reads where a branch pushes from its config: the remote
+	// and the remote branch (refs/heads/x); "" when it has none.
+	PushTarget(gitDir, branch string) (remote, merge string)
+	// RemoteNames lists the repo's remotes.
+	RemoteNames(gitDir string) []string
+	// NotPushed counts HEAD's commits that are on no remote branch.
+	NotPushed(gitDir string) int
+	// DefaultBranch is a remote's default branch, e.g. main; "" when this
+	// clone does not know it.
+	DefaultBranch(gitDir, remote string) string
+	// Push sends the local ref src to the remote's ref dst through the
+	// repo's account, never forcing; setUpstream makes the branch track
+	// it. Each progress line goes to progress.
+	Push(worktree, remote, src, dst string, setUpstream bool, progress func(string)) error
 
 	// Stash saves every uncommitted change, new files included, as a
 	// stash entry and returns its commit.

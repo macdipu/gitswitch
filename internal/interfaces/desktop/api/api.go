@@ -306,6 +306,9 @@ func (s *server) routes() map[string]handler {
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Update(gd, func(string) {})
 		}),
+		"POST /api/repo/push": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.Push(gd, func(string) {})
+		}),
 		"POST /api/commit/revert": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			t, err := a.History.Revert(gd, str(b, "hash"))
 			return map[string]string{"commit": t.Label()}, err

@@ -337,6 +337,7 @@ dialog .row-actions{justify-content:flex-end}
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
+      <button class="btn" id="pushBtn">Push</button>
       <span class="spacer"></span>
       <button class="btn" id="undoBtn" hidden>↶ Undo</button>
       <button class="btn ghost" id="browseRepo" title="Open the repo on GitHub, GitLab, …">View on web ↗</button>
@@ -1018,6 +1019,16 @@ function renderToolbar(){
     : 'This branch is not on a remote yet';
   ub.className = 'btn' + (h?.behind ? ' primary' : '');
   ub.textContent = h?.behind ? `Update (${h.behind} new)` : 'Update';
+  // Push: new commits, or a branch not on a remote yet. Never forced.
+  const pb = $('#pushBtn'), acct = H?.repo.account, as = acct ? ' as ' + acct : '';
+  const first = !!(h && h.branch && h.hash && !h.upstream);
+  pb.disabled = !(first || h?.ahead);
+  pb.className = 'btn' + (h?.ahead && !h.behind ? ' primary' : '');
+  pb.textContent = h?.ahead ? `Push (${h.ahead})` : 'Push';
+  pb.title = !h?.branch ? 'Start or switch to a branch to push'
+    : first ? `Put ${h.branch} on the remote${as}, and track it from then on`
+    : h.ahead && h.behind ? `${h.upstream} has new commits too: combine them first (git pull --rebase), then push. GitSwitch never forces a push.`
+    : h.ahead ? `Push ${h.ahead} commit${h.ahead > 1 ? 's' : ''} to ${h.upstream}${as}` : `Nothing to push: up to date with ${h.upstream}`;
   // Undo: only while the last change can still be undone.
   const u = R?.undo, can = !!(u && !u.blocked), btn = $('#undoBtn');
   btn.hidden = !can;
@@ -1040,6 +1051,16 @@ $('#updateBtn').onclick = async e => {
   b.disabled = true; b.textContent = 'Updating…';
   const r = await act(() => api('POST','/api/repo/update',{gitDir:gd}));
   if (r) toast('Up to date with ' + r.upstream);
+  loadHistory();
+};
+$('#pushBtn').onclick = async e => {
+  const gd = $('#histRepo').value, b = e.currentTarget;
+  b.disabled = true; b.textContent = 'Pushing…';
+  const r = await act(() => api('POST','/api/repo/push',{gitDir:gd}));
+  if (r){
+    const msg = !r.commits && !r.first ? 'Nothing to push' : `Pushed ${r.commits} commit${r.commits === 1 ? '' : 's'} to ${r.upstream}${r.account ? ' as ' + r.account : ''}`;
+    toast(msg, false, null, r.prUrl ? {label:'Open pull request', run: () => act(() => api('POST','/api/open',{url:r.prUrl}))} : null);
+  }
   loadHistory();
 };
 $('#browseRepo').onclick = () => act(() => api('POST','/api/commit/browse',{gitDir:$('#histRepo').value, hash:''}));

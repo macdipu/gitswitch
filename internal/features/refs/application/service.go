@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
@@ -18,10 +19,12 @@ import (
 
 // Service runs the branch use cases.
 type Service struct {
-	Refs    refs.Refs
-	Locator repo.Locator
-	FS      *filesystem.FS // dry-run: changes are only printed
-	Undo    undo.Recorder  // remembers each switch so it can be undone; may be nil
+	Refs     refs.Refs
+	Accounts account.Store // the account a push uses
+	Repos    repo.Reader
+	Locator  repo.Locator
+	FS       *filesystem.FS // dry-run: changes are only printed
+	Undo     undo.Recorder  // remembers each switch so it can be undone; may be nil
 }
 
 // Head reads where a repo is: branch, HEAD commit and upstream.
@@ -518,6 +521,106 @@ func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error
 		return h, err
 	}
 	return s.Refs.Head(gitDir)
+}
+
+// Push sends the current branch's new commits to the branch it tracks,
+// through the repo's account, and never forces. A branch that is not on a
+// remote yet goes to origin (or the only remote) under the same name and
+// tracks it from then on (push -u). When the remote branch has commits
+// this one doesn't, it refuses and explains instead. Git's progress lines
+// go to progress.
+func (s *Service) Push(gitDir string, progress func(string)) (refs.Pushed, error) {
+	h, err := s.ready(gitDir)
+	p := refs.Pushed{Branch: h.Branch}
+	if err != nil {
+		return p, err
+	}
+	switch {
+	case h.Branch == "":
+		return p, errors.New("HEAD is detached, so there is no branch to push; start one first: gitswitch branch new <name>")
+	case h.Hash == "":
+		return p, fmt.Errorf("%s has no commits to push yet", h.Branch)
+	}
+	rem, dst := s.Refs.PushTarget(gitDir, h.Branch)
+	if rem == "." {
+		return p, fmt.Errorf("%s follows the local branch %s, not a remote one; push it in a terminal: git push -u <remote> %s", h.Branch, h.Upstream, h.Branch)
+	}
+	if h.Upstream != "" {
+		p.Upstream, p.Commits = h.Upstream, h.Ahead
+		switch {
+		case h.Ahead > 0 && h.Behind > 0:
+			return p, fmt.Errorf("%s and %s both have new commits, so a push would be refused (GitSwitch never forces one). Combine them first in a terminal: git pull --rebase puts your %d commit(s) on top, then push again", h.Branch, h.Upstream, h.Ahead)
+		case h.Ahead == 0:
+			return p, nil // nothing to push
+		}
+	} else {
+		if rem == "" {
+			if rem, err = s.pushRemote(gitDir); err != nil {
+				return p, err
+			}
+		}
+		if dst == "" {
+			dst = "refs/heads/" + h.Branch
+		}
+		p.First, p.Commits = true, s.Refs.NotPushed(gitDir)
+		p.Upstream = rem + "/" + strings.TrimPrefix(dst, "refs/heads/")
+	}
+	p.Remote = rem
+	remoteURL := ""
+	if s.Repos != nil && s.Accounts != nil {
+		info := s.Repos.InfoFor(s.Accounts.Load(), gitDir)
+		p.Account = info.Account
+		for _, r := range info.Remotes {
+			if r.Name == rem {
+				remoteURL = r.URL
+			}
+		}
+	}
+	as, u := "", ""
+	if p.Account != "" {
+		as = " as " + p.Account
+	}
+	if p.First {
+		u = " -u"
+	}
+	if s.FS.Dry(fmt.Sprintf("push %s to %s%s (git push%s %s %s:%s)", h.Branch, p.Upstream, as, u, rem, h.Branch, dst)) {
+		return p, nil
+	}
+	if err := s.Refs.Push(s.Locator.WorktreeOf(gitDir), rem, "refs/heads/"+h.Branch, dst, p.First, progress); err != nil {
+		low := strings.ToLower(err.Error())
+		// git prints "[rejected] ... (fetch first)" as progress; the error
+		// keeps its hint.
+		if strings.Contains(low, "updates were rejected") || strings.Contains(low, "[rejected]") || strings.Contains(low, "non-fast-forward") || strings.Contains(low, "fetch first") {
+			return p, fmt.Errorf("%v\n\n%s has commits that %s doesn't have yet, pushed from somewhere else, so the push was refused (GitSwitch never forces one). Update first (gitswitch update), then push again", err, p.Upstream, h.Branch)
+		}
+		return p, err
+	}
+	// A pull request makes sense for every branch but the one others
+	// branch from.
+	branch := strings.TrimPrefix(dst, "refs/heads/")
+	def := s.Refs.DefaultBranch(gitDir, rem)
+	if branch != def && (def != "" || (branch != "main" && branch != "master")) {
+		p.PRURL = remote.PullRequestURL(remoteURL, branch)
+	}
+	return p, nil
+}
+
+// pushRemote picks the remote a branch's first push goes to: origin, or
+// the only remote.
+func (s *Service) pushRemote(gitDir string) (string, error) {
+	names := s.Refs.RemoteNames(gitDir)
+	switch {
+	case len(names) == 0:
+		return "", errors.New("this repo has no remote to push to; add one first: git remote add origin <url>")
+	case len(names) == 1:
+		return names[0], nil
+	}
+	for _, n := range names {
+		if n == "origin" {
+			return n, nil
+		}
+	}
+	return "", fmt.Errorf("this repo has several remotes (%s) and none is called origin; push the first time in a terminal: git push -u <remote> <branch>", strings.Join(names, ", "))
 }
 
 // ready reads the head and refuses while git is in the middle of another

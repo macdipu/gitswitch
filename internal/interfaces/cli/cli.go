@@ -76,6 +76,8 @@ History and branches
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
   gitswitch update                  pull the current branch, fast-forward only, with the repo's account
+  gitswitch push [--open]           push the current branch with the repo's account, never forced
+                                    (-u the first time); --open opens the pull request page
   gitswitch revert <commit>         add a commit that undoes one (safe for pushed commits)
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
@@ -242,6 +244,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdSwitch(rest)
 	case "update", "pull":
 		return x.cmdUpdate()
+	case "push":
+		return x.cmdPush(rest)
 	case "revert":
 		return x.cmdRevert(rest)
 	case "drop":

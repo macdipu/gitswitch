@@ -69,3 +69,19 @@ func TestWebAndCommitURL(t *testing.T) {
 		}
 	}
 }
+
+func TestPullRequestURL(t *testing.T) {
+	for _, c := range []struct{ remote, branch, want string }{
+		{"git@github.com:acme/api.git", "feature/x", "https://github.com/acme/api/pull/new/feature/x"},
+		{"https://github.com/acme/api", "fix#1", "https://github.com/acme/api/pull/new/fix%231"},
+		{"git@gitlab.com:acme/sub/api.git", "feature/x", "https://gitlab.com/acme/sub/api/-/merge_requests/new?merge_request%5Bsource_branch%5D=feature%2Fx"},
+		{"git@bitbucket.org:acme/api.git", "fix", "https://bitbucket.org/acme/api/pull-requests/new?source=fix"},
+		{"git@git.example.com:acme/api.git", "fix", ""},
+		{"/srv/git/api.git", "fix", ""},
+		{"git@github.com:acme/api.git", "", ""},
+	} {
+		if got := PullRequestURL(c.remote, c.branch); got != c.want {
+			t.Errorf("PullRequestURL(%q, %q) = %q, want %q", c.remote, c.branch, got, c.want)
+		}
+	}
+}

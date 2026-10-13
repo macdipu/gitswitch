@@ -662,7 +662,7 @@ Repos
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
-  b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
+  b switch branch   u update (pull)   p push (never forced; -u the first time)   w view in browser   / filter by author, message, date or account
   U undo the last switch, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
@@ -1208,6 +1208,8 @@ func (t *tui) keyHistory(k string) {
 		t.pickBranch()
 	case "u":
 		t.update()
+	case "p":
+		t.push()
 	case "U":
 		t.undoLast()
 	case "R":
@@ -1603,6 +1605,62 @@ func (t *tui) update() {
 	})
 	t.loadHistory()
 	t.say(err, "Updated: "+h.Describe())
+}
+
+// push pushes the current branch after asking, says which account pushed,
+// and offers the pull request page.
+func (t *tui) push() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	h, err := t.app.Refs.Head(gd)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	to := h.Upstream
+	if to == "" {
+		to = "the remote, for the first time (it will track it)"
+	}
+	as := ""
+	if t.hist != nil && t.hist.Repo.Account != "" {
+		as = " as " + t.hist.Repo.Account
+	}
+	t.confirm = &confirmBox{fmt.Sprintf("Push %s to %s%s? GitSwitch never forces a push. (y/n)", h.Branch, to, as), map[string]func() error{"y": func() error {
+		var p refs.Pushed
+		var err error
+		t.suspend(func() {
+			fmt.Println("Pushing ...")
+			p, err = t.app.Refs.Push(gd, func(l string) { fmt.Print("\r\x1b[K  " + l) })
+			fmt.Println()
+			if err != nil {
+				fmt.Println("gitswitch:", err)
+			}
+		})
+		t.loadHistory()
+		if err != nil {
+			return err
+		}
+		if p.Commits == 0 && !p.First {
+			t.say(nil, "Nothing to push: up to date with "+p.Upstream+".")
+			return nil
+		}
+		msg := fmt.Sprintf("Pushed %d commit(s) to %s", p.Commits, p.Upstream)
+		if p.Account != "" {
+			msg += " as " + p.Account
+		}
+		if p.PRURL == "" {
+			t.say(nil, msg+".")
+			return nil
+		}
+		t.confirm = &confirmBox{msg + ".  o = open a pull request (" + p.PRURL + ") · n or Esc = not now", map[string]func() error{"o": func() error {
+			err := process.OpenBrowser(p.PRURL)
+			t.say(err, "Opened "+p.PRURL)
+			return err
+		}}}
+		return nil
+	}}}
 }
 
 // commitAction reverts (v), drops (d) or rolls back to (z) the selected

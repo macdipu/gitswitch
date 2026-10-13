@@ -1578,6 +1578,59 @@ func TestNewBranch(t *testing.T) {
 	e.gsErr(api, "can't start a branch name", "set", "branch-prefix", "a b")
 }
 
+// Push sends a branch with the repo's account, -u the first time, with a
+// pull request link; it is never forced, and a refused or diverged push
+// is explained.
+func TestPush(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+
+	// 1. A new branch: pushed with the client key, tracking it, with a
+	// pull request link.
+	e.gsIn(api, "branch", "new", "feature/x")
+	e.commitFile(api, "x.txt", "x\n", "x")
+	e.resetLog()
+	out := e.gsIn(api, "push")
+	if !strings.Contains(out, "Pushed 1 commit(s) to origin/feature/x as client") || !strings.Contains(out, "feature/x now tracks origin/feature/x") ||
+		!strings.Contains(out, "Open a pull request: https://github.com/acme-corp/api/pull/new/feature/x") {
+		t.Fatalf("first push:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("keys used: %v", k)
+	}
+	if up := e.gitIn(api, "rev-parse", "--abbrev-ref", "feature/x@{upstream}"); up != "origin/feature/x" {
+		t.Fatalf("upstream = %q", up)
+	}
+	if out := e.gsIn(api, "push"); !strings.Contains(out, "Nothing to push") {
+		t.Fatalf("second push:\n%s", out)
+	}
+
+	// 2. Someone else pushed to it meanwhile: refused, explained, not forced.
+	e.clone("git@github.com:acme-corp/api.git", "other")
+	other := filepath.Join(e.root, "other")
+	e.gitIn(other, "switch", "-q", "feature/x")
+	e.commitFile(other, "o.txt", "o\n", "other")
+	e.gitIn(other, "push", "-q")
+	e.commitFile(api, "y.txt", "y\n", "y")
+	e.gsErr(api, "Update first", "push")
+	e.gitIn(api, "fetch", "-q")
+	e.gsErr(api, "both have new commits", "push")
+	if e.gitIn(other, "log", "-1", "--format=%s", "origin/feature/x") != "other" {
+		t.Fatal("the other push was overwritten")
+	}
+
+	// 3. The default branch gets no pull request link.
+	e.gitIn(api, "switch", "-q", "main")
+	e.commitFile(api, "m.txt", "m\n", "m")
+	if out := e.gsIn(api, "push"); !strings.Contains(out, "Pushed 1 commit(s) to origin/main") || strings.Contains(out, "pull request") {
+		t.Fatalf("push main:\n%s", out)
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {

@@ -435,6 +435,46 @@ func (x *CLI) cmdBranchNew(args []string) error {
 	return nil
 }
 
+// cmdPush pushes the current branch and says which account pushed; with
+// --open it opens the pull request page too.
+func (x *CLI) cmdPush(args []string) error {
+	open := false
+	for _, a := range args {
+		if a != "--open" {
+			return usageErr("gitswitch push [--open]")
+		}
+		open = true
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	p, err := x.app.Refs.Push(gd, func(l string) { x.say(" ", l) })
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	if p.Commits == 0 && !p.First {
+		x.sayf("Nothing to push: %s is up to date with %s.\n", p.Branch, p.Upstream)
+		return nil
+	}
+	as := " with the account git asked for"
+	if p.Account != "" {
+		as = " as " + p.Account
+	}
+	x.sayf("Pushed %d commit(s) to %s%s.\n", p.Commits, p.Upstream, as)
+	if p.First {
+		x.sayf("%s now tracks %s: update and push use it from now on.\n", p.Branch, p.Upstream)
+	}
+	if p.PRURL == "" {
+		return nil
+	}
+	x.say("Open a pull request:", p.PRURL)
+	if open {
+		return process.OpenBrowser(p.PRURL)
+	}
+	return nil
+}
+
 func (x *CLI) cmdUpdate() error {
 	gd, err := x.requireRepo()
 	if err != nil {

@@ -32,7 +32,7 @@ internal/
     identity/
       domain/                 resolve: which account a repo uses (saved, ask every time, rules, the optional default; pure, table-tested)
     git/
-      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links; Explain (git and ssh errors in plain words)
+      domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links and pull request links; Explain (git and ssh errors in plain words)
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
     repository/
       domain/                 Info, Remote; ports Reader, Locator, Cloner, ListStore
@@ -43,9 +43,9 @@ internal/
       application/            commit graph with accounts and filters (paged: History.More); commit details; fix authors; revert, drop, roll back, cherry-pick; web links
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/
-      domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting; port Refs
-      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
-      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
+      domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting, Pushed; port Refs
+      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
+      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history and refs use cases (Before, Done); Last, Undo

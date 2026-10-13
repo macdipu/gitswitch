@@ -70,7 +70,7 @@ func New(dryRun bool, out io.Writer) *App {
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
 		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
-		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos},
+		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Undo:    undos,
 		Setup:   installer,
 		Doctor:  &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},

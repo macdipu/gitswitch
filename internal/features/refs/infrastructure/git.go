@@ -191,6 +191,37 @@ func (g *Git) Pull(wt string, progress func(string)) error {
 	return g.Git.Stream(wt, progress, "pull", "--ff-only", "--progress")
 }
 
+func (g *Git) PushTarget(gitDir, branch string) (string, string) {
+	return g.Git.RepoGet(gitDir, "branch."+branch+".remote"), g.Git.RepoGet(gitDir, "branch."+branch+".merge")
+}
+
+func (g *Git) RemoteNames(gitDir string) []string {
+	out, _ := g.Git.Run("--git-dir="+gitDir, "remote")
+	return strings.Fields(out)
+}
+
+func (g *Git) NotPushed(gitDir string) int {
+	out, _ := g.Git.Run("--git-dir="+gitDir, "rev-list", "--count", "HEAD", "--not", "--remotes")
+	n, _ := strconv.Atoi(out)
+	return n
+}
+
+func (g *Git) DefaultBranch(gitDir, remote string) string {
+	out, err := g.Git.Run("--git-dir="+gitDir, "symbolic-ref", "-q", "--short", "refs/remotes/"+remote+"/HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(out, remote+"/")
+}
+
+func (g *Git) Push(wt, remote, src, dst string, setUpstream bool, progress func(string)) error {
+	args := []string{"push", "--progress"}
+	if setUpstream {
+		args = append(args, "--set-upstream")
+	}
+	return g.Git.Stream(wt, progress, append(args, remote, src+":"+dst)...)
+}
+
 func (g *Git) Stash(wt, message string) (string, error) {
 	if err := g.Git.Change(wt, "stash", "push", "-q", "--include-untracked", "-m", message); err != nil {
 		return "", err

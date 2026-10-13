@@ -3,10 +3,13 @@ package application
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
+	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
@@ -26,6 +29,10 @@ type fakeRefs struct {
 	modes      map[string]string // gitDir ("" for every repo) -> saved switch mode
 	createErr  error
 	prefix     string
+	target     [2]string // PushTarget: remote, merge
+	remotes    []string
+	pushErr    error
+	defBranch  string
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -72,6 +79,18 @@ func (f *fakeRefs) Markers(string, []string) []string {
 func (f *fakeRefs) Parked(string) ([]refs.Parked, error) { return f.parked, nil }
 func (f *fakeRefs) ParkedPatch(_, st string) (string, error) {
 	return "diff of " + st, nil
+}
+func (f *fakeRefs) PushTarget(string, string) (string, string) { return f.target[0], f.target[1] }
+func (f *fakeRefs) RemoteNames(string) []string                { return f.remotes }
+func (f *fakeRefs) NotPushed(string) int                       { return 3 }
+func (f *fakeRefs) DefaultBranch(string, string) string        { return f.defBranch }
+func (f *fakeRefs) Push(_, rem, src, dst string, up bool, progress func(string)) error {
+	if f.pushErr != nil {
+		return f.pushErr
+	}
+	progress("Writing objects")
+	f.ran = append(f.ran, fmt.Sprintf("push %s %s:%s -u=%v", rem, src, dst, up))
+	return nil
 }
 func (f *fakeRefs) Create(_, b, c string) error {
 	if f.createErr != nil {
@@ -454,5 +473,72 @@ func TestBranchPrefix(t *testing.T) {
 	}
 	if err := s.SetBranchPrefix(""); err != nil || s.BranchPrefix() != "" {
 		t.Errorf("cleared = %q %v", s.BranchPrefix(), err)
+	}
+}
+
+type pushRepos struct{ repo.Reader }
+
+func (pushRepos) InfoFor(*account.Config, string) repo.Info {
+	return repo.Info{Account: "work", Remotes: []repo.Remote{{Name: "origin", URL: "git@github.com:acme/api.git"}}}
+}
+
+type noAccounts struct{ account.Store }
+
+func (noAccounts) Load() *account.Config { return &account.Config{} }
+
+func TestPush(t *testing.T) {
+	push := func(setup func(r *fakeRefs)) (refs.Pushed, *fakeRefs, error) {
+		s, r := newService()
+		s.Repos, s.Accounts = pushRepos{}, noAccounts{}
+		r.head.Behind = 0
+		setup(r)
+		p, err := s.Push("/r/.git", func(string) {})
+		return p, r, err
+	}
+	// Tracking a remote branch: push the new commits there.
+	p, r, err := push(func(r *fakeRefs) {
+		r.head.Ahead, r.target, r.defBranch = 2, [2]string{"origin", "refs/heads/main"}, "main"
+	})
+	if err != nil || p.First || p.Commits != 2 || p.Account != "work" || p.PRURL != "" || strings.Join(r.ran, ",") != "push origin refs/heads/main:refs/heads/main -u=false" {
+		t.Errorf("tracked: %+v %v %v", p, err, r.ran)
+	}
+
+	// Nothing new, or both sides moved: no push.
+	if p, r, err := push(func(r *fakeRefs) { r.target = [2]string{"origin", "refs/heads/main"} }); err != nil || p.Commits != 0 || len(r.ran) != 0 {
+		t.Errorf("nothing to push: %+v %v %v", p, err, r.ran)
+	}
+	if _, r, err := push(func(r *fakeRefs) { r.head.Ahead, r.head.Behind = 1, 2 }); err == nil || !strings.Contains(err.Error(), "never forces") || len(r.ran) != 0 {
+		t.Errorf("diverged: %v %v", err, r.ran)
+	}
+
+	// First push: to origin, tracking it, with a pull request link.
+	p, r, err = push(func(r *fakeRefs) {
+		r.head.Branch, r.head.Upstream, r.remotes, r.defBranch = "feature/x", "", []string{"upstream", "origin"}, "main"
+	})
+	if err != nil || !p.First || p.Commits != 3 || p.Upstream != "origin/feature/x" || p.PRURL != "https://github.com/acme/api/pull/new/feature/x" ||
+		strings.Join(r.ran, ",") != "push origin refs/heads/feature/x:refs/heads/feature/x -u=true" {
+		t.Errorf("first: %+v %v %v", p, err, r.ran)
+	}
+
+	// Which remote, when there is no origin.
+	for _, c := range []struct {
+		remotes []string
+		want    string
+	}{{nil, "no remote to push to"}, {[]string{"a", "b"}, "several remotes (a, b)"}} {
+		if _, _, err := push(func(r *fakeRefs) { r.head.Upstream, r.remotes = "", c.remotes }); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("remotes %v: %v", c.remotes, err)
+		}
+	}
+
+	// Refused by the server: say why.
+	if _, _, err := push(func(r *fakeRefs) {
+		r.head.Ahead, r.target = 1, [2]string{"origin", "refs/heads/main"}
+		r.pushErr = errors.New(" ! [rejected]        main -> main (fetch first)")
+	}); err == nil || !strings.Contains(err.Error(), "Update first") {
+		t.Errorf("rejected: %v", err)
+	}
+
+	if _, _, err := push(func(r *fakeRefs) { r.head.Branch = "" }); err == nil || !strings.Contains(err.Error(), "detached") {
+		t.Errorf("detached: %v", err)
 	}
 }

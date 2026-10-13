@@ -402,3 +402,28 @@ func TestNewBranch(t *testing.T) {
 		t.Fatalf("from side = %d %v", w.Code, m)
 	}
 }
+
+// Push puts a branch that is not on the remote yet there, tracking it,
+// and reports how many commits went.
+func TestPush(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	server := filepath.Join(filepath.Dir(dir), "server.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", server).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	git("remote", "add", "origin", server)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	w, m := call(t, h, "POST", "/api/repo/push", `{`+gd+`}`)
+	d, _ := m["data"].(map[string]any)
+	if w.Code != 200 || d["first"] != true || d["upstream"] != "origin/main" || fmt.Sprint(d["commits"]) != "1" {
+		t.Fatalf("push = %d %v", w.Code, m)
+	}
+	if git("rev-parse", "--abbrev-ref", "main@{upstream}") != "origin/main" {
+		t.Fatal("main does not track origin/main")
+	}
+	_, m = call(t, h, "POST", "/api/repo/push", `{`+gd+`}`)
+	if d, _ := m["data"].(map[string]any); fmt.Sprint(d["commits"]) != "0" {
+		t.Fatalf("second push = %v", m)
+	}
+}

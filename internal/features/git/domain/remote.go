@@ -170,3 +170,33 @@ func CommitURL(remoteURL, hash string) string {
 	}
 	return base + "/commit/" + hash
 }
+
+// PullRequestURL is the page that opens a pull request (a merge request on
+// GitLab) for a branch pushed to the remote, against the repo's default
+// branch; "" for a host that is not GitHub, GitLab or Bitbucket.
+func PullRequestURL(remoteURL, branch string) string {
+	base := WebURL(remoteURL)
+	if base == "" || branch == "" {
+		return ""
+	}
+	host, _ := Parse(remoteURL)
+	switch h := CanonicalHost(host); {
+	case strings.Contains(h, "github"):
+		return base + "/pull/new/" + branchPath(branch)
+	case strings.Contains(h, "gitlab"):
+		return base + "/-/merge_requests/new?merge_request%5Bsource_branch%5D=" + url.QueryEscape(branch)
+	case strings.Contains(h, "bitbucket"):
+		return base + "/pull-requests/new?source=" + url.QueryEscape(branch)
+	}
+	return ""
+}
+
+// branchPath escapes each part of a branch name for a URL path, keeping
+// the slashes of feature/x.
+func branchPath(branch string) string {
+	parts := strings.Split(branch, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
