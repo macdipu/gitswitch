@@ -5,9 +5,9 @@ Planned work. Want to build one of these? See
 people don't build the same thing.
 
 Status: **done**, **partly** (some of it exists), **planned** (not started),
-**in progress**.
+**later**.
 
-**Next release (v1.4): [Everyday branch work](#everyday-branch-work-v14)**:
+**Latest release (v1.4): [Everyday branch work](#everyday-branch-work-v14)**:
 switch branches with uncommitted changes (Smart switch or Park), undo the
 last action, start a branch and push it, always as the right account.
 
@@ -103,7 +103,7 @@ in it. The same actions in the desktop app, the terminal app and the CLI.
 | H11 | **Commit details**: full message, changed files and line counts | done | `history.Log.Show` (`git log -1 --numstat`, merges against their first parent). Desktop details panel, Enter in the terminal app, `gitswitch show <commit> [--json]`. |
 | H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, fix-author, switch; park and new branch when they come) | done | The `undo` feature: history and refs use cases report each change to its Recorder; the record lives in `refs/gitswitch/undo` (so `git gc` keeps dropped commits) and `[gitswitch "undo"]`. Refused when the branch moved since, when it would remove pushed commits, or when uncommitted changes clash. "Undo" in the success message and the History toolbar, `U` in both apps, `gitswitch undo [-y] [--show [--json]]`. |
 | H13 | **Load more**: page through history beyond the first page of commits | done | `History.More` says git had more; the desktop app's "Load more" button, `m` in the terminal app and `gitswitch log -n` read a bigger window, so the graph stays connected. |
-| H14 | **Uncommitted changes when switching**: offer to stash and restore | in progress | Replaced by Smart switch, Park and Resolve (B2–B4) in [v1.4](#everyday-branch-work-v14). |
+| H14 | **Uncommitted changes when switching**: offer to stash and restore | done | Replaced by Smart switch, Park and Resolve (B2–B4) in [v1.4](#everyday-branch-work-v14). |
 | H15 | **Update with rebase** for people who prefer it | later | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
 | H16 | **Compare a branch with its upstream**: list what you would push or pull | planned | `rev-list HEAD...@{upstream}` in `refs`, shown from the sync status. |
 
