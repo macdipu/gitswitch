@@ -131,6 +131,54 @@ type Switched struct {
 	Waiting []Parked `json:"waiting"`
 }
 
+// SwitchMode is what switching branch does with uncommitted changes.
+type SwitchMode string
+
+const (
+	Ask   SwitchMode = "ask"   // ask each time (the default)
+	Smart SwitchMode = "smart" // take them along: smart switch
+	Park  SwitchMode = "park"  // leave them parked on their branch
+)
+
+// ParseSwitchMode reads "ask", "smart" or "park" (any case); "" for
+// anything else.
+func ParseSwitchMode(s string) SwitchMode {
+	switch m := SwitchMode(strings.ToLower(strings.TrimSpace(s))); m {
+	case Ask, Smart, Park:
+		return m
+	}
+	return ""
+}
+
+// SwitchSetting says what switching does with uncommitted changes in a
+// repo: its own choice, else the one for every repo, else ask.
+type SwitchSetting struct {
+	Mode   SwitchMode `json:"mode"`   // in effect
+	Repo   SwitchMode `json:"repo"`   // saved for this repo; "" follows Global
+	Global SwitchMode `json:"global"` // for every repo
+}
+
+// NewSwitchSetting reads the saved values; an unknown one counts as unset.
+func NewSwitchSetting(global, repo string) SwitchSetting {
+	s := SwitchSetting{Global: ParseSwitchMode(global), Repo: ParseSwitchMode(repo)}
+	if s.Global == "" {
+		s.Global = Ask
+	}
+	s.Mode = s.Global
+	if s.Repo != "" {
+		s.Mode = s.Repo
+	}
+	return s
+}
+
+// Describe is e.g. "park (this repo)" or "ask (every repo)".
+func (s SwitchSetting) Describe() string {
+	if s.Repo != "" {
+		return string(s.Mode) + " (this repo)"
+	}
+	return string(s.Mode) + " (every repo)"
+}
+
 // Parked is a set of uncommitted changes left on a branch: an ordinary
 // stash entry with a message that names the branch (ParkMessage).
 type Parked struct {
@@ -308,6 +356,12 @@ type Refs interface {
 	// ParkedPatch shows what a stash entry changes: a diff, then the new
 	// files it holds.
 	ParkedPatch(worktree, stash string) (string, error)
+	// SwitchModes reads the saved switch-changes values: for every repo,
+	// and the repo's own ("" when unset, or when gitDir is "").
+	SwitchModes(gitDir string) (global, repo string)
+	// SaveSwitchMode saves the value for every repo (gitDir "") or for one;
+	// "" removes it.
+	SaveSwitchMode(gitDir, value string) error
 	// SaveClash, LoadClash and ClearClash keep an open clash in the git
 	// dir; LoadClash returns nil when there is none.
 	SaveClash(gitDir string, c Clash) error

@@ -295,6 +295,36 @@ func (g *Git) ParkedPatch(wt, stash string) (string, error) {
 	return out, nil
 }
 
+// switchKey holds what switching does with uncommitted changes, in the
+// global config or a repo's own.
+const switchKey = "gitswitch.switchChanges"
+
+func (g *Git) SwitchModes(gitDir string) (global, repo string) {
+	global = g.Git.GlobalGet(switchKey)
+	if gitDir != "" {
+		repo = g.Git.RepoGet(gitDir, switchKey)
+	}
+	return global, repo
+}
+
+func (g *Git) SaveSwitchMode(gitDir, value string) error {
+	var err error
+	switch {
+	case gitDir == "" && value == "":
+		_, err = g.Git.Global("--unset", switchKey)
+	case gitDir == "":
+		_, err = g.Git.Global(switchKey, value)
+	case value == "":
+		err = g.Git.RepoUnset(gitDir, switchKey)
+	default:
+		return g.Git.RepoSet(gitDir, switchKey, value)
+	}
+	if value == "" && gitinfra.ExitCode(err) == 5 { // was not set
+		return nil
+	}
+	return err
+}
+
 // The clash file holds one "key value" pair per line; files repeat.
 func (g *Git) SaveClash(gitDir string, c refs.Clash) error {
 	var b strings.Builder

@@ -17,11 +17,14 @@
 //	gitswitch.pin                multi-valued: pinned repos (working folders)
 //	gitswitch.editor             command that opens a repo folder in an editor
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
+//	gitswitch.switchChanges      ask | smart | park: what switching branch does with
+//	                             uncommitted changes (kept by the refs feature)
 //	gitswitch-account.<id>.host|name|email|key|user
 //
 // Per repo (.git/config):
 //
 //	gitswitch.account            the account saved for that repo
+//	gitswitch.switchChanges      this repo's own choice, before the global one
 package domain
 
 import (

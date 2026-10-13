@@ -103,3 +103,17 @@ func TestParkedDescribe(t *testing.T) {
 		}
 	}
 }
+
+func TestSwitchSetting(t *testing.T) {
+	for _, c := range []struct{ global, repo, want string }{
+		{"", "", "ask (every repo)"},
+		{"park", "", "park (every repo)"},
+		{"Smart", "ask", "ask (this repo)"},
+		{"bogus", "park", "park (this repo)"},
+		{"smart", "bogus", "smart (every repo)"},
+	} {
+		if got := NewSwitchSetting(c.global, c.repo).Describe(); got != c.want {
+			t.Errorf("NewSwitchSetting(%q, %q) = %q, want %q", c.global, c.repo, got, c.want)
+		}
+	}
+}

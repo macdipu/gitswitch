@@ -572,7 +572,7 @@ func (t *tui) rowsOf(tab int) int {
 	case tabRules:
 		return len(t.cfg.Rules)
 	case tabSettings:
-		return 2 + len(t.checks)
+		return settingRows + len(t.checks)
 	}
 	return 0
 }
@@ -1322,11 +1322,26 @@ func (t *tui) pickBranch() {
 	t.picker = &picker{title: "Switch to branch", options: opts, pick: func(i int) error {
 		name := bs[i].Name
 		if h, err := t.app.Refs.Head(gd); err == nil && h.Changes.Any() && h.Busy == "" && !bs[i].Current {
-			// Uncommitted changes: say what happens to them first.
-			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s).  s = smart switch: take them with you to %s (if some clash, you fix them there or go back) · p = park them on %s (git stash), restored when you come back · n or Esc = cancel",
+			switch st := t.app.Refs.SwitchSetting(gd); st.Mode {
+			case refs.Smart:
+				return t.smartSwitch(gd, name)
+			case refs.Park:
+				return t.park(gd, name)
+			}
+			// Uncommitted changes: say what happens to them first. Shift
+			// remembers the choice for this repo.
+			remember := func(mode string, then func() error) func() error {
+				return func() error {
+					if err := t.app.Refs.SetSwitchSetting(gd, mode); err != nil {
+						return err
+					}
+					return then()
+				}
+			}
+			smart, park := func() error { return t.smartSwitch(gd, name) }, func() error { return t.park(gd, name) }
+			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s).  s = smart switch: take them with you to %s (if some clash, you fix them there or go back) · p = park them on %s (git stash), restored when you come back · S or P = the same, and remember it for this repo · n or Esc = cancel",
 				h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name, h.Branch), map[string]func() error{
-				"s": func() error { return t.smartSwitch(gd, name) },
-				"p": func() error { return t.park(gd, name) },
+				"s": smart, "p": park, "S": remember("smart", smart), "P": remember("park", park),
 			}}
 			return nil
 		}
@@ -1642,7 +1657,7 @@ func (t *tui) keySettings(k string) {
 	}
 	i := t.sel[tabSettings]
 	switch {
-	case i-2 >= len(t.checks): // the list changed under the selection
+	case i-settingRows >= len(t.checks): // the list changed under the selection
 		t.clampSel()
 		return
 	case i == 0:
@@ -1656,8 +1671,11 @@ func (t *tui) keySettings(k string) {
 				}
 				return t.app.Accounts.SetSetting("promptTimeout", v[0])
 			}}
+	case i == 2:
+		next := map[refs.SwitchMode]string{refs.Ask: "smart", refs.Smart: "park", refs.Park: "ask"}[t.app.Refs.SwitchSetting("").Global]
+		t.say(t.app.Refs.SetSwitchSetting("", next), "Saved.")
 	default:
-		c := t.checks[i-2]
+		c := t.checks[i-settingRows]
 		if c.CanFix {
 			t.say(t.app.Doctor.Fix(c.ID), "Fixed: "+c.Title)
 		} else if !c.OK {
@@ -1957,12 +1975,18 @@ func (t *tui) drawRules() ([]string, int) {
 	return l, t.sel[tabRules]
 }
 
+// settingRows is how many settings come before the health checks on the
+// Settings page.
+const settingRows = 3
+
 func (t *tui) drawSettings() ([]string, int) {
 	s := t.sel[tabSettings]
 	onoff := map[bool]string{true: cGreen + "on" + cReset, false: cDim + "off" + cReset}
 	l := []string{
 		fmt.Sprintf("%sPopup when git runs without a terminal (IDE source control): %s%s", mark(s == 0), onoff[t.cfg.GUIPrompt], cReset),
 		fmt.Sprintf("%sSeconds to wait for an answer: %d %s%s", mark(s == 1), t.cfg.PromptTimeout, map[bool]string{true: "(then git does not connect: no default account)", false: "(then the default account, " + t.cfg.Default + ")"}[t.cfg.Default == ""], cReset),
+		fmt.Sprintf("%sSwitching branch with uncommitted changes, in every repo: %s%s %s(Enter: ask → smart switch → park; a repo's own choice comes first)%s", mark(s == 2), cBold,
+			map[refs.SwitchMode]string{refs.Ask: "ask each time", refs.Smart: "take them along (smart switch)", refs.Park: "park them on their branch"}[t.app.Refs.SwitchSetting("").Global], cReset+cDim, cReset),
 	}
 	for i, c := range t.checks {
 		st := cGreen + "ok " + cReset
@@ -1972,7 +1996,7 @@ func (t *tui) drawSettings() ([]string, int) {
 				st += cDim + " (Enter)" + cReset
 			}
 		}
-		l = append(l, fmt.Sprintf("%s%s %s%s  %s%s", mark(s == i+2), st, c.Title, cReset, cDim, c.Detail+cReset))
+		l = append(l, fmt.Sprintf("%s%s %s%s  %s%s", mark(s == i+settingRows), st, c.Title, cReset, cDim, c.Detail+cReset))
 	}
 	return l, s
 }

@@ -23,6 +23,7 @@ type fakeRefs struct {
 	clash      *refs.Clash
 	stashMsg   string
 	parked     []refs.Parked
+	modes      map[string]string // gitDir ("" for every repo) -> saved switch mode
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -69,6 +70,19 @@ func (f *fakeRefs) Markers(string, []string) []string {
 func (f *fakeRefs) Parked(string) ([]refs.Parked, error) { return f.parked, nil }
 func (f *fakeRefs) ParkedPatch(_, st string) (string, error) {
 	return "diff of " + st, nil
+}
+func (f *fakeRefs) SwitchModes(gitDir string) (string, string) {
+	if gitDir == "" {
+		return f.modes[""], ""
+	}
+	return f.modes[""], f.modes[gitDir]
+}
+func (f *fakeRefs) SaveSwitchMode(gitDir, v string) error {
+	if f.modes == nil {
+		f.modes = map[string]string{}
+	}
+	f.modes[gitDir] = v
+	return nil
 }
 func (f *fakeRefs) SaveClash(_ string, c refs.Clash) error { f.clash = &c; return nil }
 func (f *fakeRefs) LoadClash(string) (*refs.Clash, error)  { return f.clash, nil }
@@ -332,5 +346,35 @@ func TestResolvePark(t *testing.T) {
 	if err != nil || !got.Parked || r.clash != nil || r.stashMsg != "gitswitch park: main" ||
 		strings.Join(r.ran, ",") != "discard,switch main,apply st,drop st,stash,switch fix" {
 		t.Errorf("park instead: %+v %v %v", got, err, r.ran)
+	}
+}
+
+func TestSwitchSetting(t *testing.T) {
+	s, _ := newService()
+	if got := s.SwitchSetting("/r/.git"); got.Mode != refs.Ask {
+		t.Errorf("default = %+v", got)
+	}
+	for _, c := range []struct{ gitDir, mode string }{{"", ""}, {"", "never"}, {"/r/.git", "never"}} {
+		if err := s.SetSwitchSetting(c.gitDir, c.mode); err == nil || !strings.Contains(err.Error(), "ask, smart or park") {
+			t.Errorf("SetSwitchSetting(%q, %q) = %v", c.gitDir, c.mode, err)
+		}
+	}
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(s.SetSwitchSetting("", "Smart"))
+	must(s.SetSwitchSetting("/r/.git", "park"))
+	if got := s.SwitchSetting("/r/.git"); got.Mode != refs.Park || got.Global != refs.Smart || got.Repo != refs.Park {
+		t.Errorf("repo over global = %+v", got)
+	}
+	if got := s.SwitchSetting(""); got.Mode != refs.Smart || got.Repo != "" {
+		t.Errorf("global = %+v", got)
+	}
+	must(s.SetSwitchSetting("/r/.git", "")) // follow every repo's again
+	if got := s.SwitchSetting("/r/.git"); got.Mode != refs.Smart || got.Repo != "" {
+		t.Errorf("repo cleared = %+v", got)
 	}
 }

@@ -342,3 +342,32 @@ func TestParkAndRestore(t *testing.T) {
 		t.Fatalf("after restore: %q, stash %q", git("status", "--porcelain"), git("stash", "list"))
 	}
 }
+
+// The switch-changes setting is saved for every repo or one, and /api/refs
+// reports the one in effect.
+func TestSwitchSetting(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	if w, m := call(t, h, "POST", "/api/switch-setting", `{"mode":"sometimes"}`); w.Code != 400 {
+		t.Fatalf("bad mode = %d %v", w.Code, m)
+	}
+	call(t, h, "POST", "/api/switch-setting", `{"mode":"smart"}`)
+	_, m := call(t, h, "POST", "/api/switch-setting", `{`+gd+`,"mode":"park"}`)
+	if d, _ := m["data"].(map[string]any); d["mode"] != "park" || d["global"] != "smart" {
+		t.Fatalf("saved = %v", m)
+	}
+	if v := git("config", "--local", "gitswitch.switchChanges"); v != "park" {
+		t.Fatalf("repo config = %q", v)
+	}
+	call(t, h, "POST", "/api/switch-setting", `{`+gd+`,"mode":""}`)
+	_, m = call(t, h, "GET", "/api/refs?gitDir="+dir, "")
+	d, _ := m["data"].(map[string]any)
+	if st, _ := d["switchSetting"].(map[string]any); st["mode"] != "smart" || st["repo"] != "" {
+		t.Fatalf("refs switchSetting = %v", d["switchSetting"])
+	}
+	_, m = call(t, h, "GET", "/api/state", "")
+	if d, _ := m["data"].(map[string]any); d["switchChanges"] != "smart" {
+		t.Fatalf("state switchChanges = %v", d["switchChanges"])
+	}
+}

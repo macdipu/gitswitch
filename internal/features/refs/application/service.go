@@ -155,6 +155,30 @@ func (s *Service) waiting(gitDir string) []refs.Parked {
 	return w
 }
 
+// SwitchSetting says what switching does with uncommitted changes in a
+// repo (gitDir "": the setting for every repo).
+func (s *Service) SwitchSetting(gitDir string) refs.SwitchSetting {
+	return refs.NewSwitchSetting(s.Refs.SwitchModes(gitDir))
+}
+
+// SetSwitchSetting saves what switching does with uncommitted changes:
+// "ask", "smart" or "park", for every repo when gitDir is "", else for
+// that repo only, where "" follows the setting for every repo again.
+func (s *Service) SetSwitchSetting(gitDir, mode string) error {
+	m := refs.ParseSwitchMode(mode)
+	if m == "" && (gitDir == "" || mode != "") {
+		return fmt.Errorf("%q is not a choice: ask, smart or park", mode)
+	}
+	where := "every repo"
+	if gitDir != "" {
+		where = "this repo"
+	}
+	if s.FS.Dry(fmt.Sprintf("with uncommitted changes, switching does %q in %s", m, where)) {
+		return nil
+	}
+	return s.Refs.SaveSwitchMode(gitDir, string(m))
+}
+
 // Parked lists every set of parked changes in the repo, newest first:
 // those of renamed and deleted branches too.
 func (s *Service) Parked(gitDir string) ([]refs.Parked, error) { return s.Refs.Parked(gitDir) }

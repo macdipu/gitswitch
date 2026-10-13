@@ -52,9 +52,10 @@ func (x *CLI) cmdBranch(asJSON bool) error {
 // undoHint follows a change that can be undone.
 const undoHint = "  (undo with: gitswitch undo)"
 
-// cmdSwitch switches branch. With uncommitted changes it asks in a
-// terminal whether to take them along or park them (--smart and --park
-// answer up front). Changes parked on the new branch are offered back.
+// cmdSwitch switches branch. With uncommitted changes, --smart takes them
+// along and --park leaves them parked; without either, the switch-changes
+// setting decides, else it asks in a terminal, else it stops. Changes
+// parked on the new branch are offered back.
 func (x *CLI) cmdSwitch(args []string) error {
 	const usage = "gitswitch switch <branch> [--smart | --park]"
 	var name, mode string
@@ -75,25 +76,42 @@ func (x *CLI) cmdSwitch(args []string) error {
 	if err != nil {
 		return err
 	}
-	if h, err := x.app.Refs.Head(gd); mode == "" && err == nil && h.Changes.Any() && h.Busy == "" && !x.app.DryRun() && interactive() {
-		// Smart switch is the default for a new branch, park for one with
-		// its own work.
-		bs, _ := x.app.Refs.Branches(gd)
-		def, opts := "p", "[s/P/c]"
-		if newBranch(bs, name) {
-			def, opts = "s", "[S/p/c]"
-		}
-		x.sayf("You have uncommitted changes on %s (%s).\n", h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "))
-		x.sayf("  s  Smart switch: take them with you to %s\n", name)
-		x.sayf("  p  Park them on %s (git stash), restored when you come back\n", h.Branch)
-		x.say("  c  Cancel")
-		switch choose("Choose "+opts, def, "s", "p", "c") {
-		case "s":
-			mode = "smart"
-		case "p":
-			mode = "park"
+	var setting *refs.SwitchSetting // the setting that chose the mode
+	if h, err := x.app.Refs.Head(gd); mode == "" && err == nil && h.Changes.Any() && h.Busy == "" {
+		changes := strings.TrimPrefix(h.Changes.Describe(), "uncommitted: ")
+		st := x.app.Refs.SwitchSetting(gd)
+		switch {
+		case st.Mode != refs.Ask:
+			mode, setting = string(st.Mode), &st
+		case !interactive():
+			return fmt.Errorf("you have uncommitted changes on %s (%s), so say what to do with them: --smart takes them with you to %s, --park leaves them on %s. To not be asked again: gitswitch set switch-changes smart|park [--repo]", h.Branch, changes, name, h.Branch)
 		default:
-			return errors.New("cancelled, nothing changed. Commit your changes first, or answer up front with --smart or --park")
+			// Smart switch is the default for a new branch, park for one
+			// with its own work.
+			bs, _ := x.app.Refs.Branches(gd)
+			def, opts := "p", "[s/P/c]"
+			if newBranch(bs, name) {
+				def, opts = "s", "[S/p/c]"
+			}
+			x.sayf("You have uncommitted changes on %s (%s).\n", h.Branch, changes)
+			x.sayf("  s  Smart switch: take them with you to %s\n", name)
+			x.sayf("  p  Park them on %s (git stash), restored when you come back\n", h.Branch)
+			x.say("  c  Cancel")
+			k, remember := choose("Choose "+opts+" (add ! to remember for this repo, e.g. p!)", def, "s", "p", "c")
+			switch k {
+			case "s":
+				mode = "smart"
+			case "p":
+				mode = "park"
+			default:
+				return errors.New("cancelled, nothing changed. Commit your changes first, or answer up front with --smart or --park")
+			}
+			if remember {
+				if err := x.app.Refs.SetSwitchSetting(gd, mode); err != nil {
+					return err
+				}
+				x.sayf("Remembered: in this repo, switching with uncommitted changes will %s. Change it with: gitswitch set switch-changes ask|smart|park --repo\n", map[string]string{"smart": "take them along", "park": "park them"}[mode])
+			}
 		}
 	}
 	var r refs.Switched
@@ -124,7 +142,19 @@ func (x *CLI) cmdSwitch(args []string) error {
 		x.say("Switched to", r.Branch)
 	}
 	x.say(undoHint)
+	if setting != nil {
+		x.say(settingHint(*setting))
+	}
 	return x.offerParked(gd, r.Waiting)
+}
+
+// settingHint says which switch-changes setting chose what happened to the
+// changes, and how to change it.
+func settingHint(st refs.SwitchSetting) string {
+	if st.Repo != "" {
+		return fmt.Sprintf("  (your choice for this repo: %s. Change it with: gitswitch set switch-changes ask|smart|park --repo, or follow every repo's with: gitswitch set switch-changes global --repo)", st.Mode)
+	}
+	return fmt.Sprintf("  (your choice for every repo: %s. Change it with: gitswitch set switch-changes ask|smart|park)", st.Mode)
 }
 
 // newBranch reports whether switching to name creates the local branch
@@ -155,7 +185,7 @@ func (x *CLI) offerParked(gd string, w []refs.Parked) error {
 		return nil
 	}
 	for {
-		switch choose("Restore them now? [r]estore, [l]ook first, [N]ot now", "n", "r", "l", "n") {
+		switch k, _ := choose("Restore them now? [r]estore, [l]ook first, [N]ot now", "n", "r", "l", "n"); k {
 		case "r":
 			if err := x.app.Refs.RestoreParked(gd, p.Stash); err != nil {
 				return err

@@ -60,8 +60,8 @@ func TestSettingsSelectionStaysInRange(t *testing.T) {
 	n := len(x.checks)
 	x.sel[tabSettings] = n + 10
 	x.reload()
-	if x.sel[tabSettings] != n+1 {
-		t.Fatalf("selection = %d, want %d (last row)", x.sel[tabSettings], n+1)
+	if last := settingRows + n - 1; x.sel[tabSettings] != last {
+		t.Fatalf("selection = %d, want %d (last row)", x.sel[tabSettings], last)
 	}
 	x.sel[tabSettings] = n + 10
 	x.checks = x.checks[:0] // fewer checks than before

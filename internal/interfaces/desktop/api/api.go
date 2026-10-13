@@ -234,7 +234,8 @@ func (s *server) routes() map[string]handler {
 			if parked == nil {
 				parked = []refs.Parked{}
 			}
-			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash, "parked": parked}, err
+			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash, "parked": parked,
+				"switchSetting": a.Refs.SwitchSetting(gd)}, err
 		},
 		"POST /api/undo": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			r, err := a.Undo.Undo(gd)
@@ -270,6 +271,23 @@ func (s *server) routes() map[string]handler {
 			}
 			return nil, errors.New(`action must be "done", "abort" or "park"`)
 		}),
+		// mode ask, smart or park: what switching does with uncommitted
+		// changes, in every repo, or in the repo gitDir names ("" there
+		// follows every repo's again).
+		"POST /api/switch-setting": func(r *http.Request) (any, error) {
+			b := body(r)
+			gd := ""
+			if p := str(b, "gitDir"); p != "" {
+				var err error
+				if gd, err = s.gitDir(p); err != nil {
+					return nil, err
+				}
+			}
+			if err := a.Refs.SetSwitchSetting(gd, str(b, "mode")); err != nil {
+				return nil, err
+			}
+			return a.Refs.SwitchSetting(gd), nil
+		},
 		// action "restore" or "drop" on the parked changes held by stash.
 		"POST /api/parked": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			switch str(b, "action") {
@@ -339,7 +357,9 @@ func (s *server) state(r *http.Request) (any, error) {
 		"config":    c,
 		"accounts":  accts,
 		"installed": s.app.Setup.Installed(),
-		"home":      filesystem.HomeDir(),
+		// what switching does with uncommitted changes in every repo
+		"switchChanges": s.app.Refs.SwitchSetting("").Global,
+		"home":          filesystem.HomeDir(),
 	}, nil
 }
 

@@ -65,7 +65,8 @@ History and branches
   gitswitch branch [--json]         current branch, HEAD and the branch list
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
-                                    leaves them on this branch until you come back (asked in a terminal)
+                                    leaves them on this branch until you come back; without either,
+                                    the switch-changes setting decides, else it asks in a terminal
   gitswitch parked [--json]         the parked changes (git stash), newest first
   gitswitch parked show|restore|drop [<n>] [-y]   look at, restore or delete parked changes
                                     (<n> from the list; else the newest parked on this branch)
@@ -86,6 +87,9 @@ Settings
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
   gitswitch set editor <command>    editor for repo open --editor (e.g. code)
+  gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
+                                    uncommitted changes, in every repo or this one (default: ask;
+                                    "global --repo": this repo follows every repo's again)
   gitswitch completions bash|zsh|fish|powershell
 
 Add --dry-run to any command to see what it would change without changing anything.
@@ -330,23 +334,26 @@ func confirm(q string) bool {
 }
 
 // choose asks on the terminal for one of keys, the first letter of the
-// answer; def for an empty or other answer, or without a terminal.
-func choose(q, def string, keys ...string) string {
+// answer; def for an empty or other answer, or without a terminal. bang
+// reports an answer ending in "!" (e.g. "p!": and remember it).
+func choose(q, def string, keys ...string) (key string, bang bool) {
 	t := terminal.OpenTerminal()
 	if t == nil {
-		return def
+		return def, false
 	}
 	defer t.Close()
 	fmt.Fprintf(t.Out, "%s: ", q)
 	line, _ := bufio.NewReader(t.In).ReadString('\n')
-	if a := strings.ToLower(strings.TrimSpace(line)); a != "" {
+	a := strings.ToLower(strings.TrimSpace(line))
+	bang = strings.HasSuffix(a, "!")
+	if a = strings.TrimSuffix(a, "!"); a != "" {
 		for _, k := range keys {
 			if a[:1] == k {
-				return k
+				return k, bang
 			}
 		}
 	}
-	return def
+	return def, bang
 }
 
 // splitArgs separates flags (with their values) from positional args.

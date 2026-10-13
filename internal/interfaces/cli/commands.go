@@ -396,6 +396,7 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 	if h, err := x.app.Refs.Head(gd); err == nil {
 		x.say("  branch: ", history.CleanText(h.Describe()))
 	}
+	x.say("  switching with uncommitted changes:", x.app.Refs.SwitchSetting(gd).Describe())
 	x.say("  remote: ", orNone(r.Remote))
 	if r.Reason == "asks-every-time" {
 		x.say("  account: asks on every pull and push (gitswitch use --ask)")
@@ -507,8 +508,11 @@ func (x *CLI) cmdDoctor(fix, asJSON bool) error {
 }
 
 func (x *CLI) cmdSet(args []string) error {
+	if len(args) > 0 && args[0] == "switch-changes" {
+		return x.setSwitchChanges(args[1:])
+	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command>")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | switch-changes ask|smart|park [--repo]")
 	}
 	switch args[0] {
 	case "gui-prompt":
@@ -521,6 +525,46 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.Accounts.SetSetting("editor", args[1])
 	}
 	return fmt.Errorf("unknown setting %q", args[0])
+}
+
+// setSwitchChanges saves what switching does with uncommitted changes, for
+// every repo or (--repo) this one, where "global" follows every repo's.
+func (x *CLI) setSwitchChanges(args []string) error {
+	const usage = "gitswitch set switch-changes ask|smart|park [--repo] | switch-changes global --repo"
+	var value string
+	repo := false
+	for _, a := range args {
+		switch {
+		case a == "--repo":
+			repo = true
+		case value == "" && !strings.HasPrefix(a, "-"):
+			value = a
+		default:
+			return usageErr(usage)
+		}
+	}
+	if value == "" || (value == "global" && !repo) {
+		return usageErr(usage)
+	}
+	gd := ""
+	if repo {
+		var err error
+		if gd, err = x.requireRepo(); err != nil {
+			return err
+		}
+		if value == "global" {
+			value = ""
+		}
+	}
+	if err := x.app.Refs.SetSwitchSetting(gd, value); err != nil || x.app.DryRun() {
+		return err
+	}
+	if gd == "" {
+		x.say("Saved for every repo:", value)
+		return nil
+	}
+	x.say("Saved for this repo:", x.app.Refs.SwitchSetting(gd).Describe())
+	return nil
 }
 
 // flagValue reads "--name value" or "--name=value" ("" when absent).

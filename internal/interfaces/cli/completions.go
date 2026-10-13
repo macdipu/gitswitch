@@ -23,7 +23,9 @@ _gitswitch() {
     key) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "new show pick agent" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --open --copy" -- "$cur") ) ;;
     rule) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add list remove" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) owner: folder:" -- "$cur") ) ;;
     repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list clone add remove show open pin unpin" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --editor --account" -- "$cur") ) ;;
-    set) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor" -- "$cur") ) || COMPREPLY=( $(compgen -W "on off" -- "$cur") ) ;;
+    set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor switch-changes" -- "$cur") )
+      elif [ "${COMP_WORDS[2]}" = switch-changes ]; then COMPREPLY=( $(compgen -W "ask smart park global --repo" -- "$cur") )
+      else COMPREPLY=( $(compgen -W "on off" -- "$cur") ); fi ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
     use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
     log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
@@ -52,7 +54,9 @@ _gitswitch() {
     key) (( CURRENT == 3 )) && compadd new show pick agent || compadd -a accts -- --open --copy ;;
     rule) (( CURRENT == 3 )) && compadd add list remove || compadd -a accts -- owner: folder: ;;
     repo) (( CURRENT == 3 )) && compadd list clone add remove show open pin unpin || { _files -/; compadd -- --json --pinned --editor --account; } ;;
-    set) (( CURRENT == 3 )) && compadd gui-prompt prompt-timeout ssh-path editor || compadd on off ;;
+    set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor switch-changes
+      elif [[ ${words[3]} == switch-changes ]]; then compadd ask smart park global --repo
+      else compadd on off; fi ;;
     completions) compadd bash zsh fish powershell ;;
     use|default|test) compadd -a accts -- --once ;;
     log) compadd -- --flagged -n --author --grep --since --until --account ;;
@@ -77,9 +81,12 @@ complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick age
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin (__fish_complete_directories)"
-complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor on off"
+complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor switch-changes on off"
+complete -c gitswitch -n "__fish_seen_subcommand_from switch-changes" -a "ask smart park global --repo"
+complete -c gitswitch -n "__fish_seen_subcommand_from parked" -a "show restore drop --json -y"
+complete -c gitswitch -n "__fish_seen_subcommand_from resolve" -a "--done --abort --park -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from completions" -a "bash zsh fish powershell"
-complete -c gitswitch -n "__fish_seen_subcommand_from switch" -a "(gitswitch __branches)"
+complete -c gitswitch -n "__fish_seen_subcommand_from switch" -a "(gitswitch __branches) --smart --park"
 complete -c gitswitch -l dry-run -d "show changes without making them"
 `)
 	case "powershell", "pwsh":
@@ -90,12 +97,15 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
     account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
-    repo = 'list clone add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor'; completions = 'bash zsh fish powershell'
+    repo = 'list clone add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor switch-changes'; completions = 'bash zsh fish powershell'
+    parked = 'show restore drop --json'; resolve = '--done --abort --park'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '
   } elseif ($words.Count -le 2 -or ($words.Count -eq 3 -and $wordToComplete -and $subs.ContainsKey($words[1]))) {
     $list = if ($subs.ContainsKey($words[1])) { $subs[$words[1]] -split ' ' } elseif ($words[1] -eq 'switch') { @(gitswitch __branches) } else { @(gitswitch __accounts) }
+  } elseif ($words[2] -eq 'switch-changes') {
+    $list = 'ask smart park global --repo' -split ' '
   } else {
     $list = @(gitswitch __accounts) + @('--dry-run')
   }

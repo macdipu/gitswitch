@@ -1454,6 +1454,69 @@ func TestPark(t *testing.T) {
 	}
 }
 
+// The switch-changes setting says what a switch does with uncommitted
+// changes, for every repo or one; with neither a flag, a setting nor a
+// terminal, a switch with changes stops instead of guessing.
+func TestSwitchSetting(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	on := func() string { return e.gitIn(api, "branch", "--show-current") }
+	stashes := func() string { return e.gitIn(api, "stash", "list", "--format=%gs") }
+	e.commitFile(api, "f.txt", "f\n", "base")
+	e.gitIn(api, "branch", "other")
+	change := func() { t.Helper(); must(t, os.WriteFile(filepath.Join(api, "f.txt"), []byte("changed\n"), 0o644)) }
+
+	// 1. Ask (the default) without a terminal: stop, nothing changes.
+	change()
+	e.gsErr(api, "--smart takes them with you to other, --park leaves them on main", "switch", "other")
+	if on() != "main" || e.gitIn(api, "status", "--porcelain") != "M f.txt" {
+		t.Fatalf("stopped: on %s", on())
+	}
+	e.gsErr(api, "not a choice", "set", "switch-changes", "sometimes")
+	e.gsErr(api, "usage", "set", "switch-changes", "global")
+
+	// 2. Park for every repo.
+	e.gs("set", "switch-changes", "park")
+	if v := e.git("config", "--global", "gitswitch.switchChanges"); v != "park" {
+		t.Fatalf("global config = %q", v)
+	}
+	if out := e.gsIn(api, "status"); !strings.Contains(out, "switching with uncommitted changes: park (every repo)") {
+		t.Fatalf("status:\n%s", out)
+	}
+	out := e.gsIn(api, "switch", "other")
+	if on() != "other" || stashes() != "On main: gitswitch park: main" || !strings.Contains(out, "your choice for every repo: park") {
+		t.Fatalf("park setting: on %s, stash %q\n%s", on(), stashes(), out)
+	}
+	e.gsIn(api, "switch", "main")
+	e.gsIn(api, "parked", "restore")
+
+	// 3. This repo's own choice comes first; a flag beats both.
+	e.gsIn(api, "set", "switch-changes", "smart", "--repo")
+	if out := e.gsIn(api, "status"); !strings.Contains(out, "smart (this repo)") {
+		t.Fatalf("status with a repo choice:\n%s", out)
+	}
+	e.gsIn(api, "switch", "other")
+	if on() != "other" || stashes() != "" || e.gitIn(api, "status", "--porcelain") != "M f.txt" {
+		t.Fatalf("smart repo setting: on %s, stash %q", on(), stashes())
+	}
+	e.gsIn(api, "switch", "main", "--park")
+	if stashes() != "On other: gitswitch park: other" {
+		t.Fatalf("flag over setting: stash %q", stashes())
+	}
+
+	// 4. "global --repo" follows every repo's choice again.
+	e.gsIn(api, "set", "switch-changes", "global", "--repo")
+	if v, err := e.gitMay(api, "config", "--local", "gitswitch.switchChanges"); err == nil {
+		t.Fatalf("repo config still set: %q", v)
+	}
+	if out := e.gsIn(api, "status"); !strings.Contains(out, "park (every repo)") {
+		t.Fatalf("status after global --repo:\n%s", out)
+	}
+	e.gsIn(api, "set", "switch-changes", "global", "--repo") // already gone: fine
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
