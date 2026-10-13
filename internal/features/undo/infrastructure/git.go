@@ -3,6 +3,7 @@
 package infrastructure
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,7 @@ func (g *Git) Save(gitDir string, r undo.Record) error {
 	for _, kv := range [][2]string{
 		{"action", string(r.Action)}, {"label", r.Label}, {"worktree", r.Worktree}, {"branch", r.Branch},
 		{"to", r.To}, {"before", r.Before}, {"after", r.After}, {"time", strconv.FormatInt(r.Time, 10)},
+		{"deleted", joinDeleted(r.Deleted)},
 	} {
 		if err := g.Git.RepoSet(gitDir, section+"."+kv[0], kv[1]); err != nil {
 			return err
@@ -65,6 +67,8 @@ func (g *Git) Load(gitDir string) (undo.Record, error) {
 			r.After = v
 		case "time":
 			r.Time, _ = strconv.ParseInt(v, 10, 64)
+		case "deleted":
+			r.Deleted = splitDeleted(v)
 		}
 	}
 	if r.Action == "" || r.Before == "" || r.After == "" {
@@ -135,4 +139,44 @@ func (g *Git) MoveBranch(gitDir, branch, to, was string) error {
 	}
 	_, err := g.Git.Run(args...)
 	return err
+}
+
+// joinDeleted writes deleted branches as one config value: hash:name:
+// remote:merge for each, separated by spaces. Branch and remote names
+// can't hold a space or a colon.
+func joinDeleted(ds []undo.Deleted) string {
+	var parts []string
+	for _, d := range ds {
+		parts = append(parts, d.Hash+":"+d.Name+":"+d.Remote+":"+d.Merge)
+	}
+	return strings.Join(parts, " ")
+}
+
+func splitDeleted(v string) []undo.Deleted {
+	var ds []undo.Deleted
+	for _, p := range strings.Fields(v) {
+		if f := strings.SplitN(p, ":", 4); len(f) == 4 && f[0] != "" && f[1] != "" {
+			ds = append(ds, undo.Deleted{Hash: f[0], Name: f[1], Remote: f[2], Merge: f[3]})
+		}
+	}
+	return ds
+}
+
+func (g *Git) Recreate(gitDir string, branches []undo.Deleted) error {
+	for _, d := range branches {
+		if g.Tip(gitDir, d.Name) != "" {
+			return fmt.Errorf("there is a branch %s again", d.Name)
+		}
+	}
+	for _, d := range branches {
+		// The all-zero old value: only when the branch does not exist.
+		if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: undo prune", "refs/heads/"+d.Name, d.Hash, ""); err != nil {
+			return err
+		}
+		if d.Remote != "" && d.Merge != "" {
+			_ = g.Git.RepoSet(gitDir, "branch."+d.Name+".remote", d.Remote)
+			_ = g.Git.RepoSet(gitDir, "branch."+d.Name+".merge", d.Merge)
+		}
+	}
+	return nil
 }

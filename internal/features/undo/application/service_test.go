@@ -63,6 +63,14 @@ func (f *fakeGit) MoveBranch(_, b, to, was string) error {
 	return nil
 }
 
+func (f *fakeGit) Recreate(_ string, ds []undo.Deleted) error {
+	for _, d := range ds {
+		f.ran = append(f.ran, "recreate "+d.Name+" "+d.Hash+" "+d.Remote+" "+d.Merge)
+		f.tips[d.Name] = d.Hash
+	}
+	return nil
+}
+
 func newService() (*Service, *fakeStore, *fakeGit) {
 	st, g := &fakeStore{}, &fakeGit{mark: undo.Mark{Worktree: "/r", Branch: "main", Head: "a"}}
 	return &Service{Store: st, Git: g, FS: &filesystem.FS{}, Now: func() time.Time { return time.Unix(100, 0) }}, st, g
@@ -198,5 +206,38 @@ func TestUndoMove(t *testing.T) {
 	s.Done("/r/.git", m, undo.Move, "x")
 	if st.rec != nil {
 		t.Errorf("recorded a move that moved nothing: %+v", st.rec)
+	}
+}
+
+// A prune deleted merged branches: undo brings them back, wherever HEAD is.
+func TestUndoPrune(t *testing.T) {
+	s, st, g := newService()
+	g.tips = map[string]string{"main": "a"}
+	m := s.Before("/r/.git")
+	ds := []undo.Deleted{{Name: "done", Hash: "d", Remote: "origin", Merge: "refs/heads/done"}, {Name: "old", Hash: "o"}}
+	s.Pruned("/r/.git", m, ds, "Deleted 2 merged branches")
+	if st.rec == nil || st.rec.Action != undo.Prune || len(st.rec.Deleted) != 2 || st.rec.Before != "a" {
+		t.Fatalf("recorded %+v", st.rec)
+	}
+	g.mark.Branch, g.mark.Head = "feat", "z" // switching or committing since doesn't matter
+	last, err := s.Last("/r/.git")
+	if err != nil || last.Blocked != "" || !strings.Contains(last.Effect, "done, old") {
+		t.Fatalf("last = %+v %v", last, err)
+	}
+
+	// A new branch of the same name at another commit: blocked.
+	g.tips["old"] = "new"
+	if _, err := s.Undo("/r/.git"); err == nil || !strings.Contains(err.Error(), "branch old again") || len(g.ran) != 0 {
+		t.Fatalf("name taken: %v %v", err, g.ran)
+	}
+	// Made again at the same commit: it stays, the other comes back.
+	g.tips["old"] = "o"
+	if _, err := s.Undo("/r/.git"); err != nil || strings.Join(g.ran, ",") != "recreate done d origin refs/heads/done" || st.rec != nil {
+		t.Fatalf("undo: %v %v %+v", err, g.ran, st.rec)
+	}
+
+	s.Pruned("/r/.git", m, nil, "nothing")
+	if st.rec != nil {
+		t.Errorf("recorded a prune that deleted nothing: %+v", st.rec)
 	}
 }

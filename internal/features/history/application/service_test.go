@@ -297,6 +297,7 @@ func (f *fakeRecorder) Before(string) undo.Mark { return undo.Mark{Head: "before
 func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) {
 	f.done = append(f.done, string(a)+" "+m.Head+" "+label)
 }
+func (f *fakeRecorder) Pruned(string, undo.Mark, []undo.Deleted, string) {}
 
 func TestChangesAreRecordedForUndo(t *testing.T) {
 	s, _, l := newService()

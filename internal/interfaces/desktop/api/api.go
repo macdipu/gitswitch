@@ -282,6 +282,13 @@ func (s *server) routes() map[string]handler {
 		"POST /api/branch/move": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.MoveToNewBranch(gd, str(b, "name"))
 		}),
+		// merged lists what prune would delete; prune deletes it.
+		"POST /api/branch/merged": s.withRepo(func(gd string, _ map[string]any) (any, error) {
+			return a.Refs.Merged(gd)
+		}),
+		"POST /api/branch/prune": s.withRepo(func(gd string, _ map[string]any) (any, error) {
+			return a.Refs.Prune(gd)
+		}),
 		// action "done" finishes a smart switch that clashed, "abort" goes
 		// back, "park" goes back and parks the changes instead.
 		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {

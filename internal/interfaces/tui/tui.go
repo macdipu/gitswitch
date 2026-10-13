@@ -664,11 +664,12 @@ History
   r reload   m load more
   b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   / filter by author, message, date or account
-  U undo the last switch, move, revert, drop, roll back, cherry-pick or fix
+  U undo the last switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
   M committed on the wrong branch: move the commits not pushed to a new branch
+  D delete the branches merged into the remote's default branch
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1236,6 +1237,8 @@ func (t *tui) keyHistory(k string) {
 		}
 	case "M":
 		t.moveToNewBranch()
+	case "D":
+		t.pruneBranches()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1409,6 +1412,46 @@ func (t *tui) newBranch(from string) {
 			t.say(nil, "Started branch "+r.Branch+with+"."+undoHint)
 			return nil
 		}}
+}
+
+// pruneBranches lists the branches merged into the default branch and
+// deletes them when confirmed.
+func (t *tui) pruneBranches() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	m, err := t.app.Refs.Merged(gd)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	kept := ""
+	if len(m.Kept) > 0 {
+		var names []string
+		for _, b := range m.Kept {
+			names = append(names, b.Name)
+		}
+		kept = " Kept, not on " + m.Into + " (squash-merged?): " + strings.Join(names, ", ") + "."
+	}
+	if len(m.Branches) == 0 {
+		t.say(nil, "No branch is merged into "+m.Into+"."+kept)
+		return
+	}
+	var names []string
+	for _, b := range m.Branches {
+		names = append(names, b.Name)
+	}
+	q := fmt.Sprintf("Delete %d branch(es) merged into %s? %s.%s (y/n)", len(names), m.Into, strings.Join(names, ", "), kept)
+	t.confirm = &confirmBox{q, map[string]func() error{"y": func() error {
+		r, err := t.app.Refs.Prune(gd)
+		if err != nil {
+			return err
+		}
+		t.loadHistory()
+		t.say(nil, fmt.Sprintf("Deleted %d merged branch(es).%s", len(r.Branches), undoHint))
+		return nil
+	}}}
 }
 
 // moveToNewBranch asks for a name, the prefix setting already typed, then

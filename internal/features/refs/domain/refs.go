@@ -326,6 +326,24 @@ type Branch struct {
 	Remote   bool   `json:"remote"`   // a remote branch (switching creates a local one)
 	Current  bool   `json:"current"`  // checked out
 	Upstream string `json:"upstream"` // for a local branch: the branch it pulls from
+	Hash     string `json:"hash"`     // the commit it points at
+	// Gone: a local branch set to pull from a remote branch this clone no
+	// longer has (deleted on the server, then fetched with --prune).
+	Gone bool `json:"gone"`
+	// Elsewhere: a local branch checked out in another working folder (git
+	// worktree).
+	Elsewhere bool `json:"elsewhere"`
+}
+
+// Merged is what pruning branches does: the local branches merged into
+// Into, deleted by Prune, and the ones it keeps although their remote
+// branch is gone.
+type Merged struct {
+	Into     string   `json:"into"`     // e.g. origin/main
+	Branches []Branch `json:"branches"` // merged: safe to delete
+	// Kept: their remote branch was deleted, but their commits are not on
+	// Into (squash-merged or rebased on the server, or never merged).
+	Kept []Branch `json:"kept"`
 }
 
 // LocalName is the local branch to switch to for a branch: the same name
@@ -371,6 +389,11 @@ type Refs interface {
 	CheckName(branch string) error
 	// Commit resolves a commit, branch or tag to its commit hash.
 	Commit(gitDir, rev string) (string, error)
+	// MergedInto lists the local branches whose commits are all on rev.
+	MergedInto(gitDir, rev string) ([]string, error)
+	// DeleteBranch deletes a branch that is not checked out, only while it
+	// is still at was, and forgets the remote branch it pulled from.
+	DeleteBranch(gitDir, branch, was string) error
 	// MergeBase is the last commit two commits share.
 	MergeBase(gitDir, a, b string) (string, error)
 	// MoveBranch points a branch that is not checked out at the commit to

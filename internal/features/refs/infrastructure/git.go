@@ -125,7 +125,7 @@ func (g *Git) goneUpstream(gitDir, branch string) string {
 }
 
 func (g *Git) Branches(gitDir string) ([]refs.Branch, error) {
-	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--format=%(refname)%1f%(HEAD)%1f%(upstream:short)",
+	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--format=%(refname)%1f%(HEAD)%1f%(upstream:short)%1f%(objectname)%1f%(upstream:track)%1f%(worktreepath)",
 		"refs/heads", "refs/remotes")
 	if err != nil {
 		return nil, err
@@ -133,14 +133,16 @@ func (g *Git) Branches(gitDir string) ([]refs.Branch, error) {
 	var local, remote []refs.Branch
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Split(line, "\x1f")
-		if len(f) < 3 {
+		if len(f) < 6 {
 			continue
 		}
 		switch {
 		case strings.HasPrefix(f[0], "refs/heads/"):
-			local = append(local, refs.Branch{Name: strings.TrimPrefix(f[0], "refs/heads/"), Current: f[1] == "*", Upstream: f[2]})
+			b := refs.Branch{Name: strings.TrimPrefix(f[0], "refs/heads/"), Current: f[1] == "*", Upstream: f[2], Hash: f[3],
+				Gone: f[4] == "[gone]", Elsewhere: f[1] != "*" && f[5] != ""}
+			local = append(local, b)
 		case strings.HasPrefix(f[0], "refs/remotes/") && !strings.HasSuffix(f[0], "/HEAD"):
-			remote = append(remote, refs.Branch{Name: strings.TrimPrefix(f[0], "refs/remotes/"), Remote: true})
+			remote = append(remote, refs.Branch{Name: strings.TrimPrefix(f[0], "refs/remotes/"), Remote: true, Hash: f[3]})
 		}
 	}
 	return append(local, remote...), nil
@@ -169,6 +171,21 @@ func (g *Git) CheckName(branch string) error {
 
 func (g *Git) Commit(gitDir, rev string) (string, error) {
 	return g.Git.Run("--git-dir="+gitDir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+}
+
+func (g *Git) MergedInto(gitDir, rev string) ([]string, error) {
+	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--merged="+rev, "--format=%(refname:lstrip=2)", "refs/heads")
+	return strings.Fields(out), err
+}
+
+func (g *Git) DeleteBranch(gitDir, branch, was string) error {
+	if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: delete merged branch", "-d", "refs/heads/"+branch, was); err != nil {
+		return err
+	}
+	// git branch -d does this too: a new branch of the same name must not
+	// pull from the old one's remote branch. Exit 128: no such section.
+	_, _ = g.Git.Run("--git-dir="+gitDir, "config", "--local", "--remove-section", "branch."+branch)
+	return nil
 }
 
 func (g *Git) MergeBase(gitDir, a, b string) (string, error) {

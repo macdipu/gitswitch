@@ -29,7 +29,7 @@ _gitswitch() {
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
     use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
     log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
-    branch) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "new --json" -- "$cur") )
+    branch) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "new prune --json" -- "$cur") )
       elif [ "$prev" = --from ]; then COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") )
       else COMPREPLY=( $(compgen -W "--from --move --no-prefix" -- "$cur") ); fi ;;
     switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null) --smart --park" -- "$cur") ) ;;
@@ -63,7 +63,7 @@ _gitswitch() {
     completions) compadd bash zsh fish powershell ;;
     use|default|test) compadd -a accts -- --once ;;
     log) compadd -- --flagged -n --author --grep --since --until --account ;;
-    branch) if (( CURRENT == 3 )); then compadd -- new --json
+    branch) if (( CURRENT == 3 )); then compadd -- new prune --json
       elif [[ ${words[CURRENT-1]} == --from ]]; then compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"}
       else compadd -- --from --move --no-prefix; fi ;;
     switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} --smart --park ;;
@@ -88,7 +88,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove 
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin (__fish_complete_directories)"
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes on off"
-complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new --json --from --move --no-prefix"
+complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune --json --from --move --no-prefix -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from switch-changes" -a "ask smart park global --repo"
 complete -c gitswitch -n "__fish_seen_subcommand_from parked" -a "show restore drop --json -y"
@@ -106,7 +106,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $subs = @{
     account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
     repo = 'list clone add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes'; completions = 'bash zsh fish powershell'
-    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new --json'; push = '--open -y'
+    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune --json'; push = '--open -y'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '

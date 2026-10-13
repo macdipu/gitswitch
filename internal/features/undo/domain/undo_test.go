@@ -78,13 +78,13 @@ func TestEffect(t *testing.T) {
 	for a, want := range map[Action]string{
 		Switch: "Switches back to main", Rollback: "Your files are not changed", Revert: "Removes the new commit",
 		CherryPick: "Removes the new commit", Drop: "back exactly as it was", FixAuthor: "back exactly as it was",
-		Move: "Puts the commits back on main",
+		Move: "Puts the commits back on main", Prune: "Brings back the deleted branches",
 	} {
 		r := Record{Action: a, Branch: "main"}
 		if got := r.Effect(); !strings.Contains(got, want) {
 			t.Errorf("%s: Effect() = %q, want %q", a, got, want)
 		}
-		if r.Rewinds() != (a != Switch && a != Move) {
+		if r.Rewinds() != (a != Switch && a != Move && a != Prune) {
 			t.Errorf("%s: Rewinds() = %v", a, r.Rewinds())
 		}
 	}

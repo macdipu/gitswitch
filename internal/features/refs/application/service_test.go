@@ -34,6 +34,8 @@ type fakeRefs struct {
 	pushErr    error
 	defBranch  string
 	moveErr    error
+	merged     []string // MergedInto
+	deleteErr  map[string]error
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -111,6 +113,17 @@ func (f *fakeRefs) Commit(_, rev string) (string, error) {
 		return "", errors.New("exit status 1")
 	}
 	return "hash-of-" + rev, nil
+}
+func (f *fakeRefs) MergedInto(_, rev string) ([]string, error) {
+	f.ran = append(f.ran, "merged-into "+rev)
+	return f.merged, nil
+}
+func (f *fakeRefs) DeleteBranch(_, b, was string) error {
+	if err := f.deleteErr[b]; err != nil {
+		return err
+	}
+	f.ran = append(f.ran, "delete "+b+" "+was)
+	return nil
 }
 func (f *fakeRefs) MergeBase(_, a, b string) (string, error) { return "base-of-" + b, nil }
 func (f *fakeRefs) MoveBranch(_, b, to, was, _ string) error {
@@ -238,6 +251,13 @@ type fakeRecorder struct{ done []string }
 func (f *fakeRecorder) Before(string) undo.Mark { return undo.Mark{Branch: "main"} }
 func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) {
 	f.done = append(f.done, string(a)+" "+m.Branch+": "+label)
+}
+func (f *fakeRecorder) Pruned(_ string, m undo.Mark, ds []undo.Deleted, label string) {
+	var names []string
+	for _, d := range ds {
+		names = append(names, d.Name+"@"+d.Hash+"<"+d.Remote+" "+d.Merge)
+	}
+	f.done = append(f.done, "prune "+m.Branch+": "+label+" "+strings.Join(names, ","))
 }
 
 func TestSwitchIsRecordedForUndo(t *testing.T) {
@@ -586,5 +606,63 @@ func TestMoveToNewBranch(t *testing.T) {
 		if _, err := s.MoveToNewBranch("/r/.git", "fix"); err == nil || !strings.Contains(err.Error(), c.want) || len(r.ran) != 0 {
 			t.Errorf("%s: %v %v, want %q", name, err, r.ran, c.want)
 		}
+	}
+}
+
+func TestPrune(t *testing.T) {
+	s, r := newService()
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	r.remotes, r.defBranch, r.target = []string{"origin"}, "main", [2]string{"origin", "refs/heads/x"}
+	r.branches = []refs.Branch{
+		{Name: "main", Hash: "m"}, {Name: "work", Current: true, Hash: "w"},
+		{Name: "done", Hash: "d"}, {Name: "done2", Hash: "d2"}, {Name: "master", Hash: "m"},
+		{Name: "other-tree", Elsewhere: true, Hash: "o"}, {Name: "squashed", Gone: true, Hash: "s"}, {Name: "open", Hash: "op"},
+		{Name: "origin/main", Remote: true, Hash: "m"},
+	}
+	// MergedInto lists every branch on origin/main, those GitSwitch keeps too.
+	r.merged = []string{"main", "work", "done", "done2", "master", "other-tree"}
+	m, err := s.Merged("/r/.git")
+	names := func(bs []refs.Branch) string {
+		var n []string
+		for _, b := range bs {
+			n = append(n, b.Name)
+		}
+		return strings.Join(n, ",")
+	}
+	if err != nil || m.Into != "origin/main" || names(m.Branches) != "done,done2" || names(m.Kept) != "squashed" ||
+		strings.Join(r.ran, ",") != "merged-into refs/remotes/origin/main" {
+		t.Fatalf("merged: %+v %v %v", m, err, r.ran)
+	}
+
+	r.ran = nil
+	if m, err := s.Prune("/r/.git"); err != nil || names(m.Branches) != "done,done2" ||
+		strings.Join(r.ran, ",") != "merged-into refs/remotes/origin/main,delete done d,delete done2 d2" ||
+		strings.Join(rec.done, "|") != "prune main: Deleted 2 merged branches done@d<origin refs/heads/x,done2@d2<origin refs/heads/x" {
+		t.Fatalf("prune: %+v %v %v %v", m, err, r.ran, rec.done)
+	}
+
+	// The second can't be deleted: the first is, and is recorded.
+	r.ran, rec.done, r.deleteErr = nil, nil, map[string]error{"done2": errors.New("cannot lock ref")}
+	if m, err := s.Prune("/r/.git"); err == nil || !strings.Contains(err.Error(), "1 deleted") || names(m.Branches) != "done" ||
+		strings.Join(rec.done, "|") != "prune main: Deleted the merged branch done done@d<origin refs/heads/x" {
+		t.Fatalf("prune fails half way: %+v %v %v", m, err, rec.done)
+	}
+	r.deleteErr = nil
+
+	// Nothing merged: nothing deleted, nothing recorded.
+	r.ran, rec.done, r.merged = nil, nil, nil
+	if m, err := s.Prune("/r/.git"); err != nil || len(m.Branches) != 0 || len(rec.done) != 0 {
+		t.Fatalf("nothing to prune: %+v %v %v", m, err, rec.done)
+	}
+
+	// Without a known remote default branch, a local main is used.
+	r.defBranch, r.ran = "", nil
+	if m, err := s.Merged("/r/.git"); err != nil || m.Into != "main" || strings.Join(r.ran, ",") != "merged-into refs/heads/main" {
+		t.Fatalf("local main: %+v %v %v", m, err, r.ran)
+	}
+	r.branches = []refs.Branch{{Name: "trunk", Current: true}}
+	if _, err := s.Merged("/r/.git"); err == nil || !strings.Contains(err.Error(), "can't tell which branch") {
+		t.Fatalf("no target: %v", err)
 	}
 }

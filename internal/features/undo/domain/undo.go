@@ -6,6 +6,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 )
@@ -23,7 +24,17 @@ const (
 	// Move: the commits not pushed were moved to a new branch (Record.To),
 	// and the branch left (Record.Branch) moved back from Before to After.
 	Move Action = "move"
+	// Prune: merged branches were deleted (Record.Deleted).
+	Prune Action = "prune"
 )
+
+// Deleted is a branch an action deleted: enough to bring it back.
+type Deleted struct {
+	Name   string `json:"name"`
+	Hash   string `json:"hash"`   // the commit it pointed at
+	Remote string `json:"remote"` // the remote it pulled from; "" for none
+	Merge  string `json:"merge"`  // the remote branch it pulled from, e.g. refs/heads/x
+}
 
 // Mark is where a repo is: its working folder, branch and HEAD commit.
 type Mark struct {
@@ -43,6 +54,8 @@ type Record struct {
 	Before   string `json:"before"`   // HEAD before
 	After    string `json:"after"`    // HEAD after
 	Time     int64  `json:"time"`     // when, in Unix seconds
+	// Deleted lists the branches a prune deleted.
+	Deleted []Deleted `json:"deleted"`
 }
 
 // New records an action from where the repo was before and after it. The
@@ -72,6 +85,12 @@ func (r Record) Effect() string {
 	switch r.Action {
 	case Switch:
 		return "Switches back to " + r.Branch + "."
+	case Prune:
+		names := make([]string, len(r.Deleted))
+		for i, d := range r.Deleted {
+			names[i] = d.Name
+		}
+		return "Brings back the deleted branches: " + strings.Join(names, ", ") + "."
 	case Move:
 		return "Puts the commits back on " + r.Branch + ", switches back to it and deletes " + r.To + ". Your uncommitted changes stay as they are."
 	case Rollback:
@@ -84,8 +103,8 @@ func (r Record) Effect() string {
 }
 
 // Rewinds reports whether undoing moves the branch back to Before, taking
-// commits off it (every action but a switch or a move).
-func (r Record) Rewinds() bool { return r.Action != Switch && r.Action != Move }
+// commits off it (every action but a switch, a move or a prune).
+func (r Record) Rewinds() bool { return r.Action != Switch && r.Action != Move && r.Action != Prune }
 
 // ErrNothing means there is no action to undo in the repo.
 var ErrNothing = errors.New("nothing to undo in this repo")
@@ -98,6 +117,9 @@ func (r Record) Check(now Mark) error {
 	}
 	if now.Worktree != r.Worktree {
 		return fmt.Errorf("the last action (%s) was made in another working folder, %s; undo it there", r.Label, r.Worktree)
+	}
+	if r.Action == Prune {
+		return nil // any branch may be checked out: the deleted ones only come back
 	}
 	if r.Action == Switch {
 		if now.Branch != r.To {
@@ -159,6 +181,9 @@ type Git interface {
 	// MoveBranch points a branch that is not checked out at the commit to
 	// ("" deletes it), only while it is still at was.
 	MoveBranch(gitDir, branch, to, was string) error
+	// Recreate brings back deleted branches, with the remote branch each
+	// pulled from; refused, and nothing made, when one exists again.
+	Recreate(gitDir string, branches []Deleted) error
 }
 
 // Recorder remembers actions so they can be undone. Use cases call Before
@@ -166,4 +191,6 @@ type Git interface {
 type Recorder interface {
 	Before(gitDir string) Mark
 	Done(gitDir string, before Mark, a Action, label string)
+	// Pruned remembers branches that were deleted.
+	Pruned(gitDir string, before Mark, branches []Deleted, label string)
 }

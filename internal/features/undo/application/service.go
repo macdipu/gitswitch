@@ -45,6 +45,19 @@ func (s *Service) Done(gitDir string, before undo.Mark, a undo.Action, label str
 	}
 }
 
+// Pruned remembers deleted branches, so they can be brought back.
+func (s *Service) Pruned(gitDir string, before undo.Mark, branches []undo.Deleted, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r := undo.Record{Action: undo.Prune, Label: label, Worktree: before.Worktree, Branch: before.Branch,
+		Before: before.Head, After: before.Head, Time: now().Unix(), Deleted: branches}
+	if len(branches) == 0 || r.Before == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Status is the last action and whether it can be undone now.
 type Status struct {
 	undo.Record
@@ -68,6 +81,13 @@ func (s *Service) Last(gitDir string) (Status, error) {
 func (s *Service) check(gitDir string, r undo.Record) error {
 	if err := r.Check(s.Git.Mark(gitDir)); err != nil {
 		return err
+	}
+	if r.Action == undo.Prune {
+		for _, d := range r.Deleted {
+			if tip := s.Git.Tip(gitDir, d.Name); tip != "" && tip != d.Hash {
+				return fmt.Errorf("there is a branch %s again, at another commit, so it can't come back; rename or delete it, then undo again", d.Name)
+			}
+		}
 	}
 	if r.Action == undo.Move && s.Git.Tip(gitDir, r.Branch) != r.After {
 		return fmt.Errorf("%s has changed since the last action (%s): a pull, new commits or another git command. Putting the commits back now would lose that, so GitSwitch won't; merge %s into it instead", r.Branch, r.Label, r.To)
@@ -104,6 +124,14 @@ func (s *Service) Undo(gitDir string) (undo.Record, error) {
 		err = s.Git.Switch(r.Worktree, r.Branch)
 	case undo.Move:
 		return r, s.unmove(gitDir, r)
+	case undo.Prune:
+		var gone []undo.Deleted // those made again at the same commit stay
+		for _, d := range r.Deleted {
+			if s.Git.Tip(gitDir, d.Name) == "" {
+				gone = append(gone, d)
+			}
+		}
+		err = s.Git.Recreate(gitDir, gone)
 	case undo.Rollback:
 		// The files already hold the rolled-back commits' changes; only the
 		// branch moves.

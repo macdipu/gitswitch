@@ -441,6 +441,49 @@ func (x *CLI) cmdBranchNew(args []string) error {
 	return nil
 }
 
+// cmdBranchPrune deletes the branches merged into the default branch,
+// after listing them and asking (-y: not).
+func (x *CLI) cmdBranchPrune(args []string) error {
+	yes := false
+	for _, a := range args {
+		if a != "-y" && a != "--yes" {
+			return usageErr("gitswitch branch prune [-y]")
+		}
+		yes = true
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	m, err := x.app.Refs.Merged(gd)
+	if err != nil {
+		return err
+	}
+	for _, b := range m.Kept {
+		x.sayf("Kept %s: its remote branch was deleted, but its commits aren't on %s (squash-merged? check, then: git branch -D %s)\n", b.Name, m.Into, b.Name)
+	}
+	if len(m.Branches) == 0 {
+		x.sayf("No branch to delete: none is merged into %s.\n", m.Into)
+		return nil
+	}
+	x.sayf("Merged into %s, so their commits are safe there:\n", m.Into)
+	for _, b := range m.Branches {
+		x.sayf("  %s  %s\n", b.Hash[:min(7, len(b.Hash))], b.Name)
+	}
+	if !yes && !x.app.DryRun() {
+		if err := x.ask(fmt.Sprintf("Delete %d branch(es)?", len(m.Branches))); err != nil {
+			return err
+		}
+	}
+	m, err = x.app.Refs.Prune(gd)
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	x.sayf("Deleted %d merged branch(es).\n", len(m.Branches))
+	x.say(undoHint)
+	return nil
+}
+
 // moveToNewBranch is branch new --move: for commits made on the wrong
 // branch.
 func (x *CLI) moveToNewBranch(gd, name string) error {

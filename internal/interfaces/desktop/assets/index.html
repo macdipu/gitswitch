@@ -332,6 +332,7 @@ dialog .row-actions{justify-content:flex-end}
           <input id="branchFind" placeholder="Find a branch" aria-label="Find a branch" autocomplete="off">
           <div class="blist" id="branchList" role="listbox" aria-label="Branches"></div>
           <button class="btn" id="newBranchBtn" type="button" style="margin:8px 4px 0">New branch…</button>
+          <button class="btn" id="pruneBtn" type="button" style="margin:8px 4px 0" title="Deletes the local branches already merged into the remote's default branch">Delete merged branches…</button>
           <button class="btn" id="moveBranchBtn" type="button" style="margin:8px 4px 0" hidden title="Committed on the wrong branch? Starts a branch with the commits not pushed yet and takes them off this one">Move not-pushed commits to a new branch…</button>
           <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. <span id="switchNote"></span></p>
         </div>
@@ -1162,6 +1163,21 @@ async function newBranch(from, where){
   picked.clear(); loadHistory();
 }
 $('#newBranchBtn').onclick = () => { toggleBranches(false); newBranch('', R?.head.branch ? 'from ' + R.head.branch : 'here'); };
+// pruneBranches deletes the local branches merged into the default branch,
+// after listing them.
+$('#pruneBtn').onclick = async () => {
+  toggleBranches(false);
+  const gd = $('#histRepo').value, m = await act(() => api('POST','/api/branch/merged',{gitDir:gd}));
+  if (!m) return;
+  const kept = (m.kept || []).length ? `\n\nKept, because their commits aren't on ${m.into} (squash-merged? check, then delete them in a terminal): ${m.kept.map(b => b.name).join(', ')}.` : '';
+  if (!m.branches?.length){ toast(`No branch is merged into ${m.into}, so there is nothing to delete.` + kept); return; }
+  const n = m.branches.length, s = n > 1 ? 'es' : '';
+  if (!await ask(`Delete ${n} branch${s} merged into ${m.into}? Their commits are safe there.\n\n${m.branches.map(b => b.name).join(', ')}` + kept, {ok:`Delete ${n} branch${s}`})) return;
+  const r = await act(() => api('POST','/api/branch/prune',{gitDir:gd}));
+  if (!r) return;
+  toast(`Deleted ${r.branches.length} merged branch${r.branches.length > 1 ? 'es' : ''}`, false, null, undoable(gd));
+  loadHistory();
+};
 // moveToNewBranch is for commits made on the wrong branch: they go to a new
 // branch, and the current one goes back to its remote branch.
 $('#moveBranchBtn').onclick = async () => {

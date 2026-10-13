@@ -217,6 +217,96 @@ func (s *Service) MoveToNewBranch(gitDir, name string) (refs.Moved, error) {
 	return r, nil
 }
 
+// Merged lists the local branches Prune deletes: those whose commits are
+// all on the branch others merge into (the remote's default branch, e.g.
+// origin/main; without one, a local main or master). The current branch,
+// main, master, the default branch and branches checked out in another
+// working folder are never in it. Branches whose remote branch is gone but
+// that are not merged are listed as kept.
+func (s *Service) Merged(gitDir string) (refs.Merged, error) {
+	var m refs.Merged
+	if _, err := s.ready(gitDir); err != nil {
+		return m, err
+	}
+	all, err := s.Refs.Branches(gitDir)
+	if err != nil {
+		return m, err
+	}
+	keep := map[string]bool{"main": true, "master": true}
+	rev := ""
+	if rem, err := s.pushRemote(gitDir); err == nil {
+		if def := s.Refs.DefaultBranch(gitDir, rem); def != "" {
+			keep[def] = true
+			if b := refs.Find(all, rem+"/"+def); b != nil && b.Remote {
+				m.Into, rev = b.Name, "refs/remotes/"+b.Name
+			}
+		}
+	}
+	for _, name := range []string{"main", "master"} {
+		if b := refs.Find(all, name); rev == "" && b != nil && !b.Remote {
+			m.Into, rev = name, "refs/heads/"+name
+		}
+	}
+	if rev == "" {
+		return m, errors.New("GitSwitch can't tell which branch others merge into: the remote's default branch isn't known here (git remote set-head origin --auto) and there is no main or master branch")
+	}
+	names, err := s.Refs.MergedInto(gitDir, rev)
+	if err != nil {
+		return m, err
+	}
+	merged := map[string]bool{}
+	for _, n := range names {
+		merged[n] = true
+	}
+	for _, b := range all {
+		switch {
+		case b.Remote || b.Current || b.Elsewhere || keep[b.Name]:
+		case merged[b.Name]:
+			m.Branches = append(m.Branches, b)
+		case b.Gone:
+			m.Kept = append(m.Kept, b)
+		}
+	}
+	return m, nil
+}
+
+// Prune deletes the branches Merged lists, and returns them. Their commits
+// stay on the branch they were merged into, and parked changes stay
+// listed. Undo brings them back, with the remote branch each pulled from.
+func (s *Service) Prune(gitDir string) (refs.Merged, error) {
+	m, err := s.Merged(gitDir)
+	if err != nil || len(m.Branches) == 0 {
+		return m, err
+	}
+	names := make([]string, len(m.Branches))
+	for i, b := range m.Branches {
+		names[i] = b.Name
+	}
+	if s.FS.Dry(fmt.Sprintf("delete %s (merged into %s)", strings.Join(names, ", "), m.Into)) {
+		return m, nil
+	}
+	mark := s.before(gitDir)
+	var gone []undo.Deleted
+	defer func() {
+		if s.Undo != nil && len(gone) > 0 {
+			label := "Deleted the merged branch " + gone[0].Name
+			if len(gone) > 1 {
+				label = fmt.Sprintf("Deleted %d merged branches", len(gone))
+			}
+			s.Undo.Pruned(gitDir, mark, gone, label)
+		}
+	}()
+	for i, b := range m.Branches {
+		remote, merge := s.Refs.PushTarget(gitDir, b.Name)
+		if err := s.Refs.DeleteBranch(gitDir, b.Name, b.Hash); err != nil {
+			m.Branches = m.Branches[:i]
+			return m, fmt.Errorf("could not delete %s, so it and the ones after it are kept (%d deleted): %v", b.Name, i, err)
+		}
+		gone = append(gone, undo.Deleted{Name: b.Name, Hash: b.Hash, Remote: remote, Merge: merge})
+	}
+	return m, nil
+}
+
 func plural(n int, what string) string {
 	if n == 1 {
 		return "1 " + what

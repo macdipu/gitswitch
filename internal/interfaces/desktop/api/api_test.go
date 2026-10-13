@@ -488,3 +488,26 @@ func TestMoveToNewBranch(t *testing.T) {
 		t.Fatalf("after undo: on %s, main at %s, branches %q", git("branch", "--show-current"), git("rev-parse", "main"), git("branch"))
 	}
 }
+
+// Merged lists the branches prune deletes: those merged into main when the
+// remote's default branch isn't known.
+func TestPrune(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	git("branch", "done")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	w, m := call(t, h, "POST", "/api/branch/merged", `{`+gd+`}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["into"] != "main" || fmt.Sprint(d["branches"]) == "[]" {
+		t.Fatalf("merged = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/branch/prune", `{`+gd+`}`); w.Code != 200 {
+		t.Fatalf("prune = %d %v", w.Code, m)
+	}
+	// side has its own commit: not merged, so it stays.
+	if got := git("branch", "--format=%(refname:short)"); got != "main\nside" {
+		t.Fatalf("branches = %q", got)
+	}
+	if w, m := call(t, h, "POST", "/api/undo", `{`+gd+`}`); w.Code != 200 || !strings.Contains(git("branch"), "done") {
+		t.Fatalf("undo = %d %v", w.Code, m)
+	}
+}

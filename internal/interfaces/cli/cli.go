@@ -68,6 +68,8 @@ History and branches
                                     changes; the branch-prefix setting goes in front of the name
   gitswitch branch new <name> --move   committed on the wrong branch: start <name> here with the
                                     commits not pushed yet, and take them off the current branch
+  gitswitch branch prune [-y]       delete the local branches merged into the remote's default
+                                    branch (never the current one, main or master); asks first
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -85,8 +87,8 @@ History and branches
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
   gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
-  gitswitch undo [-y] [--show [--json]]   undo the last switch, new branch, move, revert, drop,
-                                    rollback, cherry-pick or fix-author (--show: only say what it would do)
+  gitswitch undo [-y] [--show [--json]]   undo the last switch, new branch, move, prune,
+                                    revert, drop, rollback, cherry-pick or fix-author (--show: only say what it would do)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
 
@@ -241,6 +243,9 @@ func (x *CLI) dispatch(args []string) error {
 	case "branch", "branches":
 		if len(rest) > 0 && rest[0] == "new" {
 			return x.cmdBranchNew(rest[1:])
+		}
+		if len(rest) > 0 && rest[0] == "prune" {
+			return x.cmdBranchPrune(rest[1:])
 		}
 		return x.cmdBranch(hasFlag(rest, "--json"))
 	case "switch":

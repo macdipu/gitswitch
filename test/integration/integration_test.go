@@ -1625,6 +1625,61 @@ func TestMoveToNewBranch(t *testing.T) {
 	e.gsErr(api, "doesn't pull from a remote branch", "branch", "new", "other", "--move")
 }
 
+// Branches merged into the remote's default branch are deleted, with real
+// git; unmerged ones, main, the current one and one checked out in another
+// working folder stay. Undo brings them back, tracking their remote branch.
+func TestPruneMergedBranches(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	branches := func() string {
+		return strings.Join(strings.Fields(e.gitIn(api, "branch", "--format=%(refname:short)")), " ")
+	}
+	if out := e.gsIn(api, "branch", "prune"); !strings.Contains(out, "No branch to delete: none is merged into origin/main") {
+		t.Fatalf("nothing to prune:\n%s", out)
+	}
+
+	// feat is pushed, then merged into main on the server.
+	e.gitIn(api, "switch", "-q", "-c", "feat")
+	e.commitFile(api, "f.txt", "f\n", "feature")
+	e.gitIn(api, "push", "-q", "-u", "origin", "feat")
+	e.gitIn(api, "switch", "-q", "main")
+	e.gitIn(api, "merge", "-q", "--ff-only", "feat")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	// squashed: its remote branch is deleted, but its commit is not on main.
+	e.gitIn(api, "switch", "-q", "-c", "squashed")
+	e.commitFile(api, "s.txt", "s\n", "squashed")
+	e.gitIn(api, "push", "-q", "-u", "origin", "squashed")
+	e.gitIn(api, "push", "-q", "origin", "--delete", "squashed")
+	// wip: not merged, never pushed. tree: merged, but checked out elsewhere.
+	e.gitIn(api, "switch", "-q", "-c", "wip")
+	e.commitFile(api, "w.txt", "w\n", "wip")
+	e.gitIn(api, "switch", "-q", "main")
+	e.gitIn(api, "worktree", "add", "-q", "-b", "tree", filepath.Join(e.root, "tree"))
+	e.gitIn(api, "branch", "old", "main~1")
+	before := branches()
+
+	e.gsErr(api, "add -y", "branch", "prune") // no terminal to ask in
+	out := e.gsIn(api, "branch", "prune", "-y")
+	if got := branches(); got != "main squashed tree wip" || !strings.Contains(out, "Deleted 2 merged branch(es)") ||
+		!strings.Contains(out, "Kept squashed") {
+		t.Fatalf("prune: branches %q\n%s", got, out)
+	}
+	if cfg, err := e.run(api, "git", "config", "--get-regexp", `^branch\.feat\.`); err == nil {
+		t.Fatalf("feat's tracking config is left: %s", cfg)
+	}
+	if !strings.Contains(e.gitIn(api, "rev-list", "origin/main"), e.gitIn(api, "rev-parse", "origin/main")) {
+		t.Fatal("origin/main lost its commits")
+	}
+
+	// Undo brings feat and old back; feat tracks origin/feat again.
+	e.gsIn(api, "undo", "-y")
+	if got := branches(); got != before || e.gitIn(api, "rev-parse", "--abbrev-ref", "feat@{upstream}") != "origin/feat" {
+		t.Fatalf("undo: branches %q, want %q", got, before)
+	}
+}
+
 // Push sends a branch with the repo's account, -u the first time, with a
 // pull request link; it is never forced, and a refused or diverged push
 // is explained.
