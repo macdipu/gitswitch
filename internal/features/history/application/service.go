@@ -312,7 +312,7 @@ func (s *Service) pick(gitDir, rev string) (string, history.Target, error) {
 // middle of another operation. It returns the working folder.
 func (s *Service) ready(gitDir string) (string, error) {
 	if op := s.Log.InProgress(gitDir); op != "" {
-		return "", fmt.Errorf("git is in the middle of a %s in this repo; finish or abort it first", op)
+		return "", remote.Busy(op)
 	}
 	wt := s.Locator.WorktreeOf(gitDir)
 	if s.Log.Branch(wt) == "" {

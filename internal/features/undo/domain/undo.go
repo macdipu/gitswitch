@@ -6,6 +6,8 @@ package domain
 import (
 	"errors"
 	"fmt"
+
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 )
 
 // Action is a change GitSwitch can undo.
@@ -81,7 +83,7 @@ var ErrNothing = errors.New("nothing to undo in this repo")
 // it: undoing then would lose work done since, or undo the wrong thing.
 func (r Record) Check(now Mark) error {
 	if now.Busy != "" {
-		return fmt.Errorf("git is in the middle of a %s in this repo; finish or abort it first", now.Busy)
+		return remote.Busy(now.Busy)
 	}
 	if now.Worktree != r.Worktree {
 		return fmt.Errorf("the last action (%s) was made in another working folder, %s; undo it there", r.Label, r.Worktree)

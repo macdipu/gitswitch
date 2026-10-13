@@ -111,6 +111,47 @@ func (h Head) Describe() string {
 	return b.String()
 }
 
+// Switched is the result of a switch.
+type Switched struct {
+	Branch  string `json:"branch"`  // the local branch now checked out
+	Carried bool   `json:"carried"` // uncommitted changes came along
+	// Clash is set when some of the changes clash with the new branch:
+	// they have conflict markers to fix.
+	Clash *Clash `json:"clash"`
+}
+
+// Clash is a smart switch that left files with conflicts. Until they are
+// fixed (or the switch is undone), the original uncommitted changes stay
+// safe in a stash entry.
+type Clash struct {
+	From  string   `json:"from"`  // the branch the changes were made on
+	To    string   `json:"to"`    // the branch switched to
+	Stash string   `json:"stash"` // the stash commit holding the original changes
+	Files []string `json:"files"` // the files that had conflicts
+}
+
+// WouldOverwrite reports whether git refused a switch because it would
+// overwrite uncommitted changes (or new files).
+func WouldOverwrite(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "would be overwritten")
+}
+
+// HasConflictMarkers reports whether text still holds a conflict git
+// marked: a line starting with <<<<<<< followed later by one starting
+// with >>>>>>>.
+func HasConflictMarkers(text string) bool {
+	open := false
+	for _, line := range strings.Split(text, "\n") {
+		switch {
+		case strings.HasPrefix(line, "<<<<<<< ") || line == "<<<<<<<":
+			open = true
+		case open && (strings.HasPrefix(line, ">>>>>>> ") || line == ">>>>>>>"):
+			return true
+		}
+	}
+	return false
+}
+
 // Branch is a local branch or a branch on a remote.
 type Branch struct {
 	Name     string `json:"name"`     // main, or origin/main for a remote branch
@@ -158,4 +199,26 @@ type Refs interface {
 	// Pull fast-forwards the current branch from its upstream, through the
 	// repo's account. Each progress line goes to progress.
 	Pull(worktree string, progress func(string)) error
+
+	// Stash saves every uncommitted change, new files included, as a
+	// stash entry and returns its commit.
+	Stash(worktree, message string) (string, error)
+	// Apply puts a stash entry's changes back without removing the entry,
+	// staged changes staged when that applies cleanly. It returns the
+	// files left with conflict markers; an error means nothing changed.
+	Apply(worktree, stash string) ([]string, error)
+	// DropStash removes a stash entry.
+	DropStash(worktree, stash string) error
+	// Discard throws away the uncommitted changes to tracked files and
+	// deletes the new files the stash entry holds.
+	Discard(worktree, stash string) error
+	// Unstage makes staged and conflicting files plain uncommitted changes.
+	Unstage(worktree string) error
+	// Markers lists the files that still hold conflict markers.
+	Markers(worktree string, files []string) []string
+	// SaveClash, LoadClash and ClearClash keep an open clash in the git
+	// dir; LoadClash returns nil when there is none.
+	SaveClash(gitDir string, c Clash) error
+	LoadClash(gitDir string) (*Clash, error)
+	ClearClash(gitDir string) error
 }

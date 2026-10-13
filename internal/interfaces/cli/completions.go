@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick undo show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick undo resolve show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -28,7 +28,8 @@ _gitswitch() {
     use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
     log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
     branch) COMPREPLY=( $(compgen -W "--json" -- "$cur") ) ;;
-    switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") ) ;;
+    switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null) --smart" -- "$cur") ) ;;
+    resolve) COMPREPLY=( $(compgen -W "--done --abort -y" -- "$cur") ) ;;
     drop|rollback) COMPREPLY=( $(compgen -W "-y" -- "$cur") ) ;;
     undo) COMPREPLY=( $(compgen -W "-y --show --json" -- "$cur") ) ;;
     doctor) COMPREPLY=( $(compgen -W "--fix" -- "$cur") ) ;;
@@ -55,7 +56,8 @@ _gitswitch() {
     use|default|test) compadd -a accts -- --once ;;
     log) compadd -- --flagged -n --author --grep --since --until --account ;;
     branch) compadd -- --json ;;
-    switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} ;;
+    switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} --smart ;;
+    resolve) compadd -- --done --abort -y ;;
     drop|rollback) compadd -- -y ;;
     undo) compadd -- -y --show --json ;;
     doctor) compadd -- --fix ;;

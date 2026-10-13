@@ -326,7 +326,7 @@ dialog .row-actions{justify-content:flex-end}
         <div class="popover" id="branchPop" hidden>
           <input id="branchFind" placeholder="Find a branch" aria-label="Find a branch" autocomplete="off">
           <div class="blist" id="branchList" role="listbox" aria-label="Branches"></div>
-          <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. Git stops you if uncommitted changes would be lost.</p>
+          <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. With uncommitted changes, GitSwitch asks before taking them along.</p>
         </div>
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
@@ -1049,8 +1049,18 @@ $('#branchList').addEventListener('click', async e => {
   const b = e.target.closest('[data-branch]')?.dataset.branch; if (!b) return;
   toggleBranches(false);
   if (b === R?.head.branch) return;
-  const r = await act(() => api('POST','/api/repo/switch',{gitDir:$('#histRepo').value, branch:b}));
-  if (r){ toast('Switched to ' + r.branch, false, null, undoable($('#histRepo').value)); picked.clear(); loadHistory(); }
+  const gd = $('#histRepo').value, c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
+  let mode = '';
+  if (n){
+    // Uncommitted changes: say what happens to them before switching.
+    if (!await ask(`You have uncommitted changes on ${R.head.branch} (${[c.staged && c.staged + ' staged', c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}). Smart switch takes them with you to ${b}. If some of them clash with ${b}, you fix those files there, or go back exactly as before.`, {ok:'Smart switch'})) return;
+    mode = 'smart';
+  }
+  const r = await act(() => api('POST','/api/repo/switch',{gitDir:gd, branch:b, mode}));
+  if (!r) return;
+  if (r.clash) toast(`Switched to ${r.branch}, but ${r.clash.files.length} file${r.clash.files.length > 1 ? 's clash' : ' clashes'} with it. See the note above the commits.`);
+  else toast('Switched to ' + r.branch + (r.carried ? ', with your changes' : ''), false, null, undoable(gd));
+  picked.clear(); loadHistory();
 });
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
@@ -1067,8 +1077,20 @@ function renderHistory(){
   const filtered = gitFiltered() || F.flagged || F.local;
   // Alerts: only when something needs attention.
   const fixable = H.commits.filter(c => c.flagged && c.unpushed).length;
-  $('#histAlert').innerHTML = (h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
+  const cl = R?.clash;
+  $('#histAlert').innerHTML = (cl ? `<div class="alert bad" role="status"><span><strong>Smart switch to ${esc(cl.to)}: ${cl.files.length} file${cl.files.length > 1 ? 's clash' : ' clashes'} with it.</strong>
+      Open ${cl.files.length > 1 ? 'them' : 'it'} in your editor or IDE and keep the lines you want between the <span class="mono">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</span>, <span class="mono">=======</span> and <span class="mono">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</span> markers, then delete the markers. Your original changes are safe until you finish.
+      <br><span class="mono">${cl.files.map(esc).join(', ')}</span></span>
+      <button class="btn primary" id="clashDone">I’ve fixed them</button><button class="btn" id="clashBack">Go back to ${esc(cl.from)}</button></div>`
+    : h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
     + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
+  $('#clashDone')?.addEventListener('click', async () => {
+    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
+  });
+  $('#clashBack')?.addEventListener('click', async () => {
+    if (!await ask(`Go back to ${cl.from}? Your changes come back exactly as they were before the switch. Fixes made since on ${cl.to} are thrown away.`, {ok:'Go back', danger:true})) return;
+    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'abort'}))){ toast(`Back on ${cl.from} with your changes`); loadHistory(); }
+  });
   $('#fixBtn')?.addEventListener('click', async () => {
     if (!await ask('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.', {ok:'Rewrite'})) return;
     const res = await act(() => api('POST','/api/repo/fix',{gitDir:r.gitDir}));

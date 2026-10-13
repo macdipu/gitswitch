@@ -52,3 +52,17 @@ func TestFindAndLocalName(t *testing.T) {
 		t.Error("unknown branch found")
 	}
 }
+
+func TestHasConflictMarkers(t *testing.T) {
+	for text, want := range map[string]bool{
+		"a\n<<<<<<< Updated upstream\nx\n=======\ny\n>>>>>>> Stashed changes\nb\n": true,
+		"<<<<<<<\nx\n>>>>>>>":             true,
+		"a\nb\n":                          false,
+		"a heading\n=======\n":            false,
+		">>>>>>> before\n<<<<<<< after\n": false,
+	} {
+		if got := HasConflictMarkers(text); got != want {
+			t.Errorf("HasConflictMarkers(%q) = %v", text, got)
+		}
+	}
+}

@@ -1254,6 +1254,101 @@ func TestUndo(t *testing.T) {
 	}
 }
 
+// Smart switch takes uncommitted changes to another branch, with real
+// git: directly when git can, through the stash when it refuses, and with
+// conflict markers to fix (or a way back) when they clash.
+func TestSmartSwitch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(file, text string) {
+		t.Helper()
+		must(t, os.WriteFile(filepath.Join(api, file), []byte(text), 0o644))
+	}
+	read := func(file string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(api, file))
+		must(t, err)
+		return string(b)
+	}
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	on := func() string { return e.gitIn(api, "branch", "--show-current") }
+	e.commitFile(api, "f.txt", "1\n2\n3\n4\n5\n", "base f")
+	e.commitFile(api, "keep.txt", "k\n", "base keep")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	e.gitIn(api, "switch", "-q", "-c", "other")
+	e.commitFile(api, "f.txt", "1\n2\n3\n4\nOTHER\n", "other f")
+	e.gitIn(api, "push", "-q", "origin", "other")
+	e.gitIn(api, "switch", "-q", "main")
+	e.gitIn(api, "branch", "-q", "-D", "other") // only origin/other is left
+
+	// 1. Git can keep the changes: they just come along.
+	write("keep.txt", "k2\n")
+	e.gsIn(api, "switch", "origin/other", "--smart")
+	if on() != "other" || status() != "M keep.txt" {
+		t.Fatalf("plain carry: on %s, status %q", on(), status())
+	}
+	e.gsIn(api, "switch", "main", "--smart")
+
+	// 2. Git refuses, but the changes merge cleanly: stash, switch, back.
+	write("f.txt", "ONE\n2\n3\n4\n5\n")
+	e.gitIn(api, "add", "f.txt")
+	out := e.gsIn(api, "switch", "other", "--smart")
+	if on() != "other" || read("f.txt") != "ONE\n2\n3\n4\nOTHER\n" || !strings.Contains(out, "taking your uncommitted changes along") {
+		t.Fatalf("merged: on %s, f.txt %q\n%s", on(), read("f.txt"), out)
+	}
+	if e.gitIn(api, "stash", "list") != "" {
+		t.Fatal("the stashed copy must be dropped")
+	}
+	e.gitIn(api, "checkout", "--", ".")
+	e.gitIn(api, "reset", "-q", "--hard")
+	e.gitIn(api, "switch", "-q", "main")
+
+	// 3. A clash: stay on other with markers, keep the copy, block other
+	// actions until done.
+	setup := func() {
+		t.Helper()
+		write("f.txt", "1\n2\n3\n4\nMINE\n")
+		write("keep.txt", "k3\n")
+		e.gitIn(api, "add", "keep.txt")
+		write("new.txt", "n\n")
+	}
+	setup()
+	out = e.gsIn(api, "switch", "other", "--smart")
+	if on() != "other" || !strings.Contains(out, "1 file(s) clash with it: f.txt") || !strings.Contains(read("f.txt"), "<<<<<<<") ||
+		read("new.txt") != "n\n" || e.gitIn(api, "stash", "list") == "" {
+		t.Fatalf("clash: on %s\n%s\nf.txt:\n%s", on(), out, read("f.txt"))
+	}
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, "smart switch in progress") || !strings.Contains(out, "1 conflict") {
+		t.Fatalf("branch during a clash:\n%s", out)
+	}
+	e.gsErr(api, "gitswitch resolve --done", "switch", "main")
+	e.gsErr(api, "still have conflict markers: f.txt", "resolve", "--done")
+	write("f.txt", "1\n2\n3\n4\nMINE AND OTHER\n")
+	e.gsIn(api, "resolve", "--done")
+	if on() != "other" || e.gitIn(api, "stash", "list") != "" || status() != "M f.txt\n M keep.txt\n?? new.txt" {
+		t.Fatalf("done: on %s, stash %q, status %q", on(), e.gitIn(api, "stash", "list"), status())
+	}
+	if out := e.gsIn(api, "resolve"); !strings.Contains(out, "Nothing to resolve") {
+		t.Fatalf("resolve after done:\n%s", out)
+	}
+	e.gitIn(api, "reset", "-q", "--hard")
+	must(t, os.Remove(filepath.Join(api, "new.txt")))
+	e.gitIn(api, "switch", "-q", "main")
+
+	// 4. A clash, then go back: main and the changes exactly as before,
+	// staged ones staged.
+	setup()
+	before := status()
+	e.gsIn(api, "switch", "other", "--smart")
+	write("f.txt", "half fixed\n")
+	e.gsIn(api, "resolve", "--abort", "-y")
+	if on() != "main" || status() != before || read("f.txt") != "1\n2\n3\n4\nMINE\n" || e.gitIn(api, "stash", "list") != "" {
+		t.Fatalf("abort: on %s, status %q (want %q), f.txt %q", on(), status(), before, read("f.txt"))
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {

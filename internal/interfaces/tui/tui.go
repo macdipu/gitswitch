@@ -661,6 +661,7 @@ History
   r reload   m load more
   b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
   U undo the last switch, revert, drop, roll back, cherry-pick or fix
+  R after a smart switch with clashing files: I've fixed them, or go back
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1204,6 +1205,8 @@ func (t *tui) keyHistory(k string) {
 		t.update()
 	case "U":
 		t.undoLast()
+	case "R":
+		t.resolve()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1311,13 +1314,67 @@ func (t *tui) pickBranch() {
 	}
 	gd := t.histDir
 	t.picker = &picker{title: "Switch to branch", options: opts, pick: func(i int) error {
-		name, err := t.app.Refs.Switch(gd, bs[i].Name)
+		name := bs[i].Name
+		if h, err := t.app.Refs.Head(gd); err == nil && h.Changes.Any() && h.Busy == "" && !bs[i].Current {
+			// Uncommitted changes: say what happens to them first.
+			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s). Take them with you to %s (smart switch)? If some clash, you fix them there or go back. (y/n)",
+				h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name), map[string]func() error{"y": func() error { return t.smartSwitch(gd, name) }}}
+			return nil
+		}
+		name, err := t.app.Refs.Switch(gd, name)
 		if err != nil {
 			return err
 		}
 		t.loadHistory()
 		t.say(nil, "Switched to "+name+"."+undoHint)
 		return nil
+	}}
+}
+
+// smartSwitch switches taking the uncommitted changes along.
+func (t *tui) smartSwitch(gd, name string) error {
+	r, err := t.app.Refs.SmartSwitch(gd, name)
+	if err != nil {
+		return err
+	}
+	t.loadHistory()
+	if r.Clash != nil {
+		t.say(nil, fmt.Sprintf("Switched to %s, but %d file(s) clash: %s. Fix them in your editor, then press R.", r.Branch, len(r.Clash.Files), strings.Join(r.Clash.Files, ", ")))
+		return nil
+	}
+	t.say(nil, "Switched to "+r.Branch+", with your changes."+undoHint)
+	return nil
+}
+
+// resolve offers the two ways out of a smart switch that clashed.
+func (t *tui) resolve() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	c, err := t.app.Refs.Clash(gd)
+	if err != nil || c == nil {
+		t.say(err, "Nothing to resolve: no smart switch is waiting in this repo.")
+		return
+	}
+	t.confirm = &confirmBox{fmt.Sprintf("Smart switch to %s: %d file(s) clash: %s. Keep the lines you want between the <<<<<<< ======= >>>>>>> markers and delete the markers, in your editor or IDE.  d = I've fixed them · a = go back to %s exactly as before (fixes since are thrown away) · Esc = later",
+		c.To, len(c.Files), strings.Join(c.Files, ", "), c.From), map[string]func() error{
+		"d": func() error {
+			if err := t.app.Refs.ResolveDone(gd); err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, "Done: your changes are on "+c.To+", uncommitted.")
+			return nil
+		},
+		"a": func() error {
+			if err := t.app.Refs.ResolveAbort(gd); err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, "Back on "+c.From+" with your changes as they were.")
+			return nil
+		},
 	}}
 }
 

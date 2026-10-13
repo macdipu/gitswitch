@@ -223,15 +223,33 @@ func (s *server) routes() map[string]handler {
 			if st, uerr := a.Undo.Last(gd); uerr == nil {
 				last = st
 			}
-			return map[string]any{"head": h, "branches": bs, "undo": last}, err
+			clash, cerr := a.Refs.Clash(gd)
+			if err == nil {
+				err = cerr
+			}
+			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash}, err
 		},
 		"POST /api/undo": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			r, err := a.Undo.Undo(gd)
 			return map[string]string{"label": r.Label}, err
 		}),
+		// mode "smart" takes uncommitted changes along (and may leave a clash).
 		"POST /api/repo/switch": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			if str(b, "mode") == "smart" {
+				return a.Refs.SmartSwitch(gd, str(b, "branch"))
+			}
 			name, err := a.Refs.Switch(gd, str(b, "branch"))
-			return map[string]string{"branch": name}, err
+			return refs.Switched{Branch: name}, err
+		}),
+		// action "done" finishes a smart switch that clashed, "abort" goes back.
+		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			switch str(b, "action") {
+			case "done":
+				return nil, a.Refs.ResolveDone(gd)
+			case "abort":
+				return nil, a.Refs.ResolveAbort(gd)
+			}
+			return nil, errors.New(`action must be "done" or "abort"`)
 		}),
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Update(gd, func(string) {})

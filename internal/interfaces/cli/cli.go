@@ -63,7 +63,10 @@ History and branches
                                     only matching commits (author name or email, message, dates
                                     like 2024-05-01 or "2 weeks ago", gitswitch account)
   gitswitch branch [--json]         current branch, HEAD and the branch list
-  gitswitch switch <branch>         check out a branch (origin/x creates a local x)
+  gitswitch switch <branch> [--smart]   check out a branch (origin/x creates a local x);
+                                    --smart takes uncommitted changes along (asked in a terminal)
+  gitswitch resolve [--done|--abort]    after a smart switch with clashing files: finish once
+                                    they are fixed, or go back exactly as before
   gitswitch update                  pull the current branch, fast-forward only, with the repo's account
   gitswitch revert <commit>         add a commit that undoes one (safe for pushed commits)
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
@@ -234,6 +237,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdCherryPick(rest)
 	case "undo":
 		return x.cmdUndo(rest)
+	case "resolve":
+		return x.cmdResolve(rest)
 	case "browse":
 		return x.cmdBrowse(rest)
 	case "show":

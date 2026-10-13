@@ -3,6 +3,9 @@
 package infrastructure
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -150,4 +153,125 @@ func (g *Git) Track(wt, local, remoteBranch string) error {
 
 func (g *Git) Pull(wt string, progress func(string)) error {
 	return g.Git.Stream(wt, progress, "pull", "--ff-only", "--progress")
+}
+
+func (g *Git) Stash(wt, message string) (string, error) {
+	if err := g.Git.Change(wt, "stash", "push", "-q", "--include-untracked", "-m", message); err != nil {
+		return "", err
+	}
+	return g.Git.Run("-C", wt, "rev-parse", "-q", "--verify", "refs/stash")
+}
+
+func (g *Git) Apply(wt, stash string) ([]string, error) {
+	// --index fails without changing anything when the staged changes do
+	// not apply (git 2.x: "conflicts in index"); then apply them unstaged.
+	if err := g.Git.Change(wt, "stash", "apply", "-q", "--index", stash); err == nil {
+		return nil, nil
+	}
+	err := g.Git.Change(wt, "stash", "apply", "-q", stash)
+	if err == nil {
+		return nil, nil
+	}
+	out, _ := g.Git.Run("-C", wt, "diff", "--name-only", "-z", "--diff-filter=U")
+	var files []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			files = append(files, f)
+		}
+	}
+	if len(files) == 0 {
+		return nil, err
+	}
+	return files, nil
+}
+
+func (g *Git) DropStash(wt, stash string) error {
+	out, err := g.Git.Run("-C", wt, "stash", "list", "--format=%H")
+	if err != nil {
+		return err
+	}
+	for i, h := range strings.Fields(out) {
+		if h == stash {
+			return g.Git.Change(wt, "stash", "drop", "-q", "stash@{"+strconv.Itoa(i)+"}")
+		}
+	}
+	return nil // already gone
+}
+
+func (g *Git) Discard(wt, stash string) error {
+	if err := g.Git.Change(wt, "reset", "-q", "--hard"); err != nil {
+		return err
+	}
+	// The stash's third parent holds the new (untracked) files.
+	if _, err := g.Git.Run("-C", wt, "rev-parse", "-q", "--verify", stash+"^3"); err != nil {
+		return nil
+	}
+	out, err := g.Git.Run("-C", wt, "ls-tree", "-r", "-z", "--name-only", stash+"^3")
+	if err != nil {
+		return err
+	}
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			if err := os.Remove(filepath.Join(wt, filepath.FromSlash(f))); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (g *Git) Unstage(wt string) error { return g.Git.Change(wt, "reset", "-q") }
+
+func (g *Git) Markers(wt string, files []string) []string {
+	var left []string
+	for _, f := range files {
+		b, err := os.ReadFile(filepath.Join(wt, filepath.FromSlash(f)))
+		if err == nil && refs.HasConflictMarkers(string(b)) {
+			left = append(left, f)
+		}
+	}
+	return left
+}
+
+// The clash file holds one "key value" pair per line; files repeat.
+func (g *Git) SaveClash(gitDir string, c refs.Clash) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "from %s\nto %s\nstash %s\n", c.From, c.To, c.Stash)
+	for _, f := range c.Files {
+		fmt.Fprintf(&b, "file %s\n", f)
+	}
+	return os.WriteFile(filepath.Join(gitDir, gitinfra.ClashFile), []byte(b.String()), 0o644)
+}
+
+func (g *Git) LoadClash(gitDir string) (*refs.Clash, error) {
+	b, err := os.ReadFile(filepath.Join(gitDir, gitinfra.ClashFile))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	c := &refs.Clash{}
+	for _, line := range strings.Split(string(b), "\n") {
+		k, v, _ := strings.Cut(line, " ")
+		switch k {
+		case "from":
+			c.From = v
+		case "to":
+			c.To = v
+		case "stash":
+			c.Stash = v
+		case "file":
+			c.Files = append(c.Files, v)
+		}
+	}
+	return c, nil
+}
+
+func (g *Git) ClearClash(gitDir string) error {
+	err := os.Remove(filepath.Join(gitDir, gitinfra.ClashFile))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }

@@ -253,6 +253,8 @@ Work with branches and commits, always with the repo's account:
 ```sh
 gitswitch branch                     # current branch, HEAD, what to push and pull, uncommitted files, all branches
 gitswitch switch origin/feature-x    # a remote branch becomes a local branch that tracks it
+gitswitch switch main --smart        # take your uncommitted changes along (asked in a terminal)
+gitswitch resolve --done             # after a smart switch with clashing files: they are fixed
 gitswitch update                     # pull, fast-forward only; never a surprise merge commit
 gitswitch revert 1a2b3c4             # a new commit that undoes one (safe after pushing)
 gitswitch cherry-pick 5d6e7f8 9a0b1c2   # copy commits from another branch, oldest first
@@ -262,6 +264,8 @@ gitswitch show 1a2b3c4               # the whole message and the files it change
 gitswitch browse 1a2b3c4             # open the commit on GitHub, GitLab, Bitbucket, ...
 gitswitch undo                       # undo the last switch, revert, drop, rollback, cherry-pick or fix-author
 ```
+
+**Switching with uncommitted changes.** When you switch with uncommitted changes, GitSwitch first asks whether to take them along (smart switch). Use `--smart` to skip the question; without a terminal and without `--smart` it switches the way git does. Smart switch just switches when git can keep your changes. When git refuses because they would be overwritten, GitSwitch sets them aside, switches and puts them back, staged files staged. If some files clash with the new branch, you stay on it: those files have conflict markers to fix in your editor or IDE, and your original changes are kept safe until you finish. Then run `gitswitch resolve --done`, which refuses while markers remain. Or run `gitswitch resolve --abort` to go back to the old branch with your changes exactly as before. Other GitSwitch actions wait until you choose. The desktop app shows both choices above the commits, and the terminal app uses `R`.
 
 **Undo.** The last change GitSwitch made in a repo can be undone once: `gitswitch undo` says what it will do and asks (`-y` to skip, `--show` to only look, `--show --json` for scripts). The desktop app offers **Undo** in the message after each change and in the History toolbar, and the terminal app uses `U`. Undo puts the branch back exactly as it was. After a rollback only the branch moves, so files you edited since are kept. It refuses, and changes nothing, when undoing would lose work: new commits or a pull since, commits that are already pushed (revert them instead), or uncommitted changes in files it would change. GitSwitch keeps what it would go back to in `refs/gitswitch/undo` and the repo's `[gitswitch "undo"]` config, so `git gc` doesn't delete a dropped commit while it can still be undone.
 

@@ -243,3 +243,63 @@ func TestErrorsCarryAHint(t *testing.T) {
 		t.Errorf("code=%d body=%+v", rec.Code, got)
 	}
 }
+
+// A smart switch that clashes is reported by /api/refs until it is
+// finished or undone through /api/resolve.
+func TestSmartSwitchAndResolve(t *testing.T) {
+	home := t.TempDir()
+	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": home,
+		"GIT_CONFIG_GLOBAL": filepath.Join(home, ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GITSWITCH_TEST_NO_SYSTEM": "1",
+		"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@x.example", "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@x.example"} {
+		t.Setenv(k, v)
+	}
+	dir := filepath.Join(home, "r")
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-q", "-b", "main")
+	write("base\n")
+	git("add", "f.txt")
+	git("commit", "-q", "-m", "base")
+	git("switch", "-q", "-c", "side")
+	write("side\n")
+	git("commit", "-q", "-am", "side")
+	git("switch", "-q", "main")
+	write("mine\n")
+
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	w, m := call(t, h, "POST", "/api/repo/switch", `{`+gd+`,"branch":"side","mode":"smart"}`)
+	d, _ := m["data"].(map[string]any)
+	if c, _ := d["clash"].(map[string]any); w.Code != 200 || c["from"] != "main" || c["to"] != "side" {
+		t.Fatalf("smart switch = %d %v", w.Code, m)
+	}
+	_, m = call(t, h, "GET", "/api/refs?gitDir="+dir, "")
+	d, _ = m["data"].(map[string]any)
+	if c, _ := d["clash"].(map[string]any); c == nil || fmt.Sprint(c["files"]) != "[f.txt]" {
+		t.Fatalf("refs clash = %v", d["clash"])
+	}
+	if w, m := call(t, h, "POST", "/api/resolve", `{`+gd+`,"action":"done"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "conflict markers") {
+		t.Fatalf("done with markers = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/resolve", `{`+gd+`,"action":"abort"}`); w.Code != 200 {
+		t.Fatalf("abort = %d %v", w.Code, m)
+	}
+	if git("branch", "--show-current") != "main" || git("status", "--porcelain") != "M f.txt" {
+		t.Fatalf("after abort: on %s, %q", git("branch", "--show-current"), git("status", "--porcelain"))
+	}
+}

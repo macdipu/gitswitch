@@ -51,22 +51,124 @@ func (x *CLI) cmdBranch(asJSON bool) error {
 // undoHint follows a change that can be undone.
 const undoHint = "  (undo with: gitswitch undo)"
 
+// cmdSwitch switches branch. With uncommitted changes it asks in a
+// terminal whether to take them along (--smart says yes up front).
 func (x *CLI) cmdSwitch(args []string) error {
-	if len(args) != 1 {
-		return usageErr("gitswitch switch <branch>")
+	var name string
+	smart := false
+	for _, a := range args {
+		switch {
+		case a == "--smart":
+			smart = true
+		case name == "" && !strings.HasPrefix(a, "--"):
+			name = a
+		default:
+			return usageErr("gitswitch switch <branch> [--smart]")
+		}
+	}
+	if name == "" {
+		return usageErr("gitswitch switch <branch> [--smart]")
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	b, err := x.app.Refs.Switch(gd, args[0])
+	if h, err := x.app.Refs.Head(gd); !smart && err == nil && h.Changes.Any() && h.Busy == "" && !x.app.DryRun() && interactive() {
+		if !confirm(fmt.Sprintf("You have uncommitted changes on %s (%s). Take them with you to %s (smart switch)?", h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name)) {
+			return errors.New("cancelled, nothing changed. Commit your changes first, or take them along with --smart")
+		}
+		smart = true
+	}
+	if !smart {
+		b, err := x.app.Refs.Switch(gd, name)
+		if err != nil {
+			return err
+		}
+		if !x.app.DryRun() {
+			x.say("Switched to", b)
+			x.say(undoHint)
+		}
+		return nil
+	}
+	r, err := x.app.Refs.SmartSwitch(gd, name)
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	if r.Clash != nil {
+		x.sayClash(r.Clash)
+		return nil
+	}
+	if r.Carried {
+		x.say("Switched to", r.Branch+", taking your uncommitted changes along.")
+	} else {
+		x.say("Switched to", r.Branch)
+	}
+	x.say(undoHint)
+	return nil
+}
+
+// sayClash explains an open smart-switch clash and the two ways out.
+func (x *CLI) sayClash(c *refs.Clash) {
+	x.sayf("Switched to %s, but %d file(s) clash with it: %s\n", c.To, len(c.Files), strings.Join(c.Files, ", "))
+	x.say("Your original changes are kept safe until you finish.")
+	x.say("  Fix the conflict markers (<<<<<<< ======= >>>>>>>) in your editor or IDE, then run: gitswitch resolve --done")
+	x.say("  Or go back to " + c.From + " with your changes exactly as before: gitswitch resolve --abort")
+}
+
+// cmdResolve shows an open smart-switch clash, finishes it (--done) or
+// goes back (--abort, which asks first unless -y).
+func (x *CLI) cmdResolve(args []string) error {
+	var done, abort, yes bool
+	for _, a := range args {
+		switch a {
+		case "--done":
+			done = true
+		case "--abort":
+			abort = true
+		case "-y", "--yes":
+			yes = true
+		default:
+			return usageErr("gitswitch resolve [--done | --abort [-y]]")
+		}
+	}
+	if done && abort {
+		return usageErr("gitswitch resolve [--done | --abort [-y]]")
+	}
+	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	if !x.app.DryRun() {
-		x.say("Switched to", b)
-		x.say(undoHint)
+	c, err := x.app.Refs.Clash(gd)
+	if err != nil {
+		return err
 	}
+	switch {
+	case c == nil:
+		x.say("Nothing to resolve: no smart switch is waiting in this repo.")
+		return nil
+	case done:
+		if err := x.app.Refs.ResolveDone(gd); err != nil {
+			return err
+		}
+		if !x.app.DryRun() {
+			x.say("Done: you are on " + c.To + " with your changes, uncommitted.")
+		}
+		return nil
+	case abort:
+		if !yes && !x.app.DryRun() {
+			if err := x.ask("Go back to " + c.From + "? Your changes come back exactly as before the switch; fixes made since on " + c.To + " are thrown away."); err != nil {
+				return err
+			}
+		}
+		if err := x.app.Refs.ResolveAbort(gd); err != nil {
+			return err
+		}
+		if !x.app.DryRun() {
+			x.say("Back on " + c.From + " with your changes as they were.")
+		}
+		return nil
+	}
+	x.sayClash(c)
 	return nil
 }
 
