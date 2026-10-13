@@ -120,3 +120,19 @@ func (g *Git) Reset(worktree, hash string, keep bool) error {
 func (g *Git) Switch(worktree, branch string) error {
 	return g.Git.Change(worktree, "switch", "--no-guess", branch)
 }
+
+func (g *Git) Tip(gitDir, branch string) string {
+	out, _ := g.Git.Run("--git-dir="+gitDir, "rev-parse", "-q", "--verify", "refs/heads/"+branch+"^{commit}")
+	return out
+}
+
+func (g *Git) MoveBranch(gitDir, branch, to, was string) error {
+	args := []string{"--git-dir=" + gitDir, "update-ref", "-m", "gitswitch: undo"}
+	if to == "" {
+		args = append(args, "-d", "refs/heads/"+branch, was)
+	} else {
+		args = append(args, "refs/heads/"+branch, to, was)
+	}
+	_, err := g.Git.Run(args...)
+	return err
+}

@@ -387,15 +387,18 @@ func (x *CLI) cmdResolve(args []string) error {
 
 // cmdBranchNew starts a branch at HEAD (or --from) and switches to it,
 // with the branch-prefix setting in front of the name (--no-prefix: not).
+// --move also takes the commits not pushed off the branch left.
 func (x *CLI) cmdBranchNew(args []string) error {
-	const usage = "gitswitch branch new <name> [--from <commit>] [--no-prefix]"
+	const usage = "gitswitch branch new <name> [--from <commit> | --move] [--no-prefix]"
 	var name, from string
-	noPrefix := false
+	noPrefix, move := false, false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--no-prefix":
 			noPrefix = true
+		case a == "--move":
+			move = true
 		case a == "--from" && i+1 < len(args) && from == "":
 			i++
 			from = args[i]
@@ -407,7 +410,7 @@ func (x *CLI) cmdBranchNew(args []string) error {
 			return usageErr(usage)
 		}
 	}
-	if name == "" {
+	if name == "" || (move && from != "") {
 		return usageErr(usage)
 	}
 	if !noPrefix {
@@ -416,6 +419,9 @@ func (x *CLI) cmdBranchNew(args []string) error {
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
+	}
+	if move {
+		return x.moveToNewBranch(gd, name)
 	}
 	r, err := x.app.Refs.NewBranch(gd, name, from)
 	if err != nil || x.app.DryRun() {
@@ -431,6 +437,27 @@ func (x *CLI) cmdBranchNew(args []string) error {
 		x.sayf("Started branch %s%s and switched to it.\n", r.Branch, at)
 	}
 	x.say("  Push it when ready: git push -u origin " + r.Branch)
+	x.say(undoHint)
+	return nil
+}
+
+// moveToNewBranch is branch new --move: for commits made on the wrong
+// branch.
+func (x *CLI) moveToNewBranch(gd, name string) error {
+	r, err := x.app.Refs.MoveToNewBranch(gd, name)
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	commits := "1 commit"
+	if r.Commits != 1 {
+		commits = fmt.Sprintf("%d commits", r.Commits)
+	}
+	x.sayf("Moved %s from %s to the new branch %s, and switched to it.\n", commits, r.From, r.Branch)
+	x.sayf("  %s is back at %s, the last commit it shares with its remote branch.\n", r.From, r.Base[:min(7, len(r.Base))])
+	if r.Carried {
+		x.say("  Your uncommitted changes are as they were.")
+	}
+	x.say("  Push it when ready: gitswitch push")
 	x.say(undoHint)
 	return nil
 }

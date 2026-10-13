@@ -131,6 +131,15 @@ type Switched struct {
 	Waiting []Parked `json:"waiting"`
 }
 
+// Moved is the result of moving the commits not pushed to a new branch.
+type Moved struct {
+	Branch  string `json:"branch"`  // the new branch, now checked out
+	From    string `json:"from"`    // the branch the commits were taken off
+	Commits int    `json:"commits"` // how many commits moved
+	Base    string `json:"base"`    // where From is now: the last commit it shares with its upstream
+	Carried bool   `json:"carried"` // there were uncommitted changes; they stayed as they are
+}
+
 // WithPrefix puts the branch name prefix (e.g. "feature/") in front of a
 // new branch's name, unless it is already there.
 func WithPrefix(prefix, name string) string {
@@ -362,6 +371,12 @@ type Refs interface {
 	CheckName(branch string) error
 	// Commit resolves a commit, branch or tag to its commit hash.
 	Commit(gitDir, rev string) (string, error)
+	// MergeBase is the last commit two commits share.
+	MergeBase(gitDir, a, b string) (string, error)
+	// MoveBranch points a branch that is not checked out at the commit to
+	// ("" deletes it), only while it is still at was; why goes in the
+	// reflog.
+	MoveBranch(gitDir, branch, to, was, why string) error
 	// BranchPrefix and SaveBranchPrefix keep the prefix of new branch
 	// names, for every repo ("" for none).
 	BranchPrefix() string

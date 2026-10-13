@@ -30,6 +30,7 @@ type fakeGit struct {
 	pushed   []string
 	resetErr error
 	ran      []string
+	tips     map[string]string // branch -> commit
 }
 
 func (f *fakeGit) Mark(string) undo.Mark                   { return f.mark }
@@ -45,6 +46,20 @@ func (f *fakeGit) Reset(_, hash string, keep bool) error {
 func (f *fakeGit) Switch(_, b string) error {
 	f.ran = append(f.ran, "switch "+b)
 	f.mark.Branch = b
+	return nil
+}
+
+func (f *fakeGit) Tip(_, b string) string { return f.tips[b] }
+func (f *fakeGit) MoveBranch(_, b, to, was string) error {
+	if f.tips[b] != was {
+		return errors.New("cannot lock ref: is at " + f.tips[b] + " but expected " + was)
+	}
+	f.ran = append(f.ran, "move "+b+" "+was+"→"+to)
+	if to == "" {
+		delete(f.tips, b)
+	} else {
+		f.tips[b] = to
+	}
 	return nil
 }
 
@@ -138,5 +153,50 @@ func TestUndoDryRun(t *testing.T) {
 	act(s, g, undo.Drop, "b", "main")
 	if _, err := s.Undo("/r/.git"); err != nil || len(g.ran) > 0 || st.rec == nil || !strings.Contains(out.String(), "undo") {
 		t.Errorf("dry run: %v, ran %v, out %q", err, g.ran, out.String())
+	}
+}
+
+// A move took the commits not pushed off main onto login: undo puts them
+// back on main, switches back and deletes login.
+func TestUndoMove(t *testing.T) {
+	s, st, g := newService()
+	g.tips = map[string]string{"main": "a"}
+	m := s.Before("/r/.git")
+	g.mark.Branch, g.tips["login"], g.tips["main"] = "login", "a", "base"
+	s.Done("/r/.git", m, undo.Move, "Moved 2 commits from main to login")
+	if st.rec == nil || st.rec.To != "login" || st.rec.Before != "a" || st.rec.After != "base" {
+		t.Fatalf("recorded %+v", st.rec)
+	}
+	last, err := s.Last("/r/.git")
+	if err != nil || last.Blocked != "" || !strings.Contains(last.Effect, "deletes login") {
+		t.Fatalf("last = %+v %v", last, err)
+	}
+
+	// main moved since (a pull): blocked, nothing changes.
+	g.tips["main"] = "pulled"
+	if _, err := s.Undo("/r/.git"); err == nil || !strings.Contains(err.Error(), "main has changed since") || len(g.ran) != 0 {
+		t.Fatalf("main moved: %v %v", err, g.ran)
+	}
+	g.tips["main"] = "base"
+	// A new commit on login: blocked too.
+	g.mark.Head = "new"
+	if _, err := s.Undo("/r/.git"); err == nil || !strings.Contains(err.Error(), "login has changed since") {
+		t.Fatalf("login moved: %v", err)
+	}
+	g.mark.Head = "a"
+
+	if _, err := s.Undo("/r/.git"); err != nil || strings.Join(g.ran, ",") != "move main base→a,switch main,move login a→" ||
+		g.tips["main"] != "a" || g.tips["login"] != "" || st.rec != nil {
+		t.Fatalf("undo: %v %v %v %+v", err, g.ran, g.tips, st.rec)
+	}
+
+	// Nothing moved (the old branch is where it was): nothing to undo.
+	s, st, g = newService()
+	g.tips = map[string]string{"main": "a"}
+	m = s.Before("/r/.git")
+	g.mark.Branch = "login"
+	s.Done("/r/.git", m, undo.Move, "x")
+	if st.rec != nil {
+		t.Errorf("recorded a move that moved nothing: %+v", st.rec)
 	}
 }

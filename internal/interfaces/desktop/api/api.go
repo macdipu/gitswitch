@@ -277,6 +277,11 @@ func (s *server) routes() map[string]handler {
 		"POST /api/branch/new": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.NewBranch(gd, str(b, "name"), str(b, "from"))
 		}),
+		// name is the whole name, as for a new branch; the commits not
+		// pushed move there from the current branch.
+		"POST /api/branch/move": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.MoveToNewBranch(gd, str(b, "name"))
+		}),
 		// action "done" finishes a smart switch that clashed, "abort" goes
 		// back, "park" goes back and parks the changes instead.
 		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {

@@ -454,3 +454,37 @@ func TestAccountCheck(t *testing.T) {
 		t.Fatalf("use once: email %q", git("config", "user.email"))
 	}
 }
+
+// Commits made on the wrong branch move to a new one: the old branch goes
+// back to its upstream, and undo puts them back.
+func TestMoveToNewBranch(t *testing.T) {
+	dir, git, write := testRepo(t)
+	git("remote", "add", "origin", "https://example.com/r.git")
+	git("update-ref", "refs/remotes/origin/main", "main")
+	git("branch", "-q", "--set-upstream-to=origin/main")
+	pushed := git("rev-parse", "HEAD")
+	write("one\n")
+	git("commit", "-q", "-am", "one")
+	write("two\n")
+	git("commit", "-q", "-am", "two")
+	tip := git("rev-parse", "HEAD")
+	write("mine\n")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	if w, m := call(t, h, "POST", "/api/branch/move", `{`+gd+`,"name":"side"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "already a branch side") {
+		t.Fatalf("taken name = %d %v", w.Code, m)
+	}
+	w, m := call(t, h, "POST", "/api/branch/move", `{`+gd+`,"name":"login"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["branch"] != "login" || d["from"] != "main" || fmt.Sprint(d["commits"]) != "2" {
+		t.Fatalf("move = %d %v", w.Code, m)
+	}
+	if git("branch", "--show-current") != "login" || git("rev-parse", "HEAD") != tip || git("rev-parse", "main") != pushed || git("status", "--porcelain") != "M f.txt" {
+		t.Fatalf("after move: on %s, main at %s, %q", git("branch", "--show-current"), git("rev-parse", "main"), git("status", "--porcelain"))
+	}
+	if w, m := call(t, h, "POST", "/api/undo", `{`+gd+`}`); w.Code != 200 {
+		t.Fatalf("undo = %d %v", w.Code, m)
+	}
+	if git("branch", "--show-current") != "main" || git("rev-parse", "main") != tip || git("branch", "--list", "login") != "" || git("status", "--porcelain") != "M f.txt" {
+		t.Fatalf("after undo: on %s, main at %s, branches %q", git("branch", "--show-current"), git("rev-parse", "main"), git("branch"))
+	}
+}

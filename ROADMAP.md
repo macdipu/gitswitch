@@ -190,6 +190,6 @@ README.
 
 | # | Feature | Status | Notes |
 | --- | --- | --- | --- |
-| B9 | **Move not-pushed commits to a new branch** (committed on the wrong branch) | later | New branch at HEAD, then roll the old branch back to its upstream, as one undoable step. |
+| B9 | **Move not-pushed commits to a new branch** (committed on the wrong branch) | done | `refs.MoveToNewBranch`: `switch --create` at HEAD, then `update-ref` moves the old branch back to its merge base with its upstream, only while it is still where it was (otherwise the new branch is removed and nothing changes). Uncommitted changes stay: HEAD does not move. Undo (`move`) puts the commits back on the old branch, switches back and deletes the new one, refused when either branch moved since. Desktop branch menu "Move not-pushed commits to a new branch…", terminal app `M`, `gitswitch branch new <name> --move`. |
 | B10 | **Delete merged branches** | later | `gitswitch branch prune [--dry-run]`. |
 | B11 | **Commit** (pick files, message) | later | IDEs do this well; at most a simple "Commit all". The `workspace` feature in [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client). |

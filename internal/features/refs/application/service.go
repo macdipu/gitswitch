@@ -116,15 +116,8 @@ func (s *Service) NewBranch(gitDir, name, from string) (refs.Switched, error) {
 	if err != nil {
 		return r, err
 	}
-	if name == "" || strings.HasPrefix(name, "-") || s.Refs.CheckName(name) != nil {
-		return r, fmt.Errorf("%q can't be a branch name: use letters, digits, - _ . and /, with no spaces, no .. and no ~ ^ : ? * [ or \\", name)
-	}
-	all, err := s.Refs.Branches(gitDir)
-	if err != nil {
+	if err := s.freeName(gitDir, name); err != nil {
 		return r, err
-	}
-	if b := refs.Find(all, name); b != nil && !b.Remote {
-		return r, fmt.Errorf("there is already a branch %s; switch to it, or choose another name", name)
 	}
 	at, commit := "the current commit", ""
 	if h.Branch != "" {
@@ -152,6 +145,83 @@ func (s *Service) NewBranch(gitDir, name, from string) (refs.Switched, error) {
 	}
 	s.done(gitDir, m, switchPlan{head: h, local: name}, "Started branch "+name+" from "+at)
 	return r, nil
+}
+
+// freeName refuses a new branch name git does not accept, or that a local
+// branch already has.
+func (s *Service) freeName(gitDir, name string) error {
+	if name == "" || strings.HasPrefix(name, "-") || s.Refs.CheckName(name) != nil {
+		return fmt.Errorf("%q can't be a branch name: use letters, digits, - _ . and /, with no spaces, no .. and no ~ ^ : ? * [ or \\", name)
+	}
+	all, err := s.Refs.Branches(gitDir)
+	if err != nil {
+		return err
+	}
+	if b := refs.Find(all, name); b != nil && !b.Remote {
+		return fmt.Errorf("there is already a branch %s; switch to it, or choose another name", name)
+	}
+	return nil
+}
+
+// MoveToNewBranch is for commits made on the wrong branch: it starts a
+// branch at HEAD and switches to it, then moves the branch left back to the
+// last commit it shares with its upstream, so the commits not pushed are
+// only on the new branch. Uncommitted changes stay as they are: HEAD does
+// not move. If the old branch can't be moved, the new branch is removed
+// again and nothing changes. Undo puts the commits back.
+func (s *Service) MoveToNewBranch(gitDir, name string) (refs.Moved, error) {
+	name = strings.TrimSpace(name)
+	h, err := s.ready(gitDir)
+	r := refs.Moved{Branch: name, From: h.Branch, Commits: h.Ahead, Carried: h.Changes.Any()}
+	if err != nil {
+		return r, err
+	}
+	switch {
+	case h.Branch == "":
+		return r, errors.New("HEAD is detached, so there is no branch to take commits off; start a branch here instead: gitswitch branch new <name>")
+	case h.Upstream == "":
+		return r, fmt.Errorf("%s doesn't pull from a remote branch, so GitSwitch can't tell which commits are not pushed. Start a branch here instead (gitswitch branch new <name>) and move %s yourself", h.Branch, h.Branch)
+	case h.Ahead == 0:
+		return r, fmt.Errorf("%s has no commits that aren't on %s, so there is nothing to move", h.Branch, h.Upstream)
+	}
+	if err := s.freeName(gitDir, name); err != nil {
+		return r, err
+	}
+	// Through @{upstream}: a local branch could be named like the remote one.
+	base, err := s.Refs.MergeBase(gitDir, h.Hash, h.Branch+"@{upstream}")
+	if err != nil {
+		return r, fmt.Errorf("could not find where %s and %s part: %v", h.Branch, h.Upstream, err)
+	}
+	r.Base = base
+	wt := s.Locator.WorktreeOf(gitDir)
+	what := plural(h.Ahead, "commit")
+	if s.FS.Dry(fmt.Sprintf("start branch %s at HEAD in %s and switch to it, then move %s back to %s (%s), taking %s off it", name, wt, h.Branch, base[:min(7, len(base))], h.Upstream, what)) {
+		return r, nil
+	}
+	m := s.before(gitDir)
+	if err := s.Refs.Create(wt, name, ""); err != nil {
+		return r, err
+	}
+	why := "gitswitch: moved " + what + " to " + name
+	if err := s.Refs.MoveBranch(gitDir, h.Branch, base, h.Hash, why); err != nil {
+		// Same commit both ways, so switching back can't touch the files.
+		if serr := s.Refs.Switch(wt, h.Branch); serr != nil {
+			return r, fmt.Errorf("started %s, but could not take the commits off %s (%v), nor switch back (%v); you are on %s, and %s still has the commits", name, h.Branch, err, serr, name, h.Branch)
+		}
+		_ = s.Refs.MoveBranch(gitDir, name, "", h.Hash, "gitswitch: move failed")
+		return r, fmt.Errorf("could not take the commits off %s, so nothing changed: %v", h.Branch, err)
+	}
+	if s.Undo != nil {
+		s.Undo.Done(gitDir, m, undo.Move, "Moved "+what+" from "+h.Branch+" to "+name)
+	}
+	return r, nil
+}
+
+func plural(n int, what string) string {
+	if n == 1 {
+		return "1 " + what
+	}
+	return fmt.Sprintf("%d %ss", n, what)
 }
 
 // BranchPrefix is the prefix of new branch names, e.g. "feature/"; "" for

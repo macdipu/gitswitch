@@ -332,6 +332,7 @@ dialog .row-actions{justify-content:flex-end}
           <input id="branchFind" placeholder="Find a branch" aria-label="Find a branch" autocomplete="off">
           <div class="blist" id="branchList" role="listbox" aria-label="Branches"></div>
           <button class="btn" id="newBranchBtn" type="button" style="margin:8px 4px 0">New branch…</button>
+          <button class="btn" id="moveBranchBtn" type="button" style="margin:8px 4px 0" hidden title="Committed on the wrong branch? Starts a branch with the commits not pushed yet and takes them off this one">Move not-pushed commits to a new branch…</button>
           <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. <span id="switchNote"></span></p>
         </div>
       </div>
@@ -1099,6 +1100,7 @@ function renderSwitchNote(){
 function renderBranches(){
   if (!R) return;
   renderSwitchNote();
+  $('#moveBranchBtn').hidden = !(R.head.branch && R.head.upstream && R.head.ahead > 0);
   const q = $('#branchFind').value.trim().toLowerCase(), has = n => !q || n.toLowerCase().includes(q);
   const local = R.branches.filter(b => !b.remote), names = new Set(local.map(b => b.name));
   const remote = R.branches.filter(b => b.remote && !names.has(b.name.slice(b.name.indexOf('/') + 1)));
@@ -1160,6 +1162,19 @@ async function newBranch(from, where){
   picked.clear(); loadHistory();
 }
 $('#newBranchBtn').onclick = () => { toggleBranches(false); newBranch('', R?.head.branch ? 'from ' + R.head.branch : 'here'); };
+// moveToNewBranch is for commits made on the wrong branch: they go to a new
+// branch, and the current one goes back to its remote branch.
+$('#moveBranchBtn').onclick = async () => {
+  toggleBranches(false);
+  const gd = $('#histRepo').value, h = R.head, n = h.ahead, s = n > 1 ? 's' : '';
+  const name = await ask(`Move the ${n} commit${s} not pushed yet from ${h.branch} to a new branch, and switch to it. ${h.branch} goes back to where ${h.upstream} is` + (h.behind ? ' (before its new commits)' : '') + '.' + (h.changes && (h.changes.staged + h.changes.changed + h.changes.new) ? ' Your uncommitted changes stay as they are.' : ''),
+    {input: S.branchPrefix || '', atEnd: true, ok: 'Move commits'});
+  if (!name?.trim() || name.trim() === S.branchPrefix) return;
+  const r = await act(() => api('POST','/api/branch/move',{gitDir:gd, name:name.trim()}));
+  if (!r) return;
+  toast(`Moved ${r.commits} commit${r.commits > 1 ? 's' : ''} from ${r.from} to ${r.branch}`, false, null, undoable(gd));
+  picked.clear(); loadHistory();
+};
 const fileList = f => !f?.length ? 'no files' : `${f.length} file${f.length > 1 ? 's' : ''}: ` + f.slice(0, 8).join(', ') + (f.length > 8 ? ` and ${f.length - 8} more` : '');
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);

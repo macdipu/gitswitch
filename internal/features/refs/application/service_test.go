@@ -33,6 +33,7 @@ type fakeRefs struct {
 	remotes    []string
 	pushErr    error
 	defBranch  string
+	moveErr    error
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -110,6 +111,14 @@ func (f *fakeRefs) Commit(_, rev string) (string, error) {
 		return "", errors.New("exit status 1")
 	}
 	return "hash-of-" + rev, nil
+}
+func (f *fakeRefs) MergeBase(_, a, b string) (string, error) { return "base-of-" + b, nil }
+func (f *fakeRefs) MoveBranch(_, b, to, was, _ string) error {
+	if f.moveErr != nil && to != "" {
+		return f.moveErr
+	}
+	f.ran = append(f.ran, "move "+b+" "+was+"→"+to)
+	return nil
 }
 func (f *fakeRefs) BranchPrefix() string            { return f.prefix }
 func (f *fakeRefs) SaveBranchPrefix(p string) error { f.prefix = p; return nil }
@@ -540,5 +549,42 @@ func TestPush(t *testing.T) {
 
 	if _, _, err := push(func(r *fakeRefs) { r.head.Branch = "" }); err == nil || !strings.Contains(err.Error(), "detached") {
 		t.Errorf("detached: %v", err)
+	}
+}
+
+func TestMoveToNewBranch(t *testing.T) {
+	s, r := newService()
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	r.head.Ahead, r.head.Behind, r.head.Changes = 2, 0, refs.Changes{New: 1}
+	got, err := s.MoveToNewBranch("/r/.git", " login ")
+	if err != nil || got.Branch != "login" || got.From != "main" || got.Commits != 2 || got.Base != "base-of-main@{upstream}" || !got.Carried ||
+		strings.Join(r.ran, ",") != "create login,move main abc→base-of-main@{upstream}" ||
+		strings.Join(rec.done, "|") != "move main: Moved 2 commits from main to login" {
+		t.Fatalf("move: %+v %v %v %v", got, err, r.ran, rec.done)
+	}
+
+	// The old branch can't be moved: back on it, the new branch deleted.
+	r.ran, r.moveErr = nil, errors.New("cannot lock ref")
+	if _, err := s.MoveToNewBranch("/r/.git", "y"); err == nil || !strings.Contains(err.Error(), "nothing changed") ||
+		strings.Join(r.ran, ",") != "create y,switch main,move y abc→" {
+		t.Errorf("move fails: %v %v", err, r.ran)
+	}
+	r.moveErr = nil
+
+	for name, c := range map[string]struct {
+		head refs.Head
+		want string
+	}{
+		"detached":     {refs.Head{Hash: "abc", Ahead: 1}, "HEAD is detached"},
+		"no upstream":  {refs.Head{Branch: "main", Hash: "abc"}, "doesn't pull from a remote branch"},
+		"all pushed":   {refs.Head{Branch: "main", Hash: "abc", Upstream: "origin/main"}, "nothing to move"},
+		"taken name":   {refs.Head{Branch: "main", Hash: "abc", Upstream: "origin/main", Ahead: 1}, "already a branch fix"},
+		"middle of it": {refs.Head{Branch: "main", Hash: "abc", Upstream: "origin/main", Ahead: 1, Busy: "rebase"}, "rebase"},
+	} {
+		r.ran, r.head = nil, c.head
+		if _, err := s.MoveToNewBranch("/r/.git", "fix"); err == nil || !strings.Contains(err.Error(), c.want) || len(r.ran) != 0 {
+			t.Errorf("%s: %v %v, want %q", name, err, r.ran, c.want)
+		}
 	}
 }

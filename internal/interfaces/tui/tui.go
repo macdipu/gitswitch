@@ -664,10 +664,11 @@ History
   r reload   m load more
   b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   / filter by author, message, date or account
-  U undo the last switch, revert, drop, roll back, cherry-pick or fix
+  U undo the last switch, move, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
+  M committed on the wrong branch: move the commits not pushed to a new branch
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1233,6 +1234,8 @@ func (t *tui) keyHistory(k string) {
 		} else {
 			t.say(fmt.Errorf("select a commit line first (↑↓)"), "")
 		}
+	case "M":
+		t.moveToNewBranch()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1404,6 +1407,35 @@ func (t *tui) newBranch(from string) {
 				with = ", with your changes"
 			}
 			t.say(nil, "Started branch "+r.Branch+with+"."+undoHint)
+			return nil
+		}}
+}
+
+// moveToNewBranch asks for a name, the prefix setting already typed, then
+// moves the commits not pushed from the current branch to a new branch.
+func (t *tui) moveToNewBranch() {
+	if t.histDir == "" || t.head == nil {
+		return
+	}
+	h := *t.head
+	if h.Branch == "" || h.Upstream == "" || h.Ahead == 0 {
+		t.say(fmt.Errorf("M moves the commits not pushed yet to a new branch, and %s has none", map[bool]string{true: "this detached HEAD", false: h.Branch}[h.Branch == ""]), "")
+		return
+	}
+	gd, prefix := t.histDir, t.app.Refs.BranchPrefix()
+	t.form = &form{title: fmt.Sprintf("Move %d commit(s) from %s to a new branch", h.Ahead, h.Branch),
+		fields: []field{{label: "Name", value: prefix, hint: h.Branch + " goes back to " + h.Upstream}},
+		submit: func(v []string) error {
+			name := strings.TrimSpace(v[0])
+			if name == "" || name == prefix {
+				return fmt.Errorf("type a name for the branch")
+			}
+			r, err := t.app.Refs.MoveToNewBranch(gd, name)
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, fmt.Sprintf("Moved %d commit(s) from %s to %s.%s", r.Commits, r.From, r.Branch, undoHint))
 			return nil
 		}}
 }

@@ -171,6 +171,21 @@ func (g *Git) Commit(gitDir, rev string) (string, error) {
 	return g.Git.Run("--git-dir="+gitDir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
 }
 
+func (g *Git) MergeBase(gitDir, a, b string) (string, error) {
+	return g.Git.Run("--git-dir="+gitDir, "merge-base", a, b)
+}
+
+func (g *Git) MoveBranch(gitDir, branch, to, was, why string) error {
+	args := []string{"--git-dir=" + gitDir, "update-ref", "-m", why}
+	if to == "" {
+		args = append(args, "-d", "refs/heads/"+branch, was)
+	} else {
+		args = append(args, "refs/heads/"+branch, to, was)
+	}
+	_, err := g.Git.Run(args...)
+	return err
+}
+
 // prefixKey holds the prefix of new branch names, in the global config.
 const prefixKey = "gitswitch.branchPrefix"
 

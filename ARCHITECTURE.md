@@ -44,12 +44,12 @@ internal/
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/
       domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting, Pushed; port Refs
-      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
-      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
+      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; move not-pushed commits to a new branch; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
+      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; merge-base and update-ref (moving a branch that is not checked out); gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history and refs use cases (Before, Done); Last, Undo
-      infrastructure/         the record in refs/gitswitch/undo and [gitswitch "undo"]; reset --keep/--mixed, switch
+      infrastructure/         the record in refs/gitswitch/undo and [gitswitch "undo"]; reset --keep/--mixed, switch, update-ref (to undo a move)
     ssh/
       domain/                 ssh command line from git, key help per host, login greeting; ports KeyTool, HookRepos, Transport, Prompter
       application/            Hook (git runs it on every clone/pull/push/fetch); Keys (show, list, test, agent)

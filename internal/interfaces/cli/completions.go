@@ -31,7 +31,7 @@ _gitswitch() {
     log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
     branch) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "new --json" -- "$cur") )
       elif [ "$prev" = --from ]; then COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") )
-      else COMPREPLY=( $(compgen -W "--from --no-prefix" -- "$cur") ); fi ;;
+      else COMPREPLY=( $(compgen -W "--from --move --no-prefix" -- "$cur") ); fi ;;
     switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null) --smart --park" -- "$cur") ) ;;
     resolve) COMPREPLY=( $(compgen -W "--done --abort --park -y" -- "$cur") ) ;;
     parked) COMPREPLY=( $(compgen -W "show restore drop --json -y" -- "$cur") ) ;;
@@ -65,7 +65,7 @@ _gitswitch() {
     log) compadd -- --flagged -n --author --grep --since --until --account ;;
     branch) if (( CURRENT == 3 )); then compadd -- new --json
       elif [[ ${words[CURRENT-1]} == --from ]]; then compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"}
-      else compadd -- --from --no-prefix; fi ;;
+      else compadd -- --from --move --no-prefix; fi ;;
     switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} --smart --park ;;
     resolve) compadd -- --done --abort --park -y ;;
     parked) compadd -- show restore drop --json -y ;;
@@ -88,7 +88,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove 
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin (__fish_complete_directories)"
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes on off"
-complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new --json --from --no-prefix"
+complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new --json --from --move --no-prefix"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from switch-changes" -a "ask smart park global --repo"
 complete -c gitswitch -n "__fish_seen_subcommand_from parked" -a "show restore drop --json -y"

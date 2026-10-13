@@ -20,6 +20,9 @@ const (
 	CherryPick Action = "cherry-pick"
 	FixAuthor  Action = "fix-author"
 	Switch     Action = "switch"
+	// Move: the commits not pushed were moved to a new branch (Record.To),
+	// and the branch left (Record.Branch) moved back from Before to After.
+	Move Action = "move"
 )
 
 // Mark is where a repo is: its working folder, branch and HEAD commit.
@@ -36,7 +39,7 @@ type Record struct {
 	Label    string `json:"label"`    // what was done, e.g. "Dropped 1a2b3c4 Fix login"
 	Worktree string `json:"worktree"` // the working folder it was done in
 	Branch   string `json:"branch"`   // the branch it changed; for a switch, the branch left
-	To       string `json:"to"`       // for a switch: the branch switched to
+	To       string `json:"to"`       // for a switch or a move: the branch switched to
 	Before   string `json:"before"`   // HEAD before
 	After    string `json:"after"`    // HEAD after
 	Time     int64  `json:"time"`     // when, in Unix seconds
@@ -44,7 +47,9 @@ type Record struct {
 
 // New records an action from where the repo was before and after it. The
 // second result is false when there is nothing to undo: HEAD did not
-// move, or (except for a switch) the branch is not the same after.
+// move, or (except for a switch or a move) the branch is not the same
+// after. A move's After is where the branch left is now, which only the
+// caller knows: New leaves it "".
 func New(a Action, label string, before, after Mark, now int64) (Record, bool) {
 	r := Record{Action: a, Label: label, Worktree: before.Worktree, Branch: before.Branch,
 		Before: before.Head, After: after.Head, Time: now}
@@ -55,6 +60,10 @@ func New(a Action, label string, before, after Mark, now int64) (Record, bool) {
 		r.To = after.Branch
 		return r, r.To != r.Branch
 	}
+	if a == Move {
+		r.To, r.After = after.Branch, ""
+		return r, r.To != r.Branch && before.Head != "" && after.Head == before.Head
+	}
 	return r, after.Branch == before.Branch && before.Head != "" && after.Head != before.Head
 }
 
@@ -63,6 +72,8 @@ func (r Record) Effect() string {
 	switch r.Action {
 	case Switch:
 		return "Switches back to " + r.Branch + "."
+	case Move:
+		return "Puts the commits back on " + r.Branch + ", switches back to it and deletes " + r.To + ". Your uncommitted changes stay as they are."
 	case Rollback:
 		return "Puts the rolled-back commits back on " + r.Branch + ". Your files are not changed."
 	case Revert, CherryPick:
@@ -72,9 +83,9 @@ func (r Record) Effect() string {
 	}
 }
 
-// Rewinds reports whether undoing moves the branch back to Before (every
-// action but a switch).
-func (r Record) Rewinds() bool { return r.Action != Switch }
+// Rewinds reports whether undoing moves the branch back to Before, taking
+// commits off it (every action but a switch or a move).
+func (r Record) Rewinds() bool { return r.Action != Switch && r.Action != Move }
 
 // ErrNothing means there is no action to undo in the repo.
 var ErrNothing = errors.New("nothing to undo in this repo")
@@ -91,6 +102,15 @@ func (r Record) Check(now Mark) error {
 	if r.Action == Switch {
 		if now.Branch != r.To {
 			return fmt.Errorf("you are no longer on %s, so there is no switch to undo; switch to %s yourself", r.To, r.Branch)
+		}
+		return nil
+	}
+	if r.Action == Move {
+		if now.Branch != r.To {
+			return fmt.Errorf("the last action (%s) left you on %s, but you are on %s now; switch to %s to undo it", r.Label, r.To, orDetached(now.Branch), r.To)
+		}
+		if now.Head != r.Before {
+			return fmt.Errorf("%s has changed since the last action (%s): new commits or another git command. Undoing it now would delete that work, so GitSwitch won't", r.To, r.Label)
 		}
 		return nil
 	}
@@ -134,6 +154,11 @@ type Git interface {
 	Reset(worktree, hash string, keep bool) error
 	// Switch checks out a local branch.
 	Switch(worktree, branch string) error
+	// Tip is the commit a local branch points at; "" when there is none.
+	Tip(gitDir, branch string) string
+	// MoveBranch points a branch that is not checked out at the commit to
+	// ("" deletes it), only while it is still at was.
+	MoveBranch(gitDir, branch, to, was string) error
 }
 
 // Recorder remembers actions so they can be undone. Use cases call Before

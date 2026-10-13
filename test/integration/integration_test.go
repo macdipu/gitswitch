@@ -1578,6 +1578,53 @@ func TestNewBranch(t *testing.T) {
 	e.gsErr(api, "can't start a branch name", "set", "branch-prefix", "a b")
 }
 
+// Commits made on the wrong branch move to a new branch, with real git:
+// the old branch goes back to its remote branch, uncommitted changes stay,
+// and undo puts everything back.
+func TestMoveToNewBranch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	on := func() string { return e.gitIn(api, "branch", "--show-current") }
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	pushed := e.commitFile(api, "a.txt", "a\n", "pushed a")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	e.gsErr(api, "nothing to move", "branch", "new", "login", "--move")
+	e.commitFile(api, "b.txt", "b\n", "wrong branch b")
+	tip := e.commitFile(api, "c.txt", "c\n", "wrong branch c")
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("mine\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "new.txt"), []byte("new\n"), 0o644))
+	before := status()
+
+	e.gsErr(api, "usage", "branch", "new", "x", "--move", "--from", pushed)
+	out := e.gsIn(api, "branch", "new", "login", "--move")
+	if on() != "login" || e.gitIn(api, "rev-parse", "HEAD") != tip || e.gitIn(api, "rev-parse", "main") != pushed || status() != before ||
+		!strings.Contains(out, "Moved 2 commits from main to the new branch login") {
+		t.Fatalf("move: on %s, main at %s, status %q\n%s", on(), e.gitIn(api, "rev-parse", "main"), status(), out)
+	}
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, "login (not on a remote)") {
+		t.Fatalf("branch after move:\n%s", out)
+	}
+
+	// Undo puts the commits back on main and deletes login.
+	e.gsIn(api, "undo", "-y")
+	if on() != "main" || e.gitIn(api, "rev-parse", "main") != tip || e.gitIn(api, "branch", "--list", "login") != "" || status() != before {
+		t.Fatalf("undo: on %s, main at %s, branches %q, status %q", on(), e.gitIn(api, "rev-parse", "main"), e.gitIn(api, "branch"), status())
+	}
+
+	// Main moved since the move: undo refuses and changes nothing.
+	e.gsIn(api, "branch", "new", "login", "--move")
+	e.gitIn(api, "branch", "-f", "main", tip)
+	e.gsErr(api, "main has changed since", "undo", "-y")
+	if on() != "login" {
+		t.Fatalf("refused undo: on %s", on())
+	}
+
+	// A branch with no remote branch can't tell what is not pushed.
+	e.gsErr(api, "doesn't pull from a remote branch", "branch", "new", "other", "--move")
+}
+
 // Push sends a branch with the repo's account, -u the first time, with a
 // pull request link; it is never forced, and a refused or diverged push
 // is explained.

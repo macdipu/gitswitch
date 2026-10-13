@@ -66,6 +66,8 @@ History and branches
   gitswitch branch new <name> [--from <commit>] [--no-prefix]   start a branch here (or at a
                                     commit, branch or tag) and switch to it, bringing uncommitted
                                     changes; the branch-prefix setting goes in front of the name
+  gitswitch branch new <name> --move   committed on the wrong branch: start <name> here with the
+                                    commits not pushed yet, and take them off the current branch
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -83,8 +85,8 @@ History and branches
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
   gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
-  gitswitch undo [-y] [--show [--json]]   undo the last switch, revert, drop, rollback,
-                                    cherry-pick or fix-author (--show: only say what it would do)
+  gitswitch undo [-y] [--show [--json]]   undo the last switch, new branch, move, revert, drop,
+                                    rollback, cherry-pick or fix-author (--show: only say what it would do)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
 
