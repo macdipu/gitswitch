@@ -105,7 +105,7 @@ in it. The same actions in the desktop app, the terminal app and the CLI.
 | H13 | **Load more**: page through history beyond the first page of commits | done | `History.More` says git had more; the desktop app's "Load more" button, `m` in the terminal app and `gitswitch log -n` read a bigger window, so the graph stays connected. |
 | H14 | **Uncommitted changes when switching**: offer to stash and restore | done | Replaced by Smart switch, Park and Resolve (B2–B4) in [v1.4](#everyday-branch-work-v14). |
 | H15 | **Update with rebase** for people who prefer it | later | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
-| H16 | **Compare a branch with its upstream**: list what you would push or pull | planned | `rev-list HEAD...@{upstream}` in `refs`, shown from the sync status. |
+| H16 | **Compare a branch with its upstream**: list what you would push or pull | done | `refs.Compare`: `git log` of `<branch>@{upstream}..<branch>` and the reverse, up to 100 commits each (the rest counted from ahead/behind). Desktop "Compare" button by the sync status, with Push or Update when only one applies; terminal app `S`; `gitswitch branch compare [--json]`. |
 
 ## Everyday branch work (v1.4)
 

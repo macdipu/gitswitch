@@ -68,6 +68,7 @@ History and branches
                                     changes; the branch-prefix setting goes in front of the name
   gitswitch branch new <name> --move   committed on the wrong branch: start <name> here with the
                                     commits not pushed yet, and take them off the current branch
+  gitswitch branch compare [--json]   the commits you would push to and pull from the remote branch
   gitswitch branch prune [-y]       delete the local branches merged into the remote's default
                                     branch (never the current one, main or master); asks first
   gitswitch commit -m <message> [--all]   commit the staged changes as the repo's account;
@@ -248,6 +249,9 @@ func (x *CLI) dispatch(args []string) error {
 		}
 		if len(rest) > 0 && rest[0] == "prune" {
 			return x.cmdBranchPrune(rest[1:])
+		}
+		if len(rest) > 0 && rest[0] == "compare" {
+			return x.cmdBranchCompare(rest[1:])
 		}
 		return x.cmdBranch(hasFlag(rest, "--json"))
 	case "commit":

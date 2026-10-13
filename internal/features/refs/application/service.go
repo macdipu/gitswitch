@@ -217,6 +217,36 @@ func (s *Service) MoveToNewBranch(gitDir, name string) (refs.Moved, error) {
 	return r, nil
 }
 
+// compareLimit is how many commits Compare lists on each side.
+const compareLimit = 100
+
+// Compare lists the commits the current branch would push to its upstream
+// and pull from it.
+func (s *Service) Compare(gitDir string) (refs.Compared, error) {
+	h, err := s.ready(gitDir)
+	c := refs.Compared{Branch: h.Branch, Upstream: h.Upstream}
+	switch {
+	case err != nil:
+		return c, err
+	case h.Branch == "":
+		return c, errors.New("HEAD is detached, so there is no branch to compare; switch to a branch first")
+	case h.Upstream == "" && h.Gone != "":
+		return c, fmt.Errorf("%s pulls from %s, which this clone doesn't have (deleted on the server, or a single-branch clone), so there is nothing to compare with", h.Branch, h.Gone)
+	case h.Upstream == "":
+		return c, fmt.Errorf("%s is not on a remote yet, so every commit on it would be pushed (gitswitch push)", h.Branch)
+	}
+	// Through @{upstream}: a local branch could be named like the remote one.
+	up := h.Branch + "@{upstream}"
+	if c.ToPush, err = s.Refs.Commits(gitDir, up, "refs/heads/"+h.Branch, compareLimit); err != nil {
+		return c, err
+	}
+	if c.ToPull, err = s.Refs.Commits(gitDir, "refs/heads/"+h.Branch, up, compareLimit); err != nil {
+		return c, err
+	}
+	c.MorePush, c.MorePull = max(0, h.Ahead-len(c.ToPush)), max(0, h.Behind-len(c.ToPull))
+	return c, nil
+}
+
 // Merged lists the local branches Prune deletes: those whose commits are
 // all on the branch others merge into (the remote's default branch, e.g.
 // origin/main; without one, a local main or master). The current branch,

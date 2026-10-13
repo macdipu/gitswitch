@@ -173,6 +173,23 @@ func (g *Git) Commit(gitDir, rev string) (string, error) {
 	return g.Git.Run("--git-dir="+gitDir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
 }
 
+func (g *Git) Commits(gitDir, from, to string, limit int) ([]refs.Line, error) {
+	out, err := g.Git.Run("--git-dir="+gitDir, "log", "-n", strconv.Itoa(limit), "--format=%H%x1f%h%x1f%an%x1f%at%x1f%s", from+".."+to, "--")
+	if err != nil {
+		return nil, err
+	}
+	var ls []refs.Line
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.SplitN(line, "\x1f", 5)
+		if len(f) < 5 {
+			continue
+		}
+		t, _ := strconv.ParseInt(f[3], 10, 64)
+		ls = append(ls, refs.Line{Hash: f[0], Short: f[1], Author: f[2], Time: t, Subject: f[4]})
+	}
+	return ls, nil
+}
+
 func (g *Git) MergedInto(gitDir, rev string) ([]string, error) {
 	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--merged="+rev, "--format=%(refname:lstrip=2)", "refs/heads")
 	return strings.Fields(out), err

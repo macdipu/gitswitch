@@ -484,6 +484,56 @@ func (x *CLI) cmdCommit(args []string) error {
 	return nil
 }
 
+// cmdBranchCompare lists the commits the current branch would push and
+// pull.
+func (x *CLI) cmdBranchCompare(args []string) error {
+	asJSON := false
+	for _, a := range args {
+		if a != "--json" {
+			return usageErr("gitswitch branch compare [--json]")
+		}
+		asJSON = true
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	c, err := x.app.Refs.Compare(gd)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return json.NewEncoder(x.out).Encode(c)
+	}
+	list := func(what string, ls []refs.Line, more int) {
+		if len(ls) == 0 {
+			return
+		}
+		x.sayf("%s (%d):\n", what, len(ls)+more)
+		for _, l := range ls {
+			x.sayf("  %s  %s  (%s, %s)\n", l.Short, history.CleanText(l.Subject), history.CleanText(l.Author), ago(l.Time))
+		}
+		if more > 0 {
+			x.sayf("  … and %d older\n", more)
+		}
+	}
+	if len(c.ToPush) == 0 && len(c.ToPull) == 0 {
+		x.sayf("%s is up to date with %s.\n", c.Branch, c.Upstream)
+		return nil
+	}
+	list("To push to "+c.Upstream, c.ToPush, c.MorePush)
+	list("To pull from "+c.Upstream, c.ToPull, c.MorePull)
+	switch {
+	case len(c.ToPush) > 0 && len(c.ToPull) > 0:
+		x.say("Both have new commits: gitswitch update only fast-forwards, so combine them first (git pull --rebase), then push.")
+	case len(c.ToPull) > 0:
+		x.say("Get them with: gitswitch update")
+	default:
+		x.say("Send them with: gitswitch push")
+	}
+	return nil
+}
+
 // cmdBranchPrune deletes the branches merged into the default branch,
 // after listing them and asking (-y: not).
 func (x *CLI) cmdBranchPrune(args []string) error {

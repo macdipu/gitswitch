@@ -1625,6 +1625,38 @@ func TestMoveToNewBranch(t *testing.T) {
 	e.gsErr(api, "doesn't pull from a remote branch", "branch", "new", "other", "--move")
 }
 
+// Compare lists what the branch would push and pull, with real git.
+func TestCompare(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	e.clone("git@github.com:acme-corp/api.git", "mate")
+	api, mate := filepath.Join(e.root, "api"), filepath.Join(e.root, "mate")
+	if out := e.gsIn(api, "branch", "compare"); !strings.Contains(out, "main is up to date with origin/main") {
+		t.Fatalf("up to date:\n%s", out)
+	}
+	e.commitFile(api, "a.txt", "a\n", "mine")
+	e.commitFile(mate, "b.txt", "b\n", "theirs")
+	e.gitIn(mate, "push", "-q", "origin", "main")
+	e.gitIn(api, "fetch", "-q", "origin")
+
+	out := e.gsIn(api, "branch", "compare")
+	if !strings.Contains(out, "To push to origin/main (1):") || !strings.Contains(out, "mine") ||
+		!strings.Contains(out, "To pull from origin/main (1):") || !strings.Contains(out, "theirs") || !strings.Contains(out, "Both have new commits") {
+		t.Fatalf("diverged:\n%s", out)
+	}
+	var c struct {
+		ToPush, ToPull []struct{ Subject string }
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "branch", "compare", "--json")), &c))
+	if len(c.ToPush) != 1 || c.ToPush[0].Subject != "mine" || len(c.ToPull) != 1 || c.ToPull[0].Subject != "theirs" {
+		t.Fatalf("json: %+v", c)
+	}
+
+	e.gitIn(api, "switch", "-q", "-c", "local")
+	e.gsErr(api, "not on a remote yet", "branch", "compare")
+}
+
 // Commits are made as the repo's account, with real git: the staged files,
 // or every change with --all. Undo takes the commit back off, and a repo
 // email of another account is refused.

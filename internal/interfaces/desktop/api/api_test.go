@@ -526,3 +526,20 @@ func TestCommit(t *testing.T) {
 		t.Fatalf("commit all = %d %v", w.Code, m)
 	}
 }
+
+// Compare lists the commits to push to the upstream.
+func TestCompare(t *testing.T) {
+	dir, git, write := testRepo(t)
+	git("remote", "add", "origin", "https://example.com/r.git")
+	git("update-ref", "refs/remotes/origin/main", "main")
+	git("branch", "-q", "--set-upstream-to=origin/main")
+	write("one\n")
+	git("commit", "-q", "-am", "one")
+	h := Handler(bootstrap.New(false, nil), nil)
+	w, m := call(t, h, "POST", "/api/branch/compare", `{"gitDir":"`+filepath.ToSlash(dir)+`"}`)
+	d, _ := m["data"].(map[string]any)
+	push, _ := d["toPush"].([]any)
+	if w.Code != 200 || len(push) != 1 || d["upstream"] != "origin/main" || d["toPull"] != nil {
+		t.Fatalf("compare = %d %v", w.Code, m)
+	}
+}

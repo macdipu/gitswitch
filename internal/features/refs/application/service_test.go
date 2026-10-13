@@ -36,6 +36,7 @@ type fakeRefs struct {
 	moveErr    error
 	merged     []string // MergedInto
 	deleteErr  map[string]error
+	lines      map[string][]refs.Line // Commits: "from..to"
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -113,6 +114,10 @@ func (f *fakeRefs) Commit(_, rev string) (string, error) {
 		return "", errors.New("exit status 1")
 	}
 	return "hash-of-" + rev, nil
+}
+func (f *fakeRefs) Commits(_, from, to string, limit int) ([]refs.Line, error) {
+	f.ran = append(f.ran, fmt.Sprintf("log %s..%s -n %d", from, to, limit))
+	return f.lines[from+".."+to], nil
 }
 func (f *fakeRefs) MergedInto(_, rev string) ([]string, error) {
 	f.ran = append(f.ran, "merged-into "+rev)
@@ -664,5 +669,31 @@ func TestPrune(t *testing.T) {
 	r.branches = []refs.Branch{{Name: "trunk", Current: true}}
 	if _, err := s.Merged("/r/.git"); err == nil || !strings.Contains(err.Error(), "can't tell which branch") {
 		t.Fatalf("no target: %v", err)
+	}
+}
+
+func TestCompare(t *testing.T) {
+	s, r := newService()
+	r.head.Ahead, r.head.Behind = 1, 102
+	r.lines = map[string][]refs.Line{
+		"main@{upstream}..refs/heads/main": {{Short: "a1", Subject: "mine"}},
+		"refs/heads/main..main@{upstream}": make([]refs.Line, 100),
+	}
+	c, err := s.Compare("/r/.git")
+	if err != nil || c.Branch != "main" || c.Upstream != "origin/main" || len(c.ToPush) != 1 || c.ToPush[0].Subject != "mine" ||
+		len(c.ToPull) != 100 || c.MorePush != 0 || c.MorePull != 2 ||
+		strings.Join(r.ran, ",") != "log main@{upstream}..refs/heads/main -n 100,log refs/heads/main..main@{upstream} -n 100" {
+		t.Fatalf("compare: %+v %v %v", c, err, r.ran)
+	}
+	for want, h := range map[string]refs.Head{
+		"HEAD is detached":         {Hash: "abc"},
+		"not on a remote yet":      {Branch: "main", Hash: "abc"},
+		"which this clone doesn't": {Branch: "main", Hash: "abc", Gone: "origin/main"},
+		"rebase":                   {Branch: "main", Upstream: "origin/main", Busy: "rebase"},
+	} {
+		r.head = h
+		if _, err := s.Compare("/r/.git"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Compare with %+v = %v, want %q", h, err, want)
+		}
 	}
 }

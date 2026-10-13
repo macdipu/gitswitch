@@ -282,6 +282,9 @@ func (s *server) routes() map[string]handler {
 		"POST /api/branch/move": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.MoveToNewBranch(gd, str(b, "name"))
 		}),
+		"POST /api/branch/compare": s.withRepo(func(gd string, _ map[string]any) (any, error) {
+			return a.Refs.Compare(gd)
+		}),
 		// merged lists what prune would delete; prune deletes it.
 		"POST /api/branch/merged": s.withRepo(func(gd string, _ map[string]any) (any, error) {
 			return a.Refs.Merged(gd)

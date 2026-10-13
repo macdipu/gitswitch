@@ -43,8 +43,8 @@ internal/
       application/            commit graph with accounts and filters (paged: History.More); commit details; fix authors; account check before a push; revert, drop, roll back, cherry-pick; web links
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/
-      domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting, Pushed; port Refs
-      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; move not-pushed commits to a new branch; delete merged branches; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
+      domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting, Pushed, Compared, Merged; port Refs
+      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; move not-pushed commits to a new branch; delete merged branches; compare with the upstream; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
       infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; merge-base and update-ref (moving or deleting a branch that is not checked out); for-each-ref --merged; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
     workspace/
       domain/                 Committed, commit message and file count; port Git

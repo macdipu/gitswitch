@@ -670,6 +670,7 @@ History
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
   M committed on the wrong branch: move the commits not pushed to a new branch
   D delete the branches merged into the remote's default branch
+  S compare with the remote branch: the commits you would push and pull
   C commit the staged files as the repo's account (nothing staged: every change, new files too)
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
@@ -1242,6 +1243,8 @@ func (t *tui) keyHistory(k string) {
 		t.pruneBranches()
 	case "C":
 		t.commit()
+	case "S":
+		t.compare()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1415,6 +1418,45 @@ func (t *tui) newBranch(from string) {
 			t.say(nil, "Started branch "+r.Branch+with+"."+undoHint)
 			return nil
 		}}
+}
+
+// compare shows the commits the branch would push and pull.
+func (t *tui) compare() {
+	if t.histDir == "" {
+		return
+	}
+	c, err := t.app.Refs.Compare(t.histDir)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	var lines []string
+	list := func(what string, ls []refs.Line, more int) {
+		if len(ls) == 0 {
+			return
+		}
+		lines = append(lines, fmt.Sprintf("%s (%d):", what, len(ls)+more))
+		for _, l := range ls {
+			lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", l.Short, history.CleanText(l.Subject), history.CleanText(l.Author), refs.Ago(time.Now().Unix(), l.Time)))
+		}
+		if more > 0 {
+			lines = append(lines, fmt.Sprintf("  … and %d older", more))
+		}
+		lines = append(lines, "")
+	}
+	list("To push to "+c.Upstream, c.ToPush, c.MorePush)
+	list("To pull from "+c.Upstream, c.ToPull, c.MorePull)
+	switch {
+	case len(c.ToPush) == 0 && len(c.ToPull) == 0:
+		lines = append(lines, c.Branch+" is up to date with "+c.Upstream+".")
+	case len(c.ToPush) > 0 && len(c.ToPull) > 0:
+		lines = append(lines, "Both have new commits: u (update) only fast-forwards, so combine them first (git pull --rebase), then push.")
+	case len(c.ToPull) > 0:
+		lines = append(lines, "Press u to get them.")
+	default:
+		lines = append(lines, "Press p to push them.")
+	}
+	t.view = &viewer{title: c.Branch + " compared with " + c.Upstream, lines: lines}
 }
 
 // commit asks for a message, then commits the staged files, or every

@@ -338,6 +338,7 @@ dialog .row-actions{justify-content:flex-end}
         </div>
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
+      <button class="btn ghost" id="compareBtn" hidden title="List the commits you would push and pull">Compare</button>
       <button class="btn" id="commitBtn">Commit…</button>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
       <button class="btn" id="pushBtn">Push</button>
@@ -1015,6 +1016,7 @@ function renderToolbar(){
   if (work.length) sync = 'Uncommitted: ' + work.join(', ') + (sync ? ' · ' + sync : '');
   if (h?.parked) sync += ` · <b>${h.parked}</b> parked here`;
   $('#syncState').innerHTML = sync;
+  $('#compareBtn').hidden = !(h?.upstream && (h.ahead || h.behind));
   $('#syncState').title = work.length ? 'Files not committed yet. Staged: added to the next commit. Changed: edited but not staged. New: not tracked by git yet.' : '';
   const canUpdate = !!(h && h.branch && h.upstream);
   ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)'
@@ -1079,6 +1081,19 @@ $('#pushBtn').onclick = async e => {
     toast(msg, false, null, r.prUrl ? {label:'Open pull request', run: () => act(() => api('POST','/api/open',{url:r.prUrl}))} : null);
   }
   loadHistory();
+};
+// compare lists the commits to push and pull, and offers the one action
+// that applies.
+$('#compareBtn').onclick = async () => {
+  const gd = $('#histRepo').value, c = await act(() => api('POST','/api/branch/compare',{gitDir:gd}));
+  if (!c) return;
+  const list = (title, ls, more) => !ls?.length ? '' : `${title} (${ls.length + more}):\n` + ls.map(l => `${l.short}  ${l.subject}  (${l.author}, ${ago(l.time)})`).join('\n') + (more ? `\n… and ${more} older` : '') + '\n\n';
+  const push = c.toPush?.length, pull = c.toPull?.length;
+  const text = list('To push to ' + c.upstream, c.toPush, c.morePush) + list('To pull from ' + c.upstream, c.toPull, c.morePull)
+    + (push && pull ? 'Both have new commits: Update only fast-forwards, so combine them first (git pull --rebase), then push.' : '');
+  const ok = push && !pull ? 'Push' : pull && !push ? 'Update' : '';
+  if (!await ask(text.trim() || `${c.branch} is up to date with ${c.upstream}.`, ok ? {ok, cancel:'Close'} : {ok:'Close'})) return;
+  if (ok === 'Push') $('#pushBtn').click(); else if (ok === 'Update') $('#updateBtn').click();
 };
 $('#commitBtn').onclick = async () => {
   const gd = $('#histRepo').value, h = R?.head, c = h?.changes || {}, acct = H?.repo.account, as = acct ? ` as ${acct}` : '';

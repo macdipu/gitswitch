@@ -335,6 +335,27 @@ type Branch struct {
 	Elsewhere bool `json:"elsewhere"`
 }
 
+// Compared is what a branch would push to and pull from its upstream,
+// newest commits first. Long lists are cut: MorePush and MorePull count
+// the commits left out.
+type Compared struct {
+	Branch   string `json:"branch"`
+	Upstream string `json:"upstream"`
+	ToPush   []Line `json:"toPush"`
+	ToPull   []Line `json:"toPull"`
+	MorePush int    `json:"morePush"`
+	MorePull int    `json:"morePull"`
+}
+
+// Line is one commit in a list.
+type Line struct {
+	Hash    string `json:"hash"`
+	Short   string `json:"short"`
+	Subject string `json:"subject"`
+	Author  string `json:"author"`
+	Time    int64  `json:"time"` // Unix seconds
+}
+
 // Merged is what pruning branches does: the local branches merged into
 // Into, deleted by Prune, and the ones it keeps although their remote
 // branch is gone.
@@ -389,6 +410,9 @@ type Refs interface {
 	CheckName(branch string) error
 	// Commit resolves a commit, branch or tag to its commit hash.
 	Commit(gitDir, rev string) (string, error)
+	// Commits lists up to limit commits on to that are not on from,
+	// newest first.
+	Commits(gitDir, from, to string, limit int) ([]Line, error)
 	// MergedInto lists the local branches whose commits are all on rev.
 	MergedInto(gitDir, rev string) ([]string, error)
 	// DeleteBranch deletes a branch that is not checked out, only while it
