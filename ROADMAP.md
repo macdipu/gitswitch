@@ -4,7 +4,12 @@ Planned work. Want to build one of these? See
 [CONTRIBUTING.md](CONTRIBUTING.md#planned-work): open an issue first so two
 people don't build the same thing.
 
-Status: **done**, **partly** (some of it exists), **planned** (not started).
+Status: **done**, **partly** (some of it exists), **planned** (not started),
+**in progress**.
+
+**Next release (v1.4): [Everyday branch work](#everyday-branch-work-v14)**:
+switch branches with uncommitted changes (Smart switch or Park), undo the
+last action, start a branch and push it, always as the right account.
 
 ## Repository management
 
@@ -96,8 +101,95 @@ in it. The same actions in the desktop app, the terminal app and the CLI.
 | H9 | **Filters**: message, author, account, dates; wrong-account and not-pushed only | done | `history.Filter`. Text, author and dates are sent to git, so they search the whole history; dates are parsed by gitswitch (git guesses silently). |
 | H10 | **Redesigned desktop screen**: toolbar, search with tokens and date presets, filter chips, details panel, selection bar, keyboard | done | Desktop page only; uses the API above. |
 | H11 | **Commit details**: full message, changed files and line counts | done | `history.Log.Show` (`git log -1 --numstat`, merges against their first parent). Desktop details panel, Enter in the terminal app, `gitswitch show <commit> [--json]`. |
-| H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, switch) | planned | An `undo` feature over the reflog: remember HEAD before each action, offer "Undo" in the toast, `git reset --keep` back to it. |
+| H12 | **Undo the last action** (drop, roll back, cherry-pick, revert, fix-author, switch, park, new branch) | in progress | Part of [v1.4](#everyday-branch-work-v14): an `undo` feature that remembers HEAD before each action in `refs/gitswitch/undo`, so `git gc` keeps dropped commits. "Undo" in the success message, `u` in the terminal app, `gitswitch undo`. |
 | H13 | **Load more**: page through history beyond the first page of commits | done | `History.More` says git had more; the desktop app's "Load more" button, `m` in the terminal app and `gitswitch log -n` read a bigger window, so the graph stays connected. |
-| H14 | **Uncommitted changes when switching**: offer to stash and restore | planned | A `stash` use case in `refs`; ask before stashing, restore after switching. |
-| H15 | **Update with rebase** for people who prefer it | planned | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
+| H14 | **Uncommitted changes when switching**: offer to stash and restore | in progress | Replaced by Smart switch, Park and Resolve (B2–B4) in [v1.4](#everyday-branch-work-v14). |
+| H15 | **Update with rebase** for people who prefer it | later | A setting (`gitswitch.pull = ff-only|rebase`), still never a merge commit by surprise. |
 | H16 | **Compare a branch with its upstream**: list what you would push or pull | planned | `rev-list HEAD...@{upstream}` in `refs`, shown from the sync status. |
+
+## Everyday branch work (v1.4)
+
+The work you do every day: leave a branch with changes, come back to it,
+start a branch for work you already did, push it, and undo a mistake. IDEs
+already commit, diff and merge well, so GitSwitch does not compete there.
+It does what they don't: uncommitted changes that stay with their branch,
+undo for every action, never a half-done state, and always the right
+account.
+
+### Design rules
+
+- **Plain words first, git words next to them.** "Park" with "(stash)" in
+  small text. A *Show git commands* setting prints the exact commands.
+- **Ask once, remember if asked.** A clear question with a safe default;
+  "Remember my choice", a setting and CLI flags skip it.
+- **Every action can be undone or walked back.** Nothing is ever left half
+  done, and work is never lost.
+- **Plain git underneath.** Parked changes are ordinary stashes, visible in
+  `git stash list`, IntelliJ and VS Code.
+- **Same in every front end.** Desktop app, terminal app keys, CLI with
+  `--json`, `-y` and `--dry-run`.
+
+### Switching with uncommitted changes
+
+With no changes, switching just switches. With changes, GitSwitch asks:
+
+```
+You have uncommitted changes on feature-login (3 files, 1 new).
+  ● Smart switch: take them with me to main
+  ○ Park them on feature-login (restored when you come back)
+  ○ Cancel
+  ☐ Remember my choice for this repo
+```
+
+Smart switch is preselected for a new branch, Park for an existing one.
+
+**Smart switch.** If git can switch keeping the changes, it just switches.
+Otherwise: `stash push -u`, switch, `stash pop --index` (plain `pop` when
+the staged state cannot be restored). If files clash, GitSwitch stays on
+the new branch with the clashing files marked as conflicts and keeps the
+stash as a safe copy until you finish:
+
+| Choice | What it does |
+| --- | --- |
+| Open in editor | Opens the clashing files with a short guide to the conflict markers. |
+| Resolve in IDE | The files are git conflicts, so IntelliJ, VS Code and `git mergetool` show their merge tools. |
+| I've fixed them | Refuses while conflict markers remain; then makes the files normal uncommitted changes again and drops the stash. |
+| Go back | Restores the files the stash touched, switches back and pops the stash: exactly as before. |
+| Park instead | Go back, then park and switch clean. |
+
+While a clash is open, the status line shows it, other actions refuse
+("finish or go back first"), and it survives closing the app (kept in the
+repo's `gitswitch.switch.*` config).
+
+**Park.** `stash push -u -m "gitswitch park: <branch>"`, then switch clean.
+Coming back offers Restore, Look first or Not now. A clash on restore keeps
+the changes parked; nothing is half applied. Parking the same branch twice
+keeps both. Parked changes are never deleted automatically, and those of a
+renamed or deleted branch are still listed.
+
+### Features
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| B1 | **Status line**: changed, new and staged files, to push, to pull, parked, open clash | planned | `git status --porcelain=v2` in `refs`. Desktop toolbar, terminal app header, `gitswitch status [--json]`. The others build on it. |
+| B2 | **Smart switch**: take uncommitted changes to the other branch | planned | `refs.Switch` with a `smart` choice. CLI `gitswitch switch <branch> --smart`, terminal app `s`. |
+| B3 | **Park**: leave changes on their branch, restore them on return | planned | Labeled stashes in `refs`. Branch menu badge, desktop "Parked changes" list, terminal app `p` / `P`, `gitswitch switch <branch> --park`, `gitswitch parked [show\|restore\|drop]`. |
+| B4 | **Resolve a clash** after Smart switch: done, go back or park instead | planned | `gitswitch resolve [--done\|--abort\|--park]`; terminal app `e`, `d`, `a`, `p`; desktop banner. |
+| B5 | **Switch setting**: ask, smart or park, global or per repo | planned | `gitswitch set switchChanges ask\|smart\|park [--repo]`, desktop Settings. With no terminal and no flag or setting, it stops instead of guessing. |
+| H12 | **Undo the last action** | in progress | See [History screen](#history-screen). Covers smart switch, park and new branch too. |
+| B6 | **New branch** from the current branch or any commit, bringing uncommitted changes | planned | `switch -c` keeps them without a stash. Desktop branch menu, terminal app `n`, `gitswitch branch new <name> [--from <commit>]`, optional name prefix (`gitswitch set branchPrefix feature/`). |
+| B7 | **Push branch** and **open a pull request** | planned | `push -u` the first time; says which account pushed; explains rejected and diverged pushes. PR link built from the remote (GitHub, GitLab, Bitbucket); `gitswitch push [--open]`. Never a force push. |
+| B8 | **Account check before commit and push** | planned | Warns when the repo's `user.email` or the commits to push belong to another account than the one that will push. |
+
+Order: B1, H12, B2–B5, B6, B7, B8. Each is one commit with unit and
+integration tests (real git: new files, staged changes, clashes, parking
+twice, undo of each), then the desktop and terminal app screens and the
+README.
+
+### Later
+
+| # | Feature | Status | Notes |
+| --- | --- | --- | --- |
+| B9 | **Move not-pushed commits to a new branch** (committed on the wrong branch) | later | New branch at HEAD, then roll the old branch back to its upstream, as one undoable step. |
+| B10 | **Delete merged branches** | later | `gitswitch branch prune [--dry-run]`. |
+| B11 | **Commit** (pick files, message) | later | IDEs do this well; at most a simple "Commit all". The `workspace` feature in [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client). |
