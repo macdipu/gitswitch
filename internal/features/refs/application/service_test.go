@@ -21,6 +21,8 @@ type fakeRefs struct {
 	applyErr   error
 	markers    []string
 	clash      *refs.Clash
+	stashMsg   string
+	parked     []refs.Parked
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -49,6 +51,7 @@ func (f *fakeRefs) Track(_, l, r string) error {
 }
 func (f *fakeRefs) Stash(_, msg string) (string, error) {
 	f.ran = append(f.ran, "stash")
+	f.stashMsg = msg
 	return "st", nil
 }
 func (f *fakeRefs) Apply(_, st string) ([]string, error) {
@@ -62,6 +65,10 @@ func (f *fakeRefs) Discard(_, st string) error   { f.ran = append(f.ran, "discar
 func (f *fakeRefs) Unstage(string) error         { f.ran = append(f.ran, "unstage"); return nil }
 func (f *fakeRefs) Markers(string, []string) []string {
 	return f.markers
+}
+func (f *fakeRefs) Parked(string) ([]refs.Parked, error) { return f.parked, nil }
+func (f *fakeRefs) ParkedPatch(_, st string) (string, error) {
+	return "diff of " + st, nil
 }
 func (f *fakeRefs) SaveClash(_ string, c refs.Clash) error { f.clash = &c; return nil }
 func (f *fakeRefs) LoadClash(string) (*refs.Clash, error)  { return f.clash, nil }
@@ -245,5 +252,85 @@ func TestResolve(t *testing.T) {
 	r.clash = &refs.Clash{From: "main", To: "fix", Stash: "st", Files: []string{"a.txt"}}
 	if err := s.ResolveAbort("/r/.git"); err != nil || r.clash != nil || strings.Join(r.ran, ",") != "discard,switch main,apply st,drop st" {
 		t.Errorf("abort: %v %v", err, r.ran)
+	}
+}
+
+func TestPark(t *testing.T) {
+	// Changes: stash them with the branch in the message, then switch.
+	s, r := newService()
+	r.head.Changes = refs.Changes{Changed: 1, New: 1}
+	got, err := s.Park("/r/.git", "fix")
+	if err != nil || !got.Parked || r.stashMsg != "gitswitch park: main" || strings.Join(r.ran, ",") != "stash,switch fix" {
+		t.Errorf("park: %+v %v %q %v", got, err, r.stashMsg, r.ran)
+	}
+
+	// The switch fails: the changes are put back and the copy dropped.
+	s, r = newService()
+	r.head.Changes = refs.Changes{Changed: 1}
+	r.switchErrs = []error{errors.New("fatal: invalid reference")}
+	if _, err := s.Park("/r/.git", "fix"); err == nil || strings.Join(r.ran, ",") != "stash,apply st,drop st" {
+		t.Errorf("failed switch: %v %v", err, r.ran)
+	}
+
+	// Nothing to park: a plain switch, and changes parked on the branch
+	// switched to are offered (the fake stays "on" main).
+	s, r = newService()
+	r.head.Parked = 1
+	r.parked = []refs.Parked{{Stash: "p1", Branch: "main"}, {Stash: "p2", Branch: "other"}}
+	got, err = s.Park("/r/.git", "fix")
+	if err != nil || got.Parked || strings.Join(r.ran, ",") != "switch fix" || len(got.Waiting) != 1 || got.Waiting[0].Stash != "p1" {
+		t.Errorf("clean: %+v %v %v", got, err, r.ran)
+	}
+
+	// A detached HEAD has no branch to park on.
+	s, r = newService()
+	r.head.Branch, r.head.Changes = "", refs.Changes{Changed: 1}
+	if _, err := s.Park("/r/.git", "fix"); err == nil || !strings.Contains(err.Error(), "detached") || len(r.ran) != 0 {
+		t.Errorf("detached: %v %v", err, r.ran)
+	}
+}
+
+func TestRestoreAndDropParked(t *testing.T) {
+	s, r := newService()
+	r.parked = []refs.Parked{{Ref: "stash@{0}", Stash: "p1", Branch: "main"}}
+	if err := s.RestoreParked("/r/.git", "gone"); err == nil || !strings.Contains(err.Error(), "gone") {
+		t.Errorf("unknown: %v", err)
+	}
+
+	// Uncommitted changes: refused, nothing runs.
+	r.head.Changes = refs.Changes{Changed: 1}
+	if err := s.RestoreParked("/r/.git", "p1"); err == nil || !strings.Contains(err.Error(), "Commit or park them first") || len(r.ran) != 0 {
+		t.Errorf("dirty: %v %v", err, r.ran)
+	}
+	r.head.Changes = refs.Changes{}
+
+	// A clash: the half-restored files are discarded and the entry kept.
+	r.applyFiles = []string{"a.txt"}
+	if err := s.RestoreParked("/r/.git", "p1"); err == nil || !strings.Contains(err.Error(), "stay parked") || strings.Join(r.ran, ",") != "apply p1,discard" {
+		t.Errorf("clash: %v %v", err, r.ran)
+	}
+
+	r.ran = nil
+	if err := s.RestoreParked("/r/.git", "p1"); err != nil || strings.Join(r.ran, ",") != "apply p1,drop p1" {
+		t.Errorf("restore: %v %v", err, r.ran)
+	}
+
+	r.ran = nil
+	if err := s.DropParked("/r/.git", "p1"); err != nil || strings.Join(r.ran, ",") != "drop p1" {
+		t.Errorf("drop: %v %v", err, r.ran)
+	}
+	if out, err := s.ParkedPatch("/r/.git", "p1"); err != nil || out != "diff of p1" {
+		t.Errorf("patch: %q %v", out, err)
+	}
+}
+
+func TestResolvePark(t *testing.T) {
+	s, r := newService()
+	r.clash = &refs.Clash{From: "main", To: "fix", Stash: "st", Files: []string{"a.txt"}}
+	r.head.Changes = refs.Changes{Changed: 1}
+	got, err := s.ResolvePark("/r/.git")
+	if err != nil || !got.Parked || r.clash != nil || r.stashMsg != "gitswitch park: main" ||
+		strings.Join(r.ran, ",") != "discard,switch main,apply st,drop st,stash,switch fix" {
+		t.Errorf("park instead: %+v %v %v", got, err, r.ran)
 	}
 }

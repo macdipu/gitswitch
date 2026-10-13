@@ -244,17 +244,17 @@ func TestErrorsCarryAHint(t *testing.T) {
 	}
 }
 
-// A smart switch that clashes is reported by /api/refs until it is
-// finished or undone through /api/resolve.
-func TestSmartSwitchAndResolve(t *testing.T) {
+// testRepo makes a repo in a throwaway home with main and side, which
+// both change f.txt, and returns git in it and a way to write f.txt.
+func testRepo(t *testing.T) (dir string, git func(...string) string, write func(string)) {
 	home := t.TempDir()
 	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": home,
 		"GIT_CONFIG_GLOBAL": filepath.Join(home, ".gitconfig"), "GIT_CONFIG_NOSYSTEM": "1", "GITSWITCH_TEST_NO_SYSTEM": "1",
 		"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@x.example", "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@x.example"} {
 		t.Setenv(k, v)
 	}
-	dir := filepath.Join(home, "r")
-	git := func(args ...string) string {
+	dir = filepath.Join(home, "r")
+	git = func(args ...string) string {
 		t.Helper()
 		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 		if err != nil {
@@ -262,7 +262,7 @@ func TestSmartSwitchAndResolve(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	write := func(text string) {
+	write = func(text string) {
 		t.Helper()
 		if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(text), 0o644); err != nil {
 			t.Fatal(err)
@@ -279,6 +279,13 @@ func TestSmartSwitchAndResolve(t *testing.T) {
 	write("side\n")
 	git("commit", "-q", "-am", "side")
 	git("switch", "-q", "main")
+	return dir, git, write
+}
+
+// A smart switch that clashes is reported by /api/refs until it is
+// finished or undone through /api/resolve.
+func TestSmartSwitchAndResolve(t *testing.T) {
+	dir, git, write := testRepo(t)
 	write("mine\n")
 
 	h := Handler(bootstrap.New(false, nil), nil)
@@ -301,5 +308,37 @@ func TestSmartSwitchAndResolve(t *testing.T) {
 	}
 	if git("branch", "--show-current") != "main" || git("status", "--porcelain") != "M f.txt" {
 		t.Fatalf("after abort: on %s, %q", git("branch", "--show-current"), git("status", "--porcelain"))
+	}
+}
+
+// Parked changes are listed by /api/refs, offered back by the switch to
+// their branch and restored through /api/parked.
+func TestParkAndRestore(t *testing.T) {
+	dir, git, write := testRepo(t)
+	write("mine\n")
+
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	w, m := call(t, h, "POST", "/api/repo/switch", `{`+gd+`,"branch":"side","mode":"park"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["parked"] != true || git("status", "--porcelain") != "" {
+		t.Fatalf("park = %d %v, status %q", w.Code, m, git("status", "--porcelain"))
+	}
+	_, m = call(t, h, "GET", "/api/refs?gitDir="+dir, "")
+	d, _ := m["data"].(map[string]any)
+	ps, _ := d["parked"].([]any)
+	p, _ := ps[0].(map[string]any)
+	if len(ps) != 1 || p["branch"] != "main" || fmt.Sprint(p["files"]) != "[f.txt]" {
+		t.Fatalf("refs parked = %v", d["parked"])
+	}
+	_, m = call(t, h, "POST", "/api/repo/switch", `{`+gd+`,"branch":"main"}`)
+	d, _ = m["data"].(map[string]any)
+	if ws, _ := d["waiting"].([]any); len(ws) != 1 {
+		t.Fatalf("switch back: waiting = %v", d["waiting"])
+	}
+	if w, m := call(t, h, "POST", "/api/parked", `{`+gd+`,"action":"restore","stash":"`+fmt.Sprint(p["stash"])+`"}`); w.Code != 200 {
+		t.Fatalf("restore = %d %v", w.Code, m)
+	}
+	if git("status", "--porcelain") != "M f.txt" || git("stash", "list") != "" {
+		t.Fatalf("after restore: %q, stash %q", git("status", "--porcelain"), git("stash", "list"))
 	}
 }

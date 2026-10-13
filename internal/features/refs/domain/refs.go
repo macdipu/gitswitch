@@ -25,6 +25,9 @@ type Head struct {
 	Busy   string `json:"busy"`   // an operation git is in the middle of, e.g. "rebase"
 	// Changes counts what is not committed yet in the working folder.
 	Changes Changes `json:"changes"`
+	// Parked counts the changes parked on this branch, waiting to be
+	// restored (see Parked).
+	Parked int `json:"parked"`
 }
 
 // Changes counts the files with uncommitted changes. A file changed again
@@ -105,6 +108,9 @@ func (h Head) Describe() string {
 	if c := h.Changes.Describe(); c != "" {
 		b.WriteString(" · " + c)
 	}
+	if h.Parked > 0 {
+		fmt.Fprintf(&b, " · %d parked here", h.Parked)
+	}
 	if h.Busy != "" {
 		b.WriteString(" · " + h.Busy + " in progress")
 	}
@@ -118,6 +124,87 @@ type Switched struct {
 	// Clash is set when some of the changes clash with the new branch:
 	// they have conflict markers to fix.
 	Clash *Clash `json:"clash"`
+	// Parked: the uncommitted changes were parked on the branch left.
+	Parked bool `json:"parked"`
+	// Waiting lists the changes parked earlier on the branch switched to,
+	// newest first, when they can be restored now (nothing uncommitted).
+	Waiting []Parked `json:"waiting"`
+}
+
+// Parked is a set of uncommitted changes left on a branch: an ordinary
+// stash entry with a message that names the branch (ParkMessage).
+type Parked struct {
+	Ref    string   `json:"ref"`    // stash@{n}, as git stash list shows it
+	Stash  string   `json:"stash"`  // the stash commit
+	Branch string   `json:"branch"` // the branch they were parked on
+	Time   int64    `json:"time"`   // when, in Unix seconds
+	Files  []string `json:"files"`  // the files they change, new files included
+}
+
+// Describe is e.g. "main · 2 h ago · 3 files: a.go, b.go, c.go", now
+// being the Unix time.
+func (p Parked) Describe(now int64) string {
+	return p.Branch + " · " + Ago(now, p.Time) + " · " + FileList(p.Files)
+}
+
+// FileList is e.g. "3 files: a.go, b.go, c.go", with at most 5 named.
+func FileList(files []string) string {
+	n := len(files)
+	switch {
+	case n == 0:
+		return "no files"
+	case n == 1:
+		return "1 file: " + files[0]
+	case n > 5:
+		return fmt.Sprintf("%d files: %s and %d more", n, strings.Join(files[:5], ", "), n-5)
+	}
+	return fmt.Sprintf("%d files: %s", n, strings.Join(files, ", "))
+}
+
+// Ago says roughly how long before now a Unix time was.
+func Ago(now, then int64) string {
+	d := now - then
+	switch {
+	case d < 60:
+		return "just now"
+	case d < 3600:
+		return fmt.Sprintf("%d min ago", d/60)
+	case d < 48*3600:
+		return fmt.Sprintf("%d h ago", d/3600)
+	default:
+		return fmt.Sprintf("%d days ago", d/86400)
+	}
+}
+
+const parkPrefix = "gitswitch park: "
+
+// ParkMessage is the stash message of changes parked on branch.
+func ParkMessage(branch string) string { return parkPrefix + branch }
+
+// ParkedBranch reads the branch from a stash entry's subject, as git
+// stash list shows it ("On main: gitswitch park: main"). ok is false for
+// a stash entry that holds no parked changes.
+func ParkedBranch(subject string) (branch string, ok bool) {
+	if !strings.HasPrefix(subject, parkPrefix) {
+		i := strings.Index(subject, ": "+parkPrefix)
+		if i < 0 {
+			return "", false
+		}
+		subject = subject[i+2:]
+	}
+	branch = strings.TrimPrefix(subject, parkPrefix)
+	return branch, branch != ""
+}
+
+// ParkedOn lists the parked changes of one branch, in the same order.
+func ParkedOn(all []Parked, branch string) []Parked {
+	var out []Parked
+	for _, p := range all {
+		if p.Branch == branch {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Clash is a smart switch that left files with conflicts. Until they are
@@ -216,6 +303,11 @@ type Refs interface {
 	Unstage(worktree string) error
 	// Markers lists the files that still hold conflict markers.
 	Markers(worktree string, files []string) []string
+	// Parked lists the parked changes, newest first.
+	Parked(gitDir string) ([]Parked, error)
+	// ParkedPatch shows what a stash entry changes: a diff, then the new
+	// files it holds.
+	ParkedPatch(worktree, stash string) (string, error)
 	// SaveClash, LoadClash and ClearClash keep an open clash in the git
 	// dir; LoadClash returns nil when there is none.
 	SaveClash(gitDir string, c Clash) error

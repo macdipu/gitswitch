@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/macdipu/gitswitch/internal/bootstrap"
@@ -399,7 +400,9 @@ func (t *tui) handle(k string) {
 		case ok:
 			t.confirm = nil
 			t.msg = ""
-			if err := f(); err != nil || t.msg == "" {
+			// An action may ask a follow-up question or show a page
+			// instead of finishing.
+			if err := f(); err != nil || (t.msg == "" && t.confirm == nil && t.view == nil) {
 				t.say(err, "Done.")
 			}
 			t.reload()
@@ -661,7 +664,8 @@ History
   r reload   m load more
   b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
   U undo the last switch, revert, drop, roll back, cherry-pick or fix
-  R after a smart switch with clashing files: I've fixed them, or go back
+  R after a smart switch with clashing files: I've fixed them, go back, or park them instead
+  P parked changes (git stash): restore, look first or delete
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1207,6 +1211,8 @@ func (t *tui) keyHistory(k string) {
 		t.undoLast()
 	case "R":
 		t.resolve()
+	case "P":
+		t.pickParked()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1317,8 +1323,11 @@ func (t *tui) pickBranch() {
 		name := bs[i].Name
 		if h, err := t.app.Refs.Head(gd); err == nil && h.Changes.Any() && h.Busy == "" && !bs[i].Current {
 			// Uncommitted changes: say what happens to them first.
-			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s). Take them with you to %s (smart switch)? If some clash, you fix them there or go back. (y/n)",
-				h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name), map[string]func() error{"y": func() error { return t.smartSwitch(gd, name) }}}
+			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s).  s = smart switch: take them with you to %s (if some clash, you fix them there or go back) · p = park them on %s (git stash), restored when you come back · n or Esc = cancel",
+				h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name, h.Branch), map[string]func() error{
+				"s": func() error { return t.smartSwitch(gd, name) },
+				"p": func() error { return t.park(gd, name) },
+			}}
 			return nil
 		}
 		name, err := t.app.Refs.Switch(gd, name)
@@ -1327,6 +1336,103 @@ func (t *tui) pickBranch() {
 		}
 		t.loadHistory()
 		t.say(nil, "Switched to "+name+"."+undoHint)
+		w, _ := t.app.Refs.Waiting(gd)
+		t.offerParked(gd, w)
+		return nil
+	}}
+}
+
+// park switches leaving the uncommitted changes parked on their branch.
+func (t *tui) park(gd, name string) error {
+	r, err := t.app.Refs.Park(gd, name)
+	if err != nil {
+		return err
+	}
+	t.loadHistory()
+	t.say(nil, "Parked your changes and switched to "+r.Branch+". They come back when you switch back (P lists them)."+undoHint)
+	t.offerParked(gd, r.Waiting)
+	return nil
+}
+
+// offerParked follows a switch to a branch with parked changes: it offers
+// to restore the newest, or look at them first.
+func (t *tui) offerParked(gd string, w []refs.Parked) {
+	if len(w) == 0 {
+		return
+	}
+	p := w[0]
+	more := ""
+	if len(w) > 1 {
+		more = fmt.Sprintf(" (%d sets are parked here; P lists them)", len(w))
+	}
+	t.confirm = &confirmBox{fmt.Sprintf("You parked changes on %s %s: %s%s.  r = restore them · l = look first · n or Esc = not now",
+		p.Branch, refs.Ago(time.Now().Unix(), p.Time), refs.FileList(p.Files), more), t.parkedActions(gd, p)}
+}
+
+// parkedActions are the keys for one set of parked changes: r restore,
+// l look first, x delete (asks again).
+func (t *tui) parkedActions(gd string, p refs.Parked) map[string]func() error {
+	return map[string]func() error{
+		"r": func() error {
+			if err := t.app.Refs.RestoreParked(gd, p.Stash); err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, "Restored the changes parked on "+p.Branch+".")
+			return nil
+		},
+		"l": func() error {
+			out, err := t.app.Refs.ParkedPatch(gd, p.Stash)
+			if err != nil {
+				return err
+			}
+			t.view = &viewer{title: "Parked on " + p.Describe(time.Now().Unix()) + " · P to restore", lines: strings.Split(out, "\n")}
+			return nil
+		},
+		"x": func() error {
+			t.confirm = &confirmBox{fmt.Sprintf("Delete the changes parked on %s? This can't be undone. (y/n)", p.Describe(time.Now().Unix())),
+				map[string]func() error{"y": func() error {
+					if err := t.app.Refs.DropParked(gd, p.Stash); err != nil {
+						return err
+					}
+					t.loadHistory()
+					t.say(nil, "Deleted the changes parked on "+p.Branch+".")
+					return nil
+				}}}
+			return nil
+		},
+	}
+}
+
+// pickParked lists the parked changes, newest first, then asks what to do
+// with the chosen ones.
+func (t *tui) pickParked() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	all, err := t.app.Refs.Parked(gd)
+	if err != nil || len(all) == 0 {
+		t.say(err, "Nothing is parked in this repo.")
+		return
+	}
+	h, _ := t.app.Refs.Head(gd)
+	now := time.Now().Unix()
+	var opts []string
+	for _, p := range all {
+		o := p.Describe(now)
+		if p.Branch == h.Branch {
+			o += "  (this branch)"
+		}
+		opts = append(opts, o)
+	}
+	t.picker = &picker{title: "Parked changes (git stash)", options: opts, pick: func(i int) error {
+		p := all[i]
+		where := "here"
+		if p.Branch != h.Branch {
+			where = "here, on " + h.Branch + " (not " + p.Branch + ")"
+		}
+		t.confirm = &confirmBox{fmt.Sprintf("Parked on %s.  r = restore them %s · l = look first · x = delete · n or Esc = cancel", p.Describe(now), where), t.parkedActions(gd, p)}
 		return nil
 	}}
 }
@@ -1342,11 +1448,16 @@ func (t *tui) smartSwitch(gd, name string) error {
 		t.say(nil, fmt.Sprintf("Switched to %s, but %d file(s) clash: %s. Fix them in your editor, then press R.", r.Branch, len(r.Clash.Files), strings.Join(r.Clash.Files, ", ")))
 		return nil
 	}
-	t.say(nil, "Switched to "+r.Branch+", with your changes."+undoHint)
+	if r.Carried {
+		t.say(nil, "Switched to "+r.Branch+", with your changes."+undoHint)
+	} else {
+		t.say(nil, "Switched to "+r.Branch+"."+undoHint)
+	}
+	t.offerParked(gd, r.Waiting)
 	return nil
 }
 
-// resolve offers the two ways out of a smart switch that clashed.
+// resolve offers the ways out of a smart switch that clashed.
 func (t *tui) resolve() {
 	if t.histDir == "" {
 		return
@@ -1357,8 +1468,8 @@ func (t *tui) resolve() {
 		t.say(err, "Nothing to resolve: no smart switch is waiting in this repo.")
 		return
 	}
-	t.confirm = &confirmBox{fmt.Sprintf("Smart switch to %s: %d file(s) clash: %s. Keep the lines you want between the <<<<<<< ======= >>>>>>> markers and delete the markers, in your editor or IDE.  d = I've fixed them · a = go back to %s exactly as before (fixes since are thrown away) · Esc = later",
-		c.To, len(c.Files), strings.Join(c.Files, ", "), c.From), map[string]func() error{
+	t.confirm = &confirmBox{fmt.Sprintf("Smart switch to %s: %d file(s) clash: %s. Keep the lines you want between the <<<<<<< ======= >>>>>>> markers and delete the markers, in your editor or IDE.  d = I've fixed them · a = go back to %s exactly as before · p = park them on %s and stay on %s without them (a and p throw away fixes made since) · Esc = later",
+		c.To, len(c.Files), strings.Join(c.Files, ", "), c.From, c.From, c.To), map[string]func() error{
 		"d": func() error {
 			if err := t.app.Refs.ResolveDone(gd); err != nil {
 				return err
@@ -1373,6 +1484,16 @@ func (t *tui) resolve() {
 			}
 			t.loadHistory()
 			t.say(nil, "Back on "+c.From+" with your changes as they were.")
+			return nil
+		},
+		"p": func() error {
+			r, err := t.app.Refs.ResolvePark(gd)
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, "Parked your changes on "+c.From+"; you are on "+r.Branch+" without them.")
+			t.offerParked(gd, r.Waiting)
 			return nil
 		},
 	}}
@@ -1656,6 +1777,9 @@ func (t *tui) footer() string {
 	if t.confirm != nil {
 		if _, ok := t.confirm.actions["D"]; ok {
 			return "y remove, keep key files · D remove and delete key files · n or Esc cancel"
+		}
+		if _, ok := t.confirm.actions["y"]; !ok {
+			return "a key the question names · n or Esc cancel"
 		}
 		return "y yes · n or Esc no"
 	}

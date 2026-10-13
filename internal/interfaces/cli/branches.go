@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,45 +53,61 @@ func (x *CLI) cmdBranch(asJSON bool) error {
 const undoHint = "  (undo with: gitswitch undo)"
 
 // cmdSwitch switches branch. With uncommitted changes it asks in a
-// terminal whether to take them along (--smart says yes up front).
+// terminal whether to take them along or park them (--smart and --park
+// answer up front). Changes parked on the new branch are offered back.
 func (x *CLI) cmdSwitch(args []string) error {
-	var name string
-	smart := false
+	const usage = "gitswitch switch <branch> [--smart | --park]"
+	var name, mode string
 	for _, a := range args {
 		switch {
-		case a == "--smart":
-			smart = true
+		case (a == "--smart" || a == "--park") && mode == "":
+			mode = a[2:]
 		case name == "" && !strings.HasPrefix(a, "--"):
 			name = a
 		default:
-			return usageErr("gitswitch switch <branch> [--smart]")
+			return usageErr(usage)
 		}
 	}
 	if name == "" {
-		return usageErr("gitswitch switch <branch> [--smart]")
+		return usageErr(usage)
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	if h, err := x.app.Refs.Head(gd); !smart && err == nil && h.Changes.Any() && h.Busy == "" && !x.app.DryRun() && interactive() {
-		if !confirm(fmt.Sprintf("You have uncommitted changes on %s (%s). Take them with you to %s (smart switch)?", h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name)) {
-			return errors.New("cancelled, nothing changed. Commit your changes first, or take them along with --smart")
+	if h, err := x.app.Refs.Head(gd); mode == "" && err == nil && h.Changes.Any() && h.Busy == "" && !x.app.DryRun() && interactive() {
+		// Smart switch is the default for a new branch, park for one with
+		// its own work.
+		bs, _ := x.app.Refs.Branches(gd)
+		def, opts := "p", "[s/P/c]"
+		if newBranch(bs, name) {
+			def, opts = "s", "[S/p/c]"
 		}
-		smart = true
+		x.sayf("You have uncommitted changes on %s (%s).\n", h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "))
+		x.sayf("  s  Smart switch: take them with you to %s\n", name)
+		x.sayf("  p  Park them on %s (git stash), restored when you come back\n", h.Branch)
+		x.say("  c  Cancel")
+		switch choose("Choose "+opts, def, "s", "p", "c") {
+		case "s":
+			mode = "smart"
+		case "p":
+			mode = "park"
+		default:
+			return errors.New("cancelled, nothing changed. Commit your changes first, or answer up front with --smart or --park")
+		}
 	}
-	if !smart {
-		b, err := x.app.Refs.Switch(gd, name)
-		if err != nil {
-			return err
+	var r refs.Switched
+	switch mode {
+	case "smart":
+		r, err = x.app.Refs.SmartSwitch(gd, name)
+	case "park":
+		r, err = x.app.Refs.Park(gd, name)
+	default:
+		r.Branch, err = x.app.Refs.Switch(gd, name)
+		if err == nil && !x.app.DryRun() {
+			r.Waiting, _ = x.app.Refs.Waiting(gd)
 		}
-		if !x.app.DryRun() {
-			x.say("Switched to", b)
-			x.say(undoHint)
-		}
-		return nil
 	}
-	r, err := x.app.Refs.SmartSwitch(gd, name)
 	if err != nil || x.app.DryRun() {
 		return err
 	}
@@ -98,41 +115,195 @@ func (x *CLI) cmdSwitch(args []string) error {
 		x.sayClash(r.Clash)
 		return nil
 	}
-	if r.Carried {
+	switch {
+	case r.Parked:
+		x.say("Parked your changes and switched to", r.Branch+". They come back when you switch back (gitswitch parked lists them).")
+	case r.Carried:
 		x.say("Switched to", r.Branch+", taking your uncommitted changes along.")
-	} else {
+	default:
 		x.say("Switched to", r.Branch)
 	}
 	x.say(undoHint)
+	return x.offerParked(gd, r.Waiting)
+}
+
+// newBranch reports whether switching to name creates the local branch
+// (from a remote one).
+func newBranch(bs []refs.Branch, name string) bool {
+	b := refs.Find(bs, name)
+	if b == nil || !b.Remote {
+		return false
+	}
+	l := refs.Find(bs, b.LocalName())
+	return l == nil || l.Remote
+}
+
+// offerParked follows a switch to a branch with parked changes: in a
+// terminal it offers to restore the newest (or look at them first),
+// otherwise it says how.
+func (x *CLI) offerParked(gd string, w []refs.Parked) error {
+	if len(w) == 0 || x.app.DryRun() {
+		return nil
+	}
+	p := w[0]
+	x.sayf("\nYou parked changes on %s %s: %s\n", p.Branch, ago(p.Time), refs.FileList(p.Files))
+	if len(w) > 1 {
+		x.sayf("(%d sets are parked on %s; gitswitch parked lists them)\n", len(w), p.Branch)
+	}
+	if !interactive() {
+		x.say("  Restore them with: gitswitch parked restore")
+		return nil
+	}
+	for {
+		switch choose("Restore them now? [r]estore, [l]ook first, [N]ot now", "n", "r", "l", "n") {
+		case "r":
+			if err := x.app.Refs.RestoreParked(gd, p.Stash); err != nil {
+				return err
+			}
+			x.say("Restored your changes on " + p.Branch + ".")
+			return nil
+		case "l":
+			out, err := x.app.Refs.ParkedPatch(gd, p.Stash)
+			if err != nil {
+				return err
+			}
+			x.say(out)
+		default:
+			x.say("They stay parked. Restore them later with: gitswitch parked restore")
+			return nil
+		}
+	}
+}
+
+// cmdParked lists the parked changes, or shows, restores or drops one:
+// by its number in the list, else the newest parked on this branch.
+func (x *CLI) cmdParked(args []string) error {
+	const usage = "gitswitch parked [--json] | parked show|restore [<n>] | parked drop [<n>] [-y]"
+	var verb, num string
+	var yes, asJSON bool
+	for _, a := range args {
+		switch {
+		case a == "--json":
+			asJSON = true
+		case a == "-y" || a == "--yes":
+			yes = true
+		case verb == "" && (a == "show" || a == "restore" || a == "drop"):
+			verb = a
+		case verb != "" && num == "" && !strings.HasPrefix(a, "-"):
+			num = a
+		default:
+			return usageErr(usage)
+		}
+	}
+	if (asJSON && verb != "") || (yes && verb != "drop") {
+		return usageErr(usage)
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	all, err := x.app.Refs.Parked(gd)
+	if err != nil {
+		return err
+	}
+	h, _ := x.app.Refs.Head(gd)
+	if verb == "" {
+		if asJSON {
+			if all == nil {
+				all = []refs.Parked{}
+			}
+			return json.NewEncoder(x.out).Encode(all)
+		}
+		if len(all) == 0 {
+			x.say("Nothing is parked in this repo.")
+			return nil
+		}
+		x.say("Parked changes (git stash), newest first:")
+		for i, p := range all {
+			here := ""
+			if p.Branch == h.Branch {
+				here = "   ← this branch"
+			}
+			x.sayf("  %d. %s   %s%s\n", i+1, p.Describe(time.Now().Unix()), p.Ref, here)
+		}
+		x.say("Restore with: gitswitch parked restore [<n>]   look first: show [<n>]   delete: drop [<n>]")
+		return nil
+	}
+	var p refs.Parked
+	switch {
+	case num != "":
+		i, err := strconv.Atoi(num)
+		if err != nil || i < 1 || i > len(all) {
+			return fmt.Errorf("no parked changes numbered %s; gitswitch parked lists them", num)
+		}
+		p = all[i-1]
+	case len(refs.ParkedOn(all, h.Branch)) > 0:
+		p = refs.ParkedOn(all, h.Branch)[0]
+	default:
+		return fmt.Errorf("nothing is parked on %s; pick parked changes by their number in gitswitch parked", h.Branch)
+	}
+	switch verb {
+	case "show":
+		out, err := x.app.Refs.ParkedPatch(gd, p.Stash)
+		if err != nil {
+			return err
+		}
+		x.sayf("Parked on %s %s (%s):\n%s\n", p.Branch, ago(p.Time), p.Ref, out)
+		return nil
+	case "restore":
+		if err := x.app.Refs.RestoreParked(gd, p.Stash); err != nil {
+			return err
+		}
+		if !x.app.DryRun() {
+			x.say("Restored the changes parked on " + p.Branch + ": " + refs.FileList(p.Files) + ".")
+		}
+		return nil
+	}
+	if !yes && !x.app.DryRun() {
+		if err := x.ask(fmt.Sprintf("Delete the changes parked on %s %s (%s)? This can't be undone.", p.Branch, ago(p.Time), refs.FileList(p.Files))); err != nil {
+			return err
+		}
+	}
+	if err := x.app.Refs.DropParked(gd, p.Stash); err != nil {
+		return err
+	}
+	if !x.app.DryRun() {
+		x.say("Deleted the changes parked on " + p.Branch + ".")
+	}
 	return nil
 }
 
-// sayClash explains an open smart-switch clash and the two ways out.
+// sayClash explains an open smart-switch clash and the ways out.
 func (x *CLI) sayClash(c *refs.Clash) {
 	x.sayf("Switched to %s, but %d file(s) clash with it: %s\n", c.To, len(c.Files), strings.Join(c.Files, ", "))
 	x.say("Your original changes are kept safe until you finish.")
 	x.say("  Fix the conflict markers (<<<<<<< ======= >>>>>>>) in your editor or IDE, then run: gitswitch resolve --done")
 	x.say("  Or go back to " + c.From + " with your changes exactly as before: gitswitch resolve --abort")
+	x.say("  Or park them on " + c.From + " and stay on " + c.To + " without them: gitswitch resolve --park")
 }
 
-// cmdResolve shows an open smart-switch clash, finishes it (--done) or
-// goes back (--abort, which asks first unless -y).
+// cmdResolve shows an open smart-switch clash, finishes it (--done), goes
+// back (--abort) or parks the changes instead (--park). The last two throw
+// away fixes made since, so they ask first unless -y.
 func (x *CLI) cmdResolve(args []string) error {
-	var done, abort, yes bool
+	const usage = "gitswitch resolve [--done | --abort [-y] | --park [-y]]"
+	var done, abort, park, yes bool
 	for _, a := range args {
 		switch a {
 		case "--done":
 			done = true
 		case "--abort":
 			abort = true
+		case "--park":
+			park = true
 		case "-y", "--yes":
 			yes = true
 		default:
-			return usageErr("gitswitch resolve [--done | --abort [-y]]")
+			return usageErr(usage)
 		}
 	}
-	if done && abort {
-		return usageErr("gitswitch resolve [--done | --abort [-y]]")
+	if (done && abort) || (done && park) || (abort && park) {
+		return usageErr(usage)
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
@@ -167,6 +338,18 @@ func (x *CLI) cmdResolve(args []string) error {
 			x.say("Back on " + c.From + " with your changes as they were.")
 		}
 		return nil
+	case park:
+		if !yes && !x.app.DryRun() {
+			if err := x.ask("Park your changes on " + c.From + " and stay on " + c.To + " without them? They are parked exactly as before the switch; fixes made since on " + c.To + " are thrown away."); err != nil {
+				return err
+			}
+		}
+		r, err := x.app.Refs.ResolvePark(gd)
+		if err != nil || x.app.DryRun() {
+			return err
+		}
+		x.say("Parked your changes on " + c.From + "; you are on " + r.Branch + " without them. They come back when you switch to " + c.From + ".")
+		return x.offerParked(gd, r.Waiting)
 	}
 	x.sayClash(c)
 	return nil
@@ -314,19 +497,7 @@ func (x *CLI) cmdUndo(args []string) error {
 }
 
 // ago says how long ago a Unix time was, roughly.
-func ago(unix int64) string {
-	d := time.Since(time.Unix(unix, 0))
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%d min ago", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%d h ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
-	}
-}
+func ago(unix int64) string { return refs.Ago(time.Now().Unix(), unix) }
 
 // ask confirms on the terminal; without one, -y is required.
 func (x *CLI) ask(q string) error {

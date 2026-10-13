@@ -15,6 +15,7 @@ func TestDescribe(t *testing.T) {
 		"main (not on a remote) · no commits yet · uncommitted: 2 new": {Branch: "main", Changes: Changes{New: 2}},
 		"main → origin/main, up to date · HEAD 1a2b3c4 Fix · uncommitted: 1 conflict, 3 changed · merge in progress": {
 			Branch: "main", Hash: "x", Short: "1a2b3c4", Subject: "Fix", Upstream: "origin/main", Changes: Changes{Changed: 3, Conflicts: 1}, Busy: "merge"},
+		"wip (not on a remote) · HEAD 1a2b3c4 Fix · 2 parked here": {Branch: "wip", Hash: "x", Short: "1a2b3c4", Subject: "Fix", Parked: 2},
 	}
 	for want, h := range cases {
 		if got := h.Describe(); got != want {
@@ -63,6 +64,42 @@ func TestHasConflictMarkers(t *testing.T) {
 	} {
 		if got := HasConflictMarkers(text); got != want {
 			t.Errorf("HasConflictMarkers(%q) = %v", text, got)
+		}
+	}
+}
+
+func TestParkedBranch(t *testing.T) {
+	for subject, want := range map[string]string{
+		"On main: gitswitch park: main":               "main",
+		"On feature/x: gitswitch park: feature/x":     "feature/x",
+		"gitswitch park: fix":                         "fix",
+		"On main: gitswitch smart switch: main → fix": "",
+		"WIP on main: 1a2b3c4 Fix login":              "",
+		"On main: gitswitch park: ":                   "",
+	} {
+		got, ok := ParkedBranch(subject)
+		if got != want || ok != (want != "") {
+			t.Errorf("ParkedBranch(%q) = %q, %v", subject, got, ok)
+		}
+	}
+	if got := ParkMessage("main"); got != "gitswitch park: main" {
+		t.Errorf("ParkMessage = %q", got)
+	}
+}
+
+func TestParkedDescribe(t *testing.T) {
+	p := Parked{Branch: "main", Time: 1000, Files: []string{"a", "b", "c", "d", "e", "f", "g"}}
+	if got := p.Describe(1000 + 2*3600 + 5); got != "main · 2 h ago · 7 files: a, b, c, d, e and 2 more" {
+		t.Errorf("Describe = %q", got)
+	}
+	for files, want := range map[int]string{0: "no files", 1: "1 file: a", 3: "3 files: a, b, c"} {
+		if got := FileList(p.Files[:files]); got != want {
+			t.Errorf("FileList(%d) = %q", files, got)
+		}
+	}
+	for d, want := range map[int64]string{30: "just now", 300: "5 min ago", 47 * 3600: "47 h ago", 3 * 86400: "3 days ago"} {
+		if got := Ago(d, 0); got != want {
+			t.Errorf("Ago(%d) = %q", d, got)
 		}
 	}
 }

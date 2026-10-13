@@ -63,10 +63,14 @@ History and branches
                                     only matching commits (author name or email, message, dates
                                     like 2024-05-01 or "2 weeks ago", gitswitch account)
   gitswitch branch [--json]         current branch, HEAD and the branch list
-  gitswitch switch <branch> [--smart]   check out a branch (origin/x creates a local x);
-                                    --smart takes uncommitted changes along (asked in a terminal)
-  gitswitch resolve [--done|--abort]    after a smart switch with clashing files: finish once
-                                    they are fixed, or go back exactly as before
+  gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
+                                    with uncommitted changes, --smart takes them along and --park
+                                    leaves them on this branch until you come back (asked in a terminal)
+  gitswitch parked [--json]         the parked changes (git stash), newest first
+  gitswitch parked show|restore|drop [<n>] [-y]   look at, restore or delete parked changes
+                                    (<n> from the list; else the newest parked on this branch)
+  gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
+                                    they are fixed, go back exactly as before, or park them instead
   gitswitch update                  pull the current branch, fast-forward only, with the repo's account
   gitswitch revert <commit>         add a commit that undoes one (safe for pushed commits)
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
@@ -239,6 +243,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdUndo(rest)
 	case "resolve":
 		return x.cmdResolve(rest)
+	case "parked":
+		return x.cmdParked(rest)
 	case "browse":
 		return x.cmdBrowse(rest)
 	case "show":
@@ -321,6 +327,26 @@ func confirm(q string) bool {
 	fmt.Fprintf(t.Out, "%s [y/N]: ", q)
 	line, _ := bufio.NewReader(t.In).ReadString('\n')
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
+}
+
+// choose asks on the terminal for one of keys, the first letter of the
+// answer; def for an empty or other answer, or without a terminal.
+func choose(q, def string, keys ...string) string {
+	t := terminal.OpenTerminal()
+	if t == nil {
+		return def
+	}
+	defer t.Close()
+	fmt.Fprintf(t.Out, "%s: ", q)
+	line, _ := bufio.NewReader(t.In).ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(line)); a != "" {
+		for _, k := range keys {
+			if a[:1] == k {
+				return k
+			}
+		}
+	}
+	return def
 }
 
 // splitArgs separates flags (with their values) from positional args.

@@ -227,29 +227,58 @@ func (s *server) routes() map[string]handler {
 			if err == nil {
 				err = cerr
 			}
-			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash}, err
+			parked, perr := a.Refs.Parked(gd)
+			if err == nil {
+				err = perr
+			}
+			if parked == nil {
+				parked = []refs.Parked{}
+			}
+			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash, "parked": parked}, err
 		},
 		"POST /api/undo": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			r, err := a.Undo.Undo(gd)
 			return map[string]string{"label": r.Label}, err
 		}),
-		// mode "smart" takes uncommitted changes along (and may leave a clash).
+		// mode "smart" takes uncommitted changes along (and may leave a
+		// clash), "park" leaves them on the current branch. Changes parked
+		// on the new branch come back in "waiting".
 		"POST /api/repo/switch": s.withRepo(func(gd string, b map[string]any) (any, error) {
-			if str(b, "mode") == "smart" {
+			switch str(b, "mode") {
+			case "smart":
 				return a.Refs.SmartSwitch(gd, str(b, "branch"))
+			case "park":
+				return a.Refs.Park(gd, str(b, "branch"))
 			}
 			name, err := a.Refs.Switch(gd, str(b, "branch"))
-			return refs.Switched{Branch: name}, err
+			r := refs.Switched{Branch: name}
+			if err == nil {
+				r.Waiting, _ = a.Refs.Waiting(gd)
+			}
+			return r, err
 		}),
-		// action "done" finishes a smart switch that clashed, "abort" goes back.
+		// action "done" finishes a smart switch that clashed, "abort" goes
+		// back, "park" goes back and parks the changes instead.
 		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			switch str(b, "action") {
 			case "done":
 				return nil, a.Refs.ResolveDone(gd)
 			case "abort":
 				return nil, a.Refs.ResolveAbort(gd)
+			case "park":
+				return a.Refs.ResolvePark(gd)
 			}
-			return nil, errors.New(`action must be "done" or "abort"`)
+			return nil, errors.New(`action must be "done", "abort" or "park"`)
+		}),
+		// action "restore" or "drop" on the parked changes held by stash.
+		"POST /api/parked": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			switch str(b, "action") {
+			case "restore":
+				return nil, a.Refs.RestoreParked(gd, str(b, "stash"))
+			case "drop":
+				return nil, a.Refs.DropParked(gd, str(b, "stash"))
+			}
+			return nil, errors.New(`action must be "restore" or "drop"`)
 		}),
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Update(gd, func(string) {})

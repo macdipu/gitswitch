@@ -1,5 +1,6 @@
 // Package application holds the branch use cases: show where a repo is,
-// list its branches, switch branch and update the branch from its remote.
+// list its branches, switch branch (taking uncommitted changes along or
+// parking them), and update the branch from its remote.
 // It depends only on domain ports. Import it as refsapp.
 package application
 
@@ -46,7 +47,7 @@ func (s *Service) Switch(gitDir, name string) (string, error) {
 	if err := s.checkout(p); err != nil {
 		return p.local, err
 	}
-	s.done(gitDir, m, p)
+	s.done(gitDir, m, p, "")
 	return p.local, nil
 }
 
@@ -70,7 +71,10 @@ func (s *Service) SmartSwitch(gitDir, name string) (refs.Switched, error) {
 	err = s.checkout(p)
 	if err == nil || !refs.WouldOverwrite(err) {
 		if err == nil {
-			s.done(gitDir, m, p)
+			s.done(gitDir, m, p, "")
+			if !r.Carried {
+				r.Waiting = s.waiting(gitDir)
+			}
 		}
 		return r, err
 	}
@@ -89,12 +93,142 @@ func (s *Service) SmartSwitch(gitDir, name string) (refs.Switched, error) {
 		}
 		return r, s.restore(p.wt, stash, fmt.Errorf("your changes could not be put back on %s, so GitSwitch stayed on %s: %v", p.local, p.head.Branch, err))
 	}
-	s.done(gitDir, m, p)
+	s.done(gitDir, m, p, "")
 	if len(files) == 0 {
 		return r, s.Refs.DropStash(p.wt, stash)
 	}
 	r.Clash = &refs.Clash{From: p.head.Branch, To: p.local, Stash: stash, Files: files}
 	return r, s.Refs.SaveClash(gitDir, *r.Clash)
+}
+
+// Park is Switch that leaves the uncommitted changes on the branch they
+// were made on: they are stashed with a message naming the branch, and the
+// new branch is checked out clean. If the switch fails, they are put back.
+// Changes parked earlier on the new branch come back in Waiting.
+func (s *Service) Park(gitDir, name string) (refs.Switched, error) {
+	p, err := s.plan(gitDir, name)
+	r := refs.Switched{Branch: p.local, Parked: p.head.Changes.Any()}
+	if err != nil {
+		return r, err
+	}
+	if p.head.Branch == "" && r.Parked {
+		return r, errors.New("HEAD is detached, so there is no branch to park the changes on. Take them along with a smart switch, or commit them first")
+	}
+	if s.FS.Dry(fmt.Sprintf("park the uncommitted changes on %s (git stash), then switch %s to branch %s", p.head.Branch, p.wt, p.local)) {
+		return r, nil
+	}
+	m := s.before(gitDir)
+	if r.Parked {
+		stash, err := s.Refs.Stash(p.wt, refs.ParkMessage(p.head.Branch))
+		if err != nil {
+			return r, fmt.Errorf("could not park your changes, nothing changed: %v", err)
+		}
+		if err := s.checkout(p); err != nil {
+			return r, s.restore(p.wt, stash, err)
+		}
+		s.done(gitDir, m, p, "Parked the changes on "+p.head.Branch+" and switched to "+p.local)
+	} else {
+		if err := s.checkout(p); err != nil {
+			return r, err
+		}
+		s.done(gitDir, m, p, "")
+	}
+	r.Waiting = s.waiting(gitDir)
+	return r, nil
+}
+
+// Waiting lists the changes parked on the current branch that can be
+// restored now: none while there are uncommitted changes.
+func (s *Service) Waiting(gitDir string) ([]refs.Parked, error) {
+	h, err := s.Refs.Head(gitDir)
+	if err != nil || h.Branch == "" || h.Changes.Any() || h.Parked == 0 {
+		return nil, err
+	}
+	all, err := s.Refs.Parked(gitDir)
+	return refs.ParkedOn(all, h.Branch), err
+}
+
+// waiting is Waiting after a switch that has already succeeded: a failure
+// to read only means nothing is offered.
+func (s *Service) waiting(gitDir string) []refs.Parked {
+	w, _ := s.Waiting(gitDir)
+	return w
+}
+
+// Parked lists every set of parked changes in the repo, newest first:
+// those of renamed and deleted branches too.
+func (s *Service) Parked(gitDir string) ([]refs.Parked, error) { return s.Refs.Parked(gitDir) }
+
+// ParkedPatch shows what parked changes hold: a diff, then the new files.
+func (s *Service) ParkedPatch(gitDir, stash string) (string, error) {
+	p, err := s.findParked(gitDir, stash)
+	if err != nil {
+		return "", err
+	}
+	return s.Refs.ParkedPatch(s.Locator.WorktreeOf(gitDir), p.Stash)
+}
+
+// RestoreParked puts parked changes back on the current branch, staged
+// files staged when that applies cleanly, and removes them from the
+// parked list. It needs a clean working folder, so that a clash can be
+// undone completely: then nothing changes and they stay parked.
+func (s *Service) RestoreParked(gitDir, stash string) error {
+	h, err := s.ready(gitDir)
+	if err != nil {
+		return err
+	}
+	p, err := s.findParked(gitDir, stash)
+	if err != nil {
+		return err
+	}
+	if h.Changes.Any() {
+		return fmt.Errorf("there are uncommitted changes on %s (%s). Commit or park them first, so the parked changes don't mix with them", h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "))
+	}
+	where := h.Branch
+	if where == "" {
+		where = "the detached HEAD"
+	}
+	if s.FS.Dry(fmt.Sprintf("restore the changes parked on %s (git stash apply %s), then remove them from the parked list", p.Branch, p.Ref)) {
+		return nil
+	}
+	wt := s.Locator.WorktreeOf(gitDir)
+	files, err := s.Refs.Apply(wt, p.Stash)
+	if err != nil {
+		return fmt.Errorf("could not restore the changes parked on %s, so they stay parked: %v", p.Branch, err)
+	}
+	if len(files) > 0 {
+		if derr := s.Refs.Discard(wt, p.Stash); derr != nil {
+			return fmt.Errorf("the changes parked on %s clash with %s in %s, and the half-restored files could not be cleaned up (%v). Your parked changes are untouched in the stash (`git stash list`); `git reset --hard` cleans up the files", p.Branch, where, strings.Join(files, ", "), derr)
+		}
+		return fmt.Errorf("the changes parked on %s clash with %s in %s, so nothing changed and they stay parked. Restore them on %s, or move %s back to where they were parked", p.Branch, where, strings.Join(files, ", "), p.Branch, where)
+	}
+	return s.Refs.DropStash(wt, p.Stash)
+}
+
+// DropParked deletes parked changes for good.
+func (s *Service) DropParked(gitDir, stash string) error {
+	p, err := s.findParked(gitDir, stash)
+	if err != nil {
+		return err
+	}
+	if s.FS.Dry(fmt.Sprintf("delete the changes parked on %s (git stash drop %s)", p.Branch, p.Ref)) {
+		return nil
+	}
+	return s.Refs.DropStash(s.Locator.WorktreeOf(gitDir), p.Stash)
+}
+
+// findParked finds parked changes by their stash commit.
+func (s *Service) findParked(gitDir, stash string) (refs.Parked, error) {
+	all, err := s.Refs.Parked(gitDir)
+	if err != nil {
+		return refs.Parked{}, err
+	}
+	for _, p := range all {
+		if stash != "" && p.Stash == stash {
+			return p, nil
+		}
+	}
+	return refs.Parked{}, errors.New("those parked changes are gone: restored or deleted already (see `gitswitch parked`)")
 }
 
 // restore puts stashed changes back where they were made after a failed
@@ -158,6 +292,27 @@ func (s *Service) ResolveAbort(gitDir string) error {
 		return err
 	}
 	return s.Refs.ClearClash(gitDir)
+}
+
+// ResolvePark is "park instead" for a smart switch that clashed: it goes
+// back (ResolveAbort), parks the changes on the branch they were made on,
+// and switches to the new branch clean.
+func (s *Service) ResolvePark(gitDir string) (refs.Switched, error) {
+	c, _, err := s.clash(gitDir)
+	if err != nil {
+		return refs.Switched{}, err
+	}
+	if s.FS.Dry("go back to " + c.From + ", park your changes there, then switch to " + c.To + " clean") {
+		return refs.Switched{Branch: c.To, Parked: true}, nil
+	}
+	if err := s.ResolveAbort(gitDir); err != nil {
+		return refs.Switched{}, err
+	}
+	r, err := s.Park(gitDir, c.To)
+	if err != nil {
+		return r, fmt.Errorf("back on %s with your changes, but they could not be parked: %v", c.From, err)
+	}
+	return r, nil
 }
 
 func (s *Service) clash(gitDir string) (*refs.Clash, string, error) {
@@ -232,9 +387,13 @@ func (s *Service) before(gitDir string) undo.Mark {
 	return s.Undo.Before(gitDir)
 }
 
-func (s *Service) done(gitDir string, m undo.Mark, p switchPlan) {
+// done reports a switch to Undo; label "" says it plainly.
+func (s *Service) done(gitDir string, m undo.Mark, p switchPlan, label string) {
+	if label == "" {
+		label = "Switched from " + p.head.Branch + " to " + p.local
+	}
 	if s.Undo != nil {
-		s.Undo.Done(gitDir, m, undo.Switch, "Switched from "+p.head.Branch+" to "+p.local)
+		s.Undo.Done(gitDir, m, undo.Switch, label)
 	}
 }
 

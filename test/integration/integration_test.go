@@ -1349,6 +1349,111 @@ func TestSmartSwitch(t *testing.T) {
 	}
 }
 
+// Park leaves uncommitted changes on their branch as a stash entry, with
+// real git: they are offered back on return and restored staged files
+// staged, parking twice keeps both, a clash on restore changes nothing,
+// and a smart switch that clashed can park them instead.
+func TestPark(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(file, text string) {
+		t.Helper()
+		must(t, os.WriteFile(filepath.Join(api, file), []byte(text), 0o644))
+	}
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	on := func() string { return e.gitIn(api, "branch", "--show-current") }
+	stashes := func() string { return e.gitIn(api, "stash", "list", "--format=%gs") }
+	e.commitFile(api, "f.txt", "1\n2\n3\n4\n5\n", "base f")
+	e.commitFile(api, "keep.txt", "k\n", "base keep")
+	e.gitIn(api, "switch", "-q", "-c", "other")
+	e.commitFile(api, "f.txt", "1\n2\n3\n4\nOTHER\n", "other f")
+	e.gitIn(api, "switch", "-q", "main")
+
+	// 1. Park: staged, changed and new files leave with the stash.
+	write("f.txt", "ONE\n2\n3\n4\n5\n")
+	e.gitIn(api, "add", "f.txt")
+	write("keep.txt", "k2\n")
+	write("new.txt", "n\n")
+	before := status()
+	out := e.gsIn(api, "switch", "other", "--park")
+	if on() != "other" || status() != "" || stashes() != "On main: gitswitch park: main" || !strings.Contains(out, "Parked your changes") {
+		t.Fatalf("park: on %s, status %q, stash %q\n%s", on(), status(), stashes(), out)
+	}
+
+	// 2. Parking twice keeps both; each branch is offered its own.
+	write("keep.txt", "on other\n")
+	out = e.gsIn(api, "switch", "main", "--park")
+	if !strings.Contains(out, "You parked changes on main") || !strings.Contains(out, "gitswitch parked restore") {
+		t.Fatalf("back on main: no offer\n%s", out)
+	}
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, "1 parked here") {
+		t.Fatalf("branch with parked changes:\n%s", out)
+	}
+	if out := e.gsIn(api, "parked"); !strings.Contains(out, "1. other") || !strings.Contains(out, "2. main") || !strings.Contains(out, "← this branch") {
+		t.Fatalf("parked list:\n%s", out)
+	}
+	if out := e.gsIn(api, "parked", "show"); !strings.Contains(out, "-1") || !strings.Contains(out, "+ONE") || !strings.Contains(out, "new.txt") {
+		t.Fatalf("parked show:\n%s", out)
+	}
+
+	// 3. Restore (the newest parked on this branch): exactly as before.
+	e.gsIn(api, "parked", "restore")
+	if on() != "main" || status() != before || stashes() != "On other: gitswitch park: other" {
+		t.Fatalf("restore: status %q (want %q), stash %q", status(), before, stashes())
+	}
+
+	// 4. Restoring needs a clean working folder.
+	e.gsErr(api, "Commit or park them first", "parked", "restore", "1")
+
+	// 5. A clash on restore changes nothing; the changes stay parked.
+	e.gsIn(api, "switch", "other", "--park")
+	e.gsIn(api, "switch", "main") // clean: a plain switch
+	e.commitFile(api, "f.txt", "CLASH\n2\n3\n4\n5\n", "moved on")
+	e.gsErr(api, "stay parked", "parked", "restore")
+	if status() != "" || !strings.Contains(stashes(), "On main: gitswitch park: main") {
+		t.Fatalf("clash on restore: status %q, stash %q", status(), stashes())
+	}
+
+	// 6. Delete: both remaining sets, one by number.
+	e.gsIn(api, "parked", "drop", "-y")
+	e.gsIn(api, "parked", "drop", "1", "-y")
+	if stashes() != "" || !strings.Contains(e.gsIn(api, "parked"), "Nothing is parked") {
+		t.Fatalf("drop: stash %q", stashes())
+	}
+
+	// 7. A smart switch that clashed parks the changes instead: as they
+	// were before the switch, and the clash is over.
+	e.gitIn(api, "reset", "-q", "--hard", "HEAD~1")
+	write("f.txt", "1\n2\n3\n4\nMINE\n")
+	write("new.txt", "n\n")
+	before = status()
+	e.gsIn(api, "switch", "other", "--smart")
+	e.gsIn(api, "resolve", "--park", "-y")
+	if on() != "other" || status() != "" || stashes() != "On main: gitswitch park: main" {
+		t.Fatalf("park instead: on %s, status %q, stash %q", on(), status(), stashes())
+	}
+	if out := e.gsIn(api, "resolve"); !strings.Contains(out, "Nothing to resolve") {
+		t.Fatalf("resolve after park instead:\n%s", out)
+	}
+
+	// 8. Undo of a park switches back; the changes stay parked until
+	// restored.
+	e.gsIn(api, "undo", "-y")
+	e.gsIn(api, "parked", "restore")
+	if on() != "main" || status() != before || stashes() != "" {
+		t.Fatalf("undo, restore: on %s, status %q (want %q), stash %q", on(), status(), before, stashes())
+	}
+
+	// 9. Changes parked on a branch deleted since are still listed.
+	e.gsIn(api, "switch", "other", "--park")
+	e.gitIn(api, "branch", "-q", "-D", "main")
+	if out := e.gsIn(api, "parked"); !strings.Contains(out, "1. main") {
+		t.Fatalf("parked on a deleted branch:\n%s", out)
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {

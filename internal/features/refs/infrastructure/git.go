@@ -38,6 +38,9 @@ func (g *Git) Head(gitDir string) (refs.Head, error) {
 	if h.Branch == "" {
 		return h, nil
 	}
+	if ps, err := g.parked(gitDir, false); err == nil {
+		h.Parked = len(refs.ParkedOn(ps, h.Branch))
+	}
 	if up, err := g.Git.Run("--git-dir="+gitDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil {
 		h.Upstream = up
 		if c, err := g.Git.Run("--git-dir="+gitDir, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"); err == nil {
@@ -231,6 +234,65 @@ func (g *Git) Markers(wt string, files []string) []string {
 		}
 	}
 	return left
+}
+
+func (g *Git) Parked(gitDir string) ([]refs.Parked, error) { return g.parked(gitDir, true) }
+
+// parked reads the stash list (--git-dir: it needs no working folder),
+// with each entry's files when files is set.
+func (g *Git) parked(gitDir string, files bool) ([]refs.Parked, error) {
+	out, err := g.Git.Run("--git-dir="+gitDir, "stash", "list", "--format=%H%x1f%ct%x1f%gs")
+	if err != nil {
+		return nil, err
+	}
+	var ps []refs.Parked
+	for i, line := range strings.Split(out, "\n") {
+		f := strings.SplitN(line, "\x1f", 3)
+		if len(f) < 3 {
+			continue
+		}
+		branch, ok := refs.ParkedBranch(f[2])
+		if !ok {
+			continue
+		}
+		p := refs.Parked{Ref: "stash@{" + strconv.Itoa(i) + "}", Stash: f[0], Branch: branch}
+		p.Time, _ = strconv.ParseInt(f[1], 10, 64)
+		if files {
+			p.Files = g.stashFiles(gitDir, p.Stash)
+		}
+		ps = append(ps, p)
+	}
+	return ps, nil
+}
+
+// stashFiles lists the files a stash entry changes: the tracked ones (its
+// first parent against its working-folder state), then the new ones (its
+// third parent, when it has one).
+func (g *Git) stashFiles(gitDir, stash string) []string {
+	var files []string
+	for _, args := range [][]string{{"diff", "--name-only", "-z", stash + "^1", stash, "--"}, {"ls-tree", "-r", "-z", "--name-only", stash + "^3"}} {
+		out, err := g.Git.Run(append([]string{"--git-dir=" + gitDir}, args...)...)
+		if err != nil {
+			continue // no third parent: no new files
+		}
+		for _, f := range strings.Split(out, "\x00") {
+			if f != "" {
+				files = append(files, f)
+			}
+		}
+	}
+	return files
+}
+
+func (g *Git) ParkedPatch(wt, stash string) (string, error) {
+	out, err := g.Git.Run("-C", wt, "stash", "show", "--stat", "-p", stash)
+	if err != nil {
+		return "", err
+	}
+	if n, err := g.Git.Run("-C", wt, "ls-tree", "-r", "--name-only", stash+"^3"); err == nil && n != "" {
+		out += "\n\nNew files:\n  " + strings.ReplaceAll(n, "\n", "\n  ")
+	}
+	return out, nil
 }
 
 // The clash file holds one "key value" pair per line; files repeat.

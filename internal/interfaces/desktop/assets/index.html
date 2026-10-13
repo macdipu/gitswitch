@@ -142,6 +142,9 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .fchip button:hover{background:var(--hover);color:var(--ink)}
 .alert{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:var(--radius);margin:0 0 8px;font-size:14px;border:1px solid var(--rule);background:var(--panel)}
 .alert.bad{border-color:var(--bad);background:var(--bad-soft)}
+.plist{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.prow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.prow>span{flex:1;min-width:0}
 .hmeta{display:flex;gap:14px;align-items:center;font-size:13px;color:var(--muted);margin:0 0 6px}
 .hist-main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
 .hist-main.open{grid-template-columns:minmax(0,1fr) 340px}
@@ -404,7 +407,7 @@ dialog .row-actions{justify-content:flex-end}
 <dialog id="dlg"><form method="dialog">
   <p id="dlgMsg"></p>
   <input id="dlgInput" aria-labelledby="dlgMsg" hidden>
-  <div class="row-actions"><button class="btn" value="cancel" id="dlgCancel">Cancel</button><button class="btn primary" value="ok" id="dlgOk">OK</button></div>
+  <div class="row-actions"><button class="btn" value="cancel" id="dlgCancel">Cancel</button><button class="btn" value="alt" id="dlgAlt" hidden></button><button class="btn primary" value="ok" id="dlgOk">OK</button></div>
 </form></dialog>
 
 <script>
@@ -445,16 +448,21 @@ function hintHTML(h, raw, buttons){
   return `<div class="explain"><p><strong>${esc(h.problem)}</strong></p><p>${esc(h.fix)}</p>${next ? `<div class="row-actions">${next}</div>` : ''}<details><summary>Details</summary><pre class="mono">${esc(raw)}</pre></details></div>`;
 }
 // ask shows a modal question. With opts.input it returns the typed text (null
-// on cancel); without, true or false. (Native confirm/prompt do not work in
-// every OS webview.)
+// on cancel); with opts.alt (a second choice's label) 'ok', 'alt' or false,
+// opts.pick: 'alt' preselecting it; otherwise true or false. (Native
+// confirm/prompt do not work in every OS webview.)
 function ask(msg, opts = {}){
-  const d = $('#dlg'), inp = $('#dlgInput'), ok = $('#dlgOk'), hasInput = opts.input !== undefined;
+  const d = $('#dlg'), inp = $('#dlgInput'), ok = $('#dlgOk'), alt = $('#dlgAlt'), hasInput = opts.input !== undefined, altFirst = opts.alt && opts.pick === 'alt';
   $('#dlgMsg').textContent = msg;
   inp.hidden = !hasInput; inp.value = opts.input ?? '';
-  ok.textContent = opts.ok || 'OK'; ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+  ok.textContent = opts.ok || 'OK'; ok.className = 'btn ' + (opts.danger ? 'danger' : altFirst ? '' : 'primary');
+  alt.hidden = !opts.alt; alt.textContent = opts.alt || ''; alt.className = 'btn' + (altFirst ? ' primary' : '');
   $('#dlgCancel').textContent = opts.cancel || 'Cancel';
-  d.returnValue = ''; d.showModal(); (hasInput ? inp : ok).focus(); if (hasInput) inp.select();
-  return new Promise(res => d.onclose = () => { const yes = d.returnValue === 'ok'; res(hasInput ? (yes ? inp.value : null) : yes); });
+  d.returnValue = ''; d.showModal(); (hasInput ? inp : altFirst ? alt : ok).focus(); if (hasInput) inp.select();
+  return new Promise(res => d.onclose = () => {
+    const v = d.returnValue;
+    res(hasInput ? (v === 'ok' ? inp.value : null) : opts.alt ? (v === 'ok' || v === 'alt' ? v : false) : v === 'ok');
+  });
 }
 $('#dlgInput').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); $('#dlg').close('ok'); } };
 // links open in the system browser, not inside the app window
@@ -988,6 +996,7 @@ function renderToolbar(){
   const work = [c.conflicts && `<b class="bad">${c.conflicts}</b> ${c.conflicts > 1 ? 'conflicts' : 'conflict'}`,
     c.staged && `<b>${c.staged}</b> staged`, c.changed && `<b>${c.changed}</b> changed`, c.new && `<b>${c.new}</b> new`].filter(Boolean);
   if (work.length) sync = 'Uncommitted: ' + work.join(', ') + (sync ? ' · ' + sync : '');
+  if (h?.parked) sync += ` · <b>${h.parked}</b> parked here`;
   $('#syncState').innerHTML = sync;
   $('#syncState').title = work.length ? 'Files not committed yet. Staged: added to the next commit. Changed: edited but not staged. New: not tracked by git yet.' : '';
   const canUpdate = !!(h && h.branch && h.upstream);
@@ -1033,7 +1042,8 @@ function renderBranches(){
   const q = $('#branchFind').value.trim().toLowerCase(), has = n => !q || n.toLowerCase().includes(q);
   const local = R.branches.filter(b => !b.remote), names = new Set(local.map(b => b.name));
   const remote = R.branches.filter(b => b.remote && !names.has(b.name.slice(b.name.indexOf('/') + 1)));
-  const item = b => `<button role="option" data-branch="${esc(b.name)}" aria-current="${b.current}">${b.current ? '✓ ' : ''}${esc(b.name)}${b.upstream ? `<span class="up">→ ${esc(b.upstream)}</span>` : ''}</button>`;
+  const parked = n => (R.parked || []).filter(p => p.branch === n).length;
+  const item = b => `<button role="option" data-branch="${esc(b.name)}" aria-current="${b.current}">${b.current ? '✓ ' : ''}${esc(b.name)}${parked(b.name) ? `<span class="tag" title="Uncommitted changes parked on ${esc(b.name)} (git stash), restored when you switch to it">${parked(b.name)} parked</span>` : ''}${b.upstream ? `<span class="up">→ ${esc(b.upstream)}</span>` : ''}</button>`;
   const l = local.filter(b => has(b.name)), r = remote.filter(b => has(b.name));
   $('#branchList').innerHTML = (l.length ? '<h4>On this computer</h4>' + l.map(item).join('') : '')
     + (r.length ? '<h4>On the remote</h4>' + r.map(item).join('') : '') || '<p class="hint" style="margin:4px">No branch matches.</p>';
@@ -1049,19 +1059,31 @@ $('#branchList').addEventListener('click', async e => {
   const b = e.target.closest('[data-branch]')?.dataset.branch; if (!b) return;
   toggleBranches(false);
   if (b === R?.head.branch) return;
-  const gd = $('#histRepo').value, c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
+  const gd = $('#histRepo').value, from = R?.head.branch, c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
   let mode = '';
   if (n){
     // Uncommitted changes: say what happens to them before switching.
-    if (!await ask(`You have uncommitted changes on ${R.head.branch} (${[c.staged && c.staged + ' staged', c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}). Smart switch takes them with you to ${b}. If some of them clash with ${b}, you fix those files there, or go back exactly as before.`, {ok:'Smart switch'})) return;
-    mode = 'smart';
+    // Smart switch is preselected for a new branch, park for one with its
+    // own work.
+    const isNew = R.branches.some(x => x.remote && x.name === b);
+    const how = await ask(`You have uncommitted changes on ${from} (${[c.staged && c.staged + ' staged', c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}).\n\nSmart switch takes them with you to ${b}. If some of them clash with ${b}, you fix those files there, or go back exactly as before.\n\nPark leaves them on ${from} (git stash) and switches clean. They are offered back when you return to ${from}.`,
+      {ok:'Smart switch', alt:'Park them on ' + from, pick: isNew ? 'ok' : 'alt'});
+    if (!how) return;
+    mode = how === 'alt' ? 'park' : 'smart';
   }
   const r = await act(() => api('POST','/api/repo/switch',{gitDir:gd, branch:b, mode}));
   if (!r) return;
   if (r.clash) toast(`Switched to ${r.branch}, but ${r.clash.files.length} file${r.clash.files.length > 1 ? 's clash' : ' clashes'} with it. See the note above the commits.`);
-  else toast('Switched to ' + r.branch + (r.carried ? ', with your changes' : ''), false, null, undoable(gd));
-  picked.clear(); loadHistory();
+  else toast(r.parked ? `Parked your changes on ${from} and switched to ${r.branch}` : 'Switched to ' + r.branch + (r.carried ? ', with your changes' : ''), false, null, undoable(gd));
+  picked.clear(); await loadHistory();
+  if (r.waiting?.length) offerParked(gd, r.waiting[0]);
 });
+// offerParked follows a switch to a branch with parked changes.
+async function offerParked(gd, p){
+  if (!await ask(`You parked changes on ${p.branch} ${ago(p.time)}: ${fileList(p.files)}. Restore them now?`, {ok:'Restore', cancel:'Not now'})) return;
+  if (await act(() => api('POST','/api/parked',{gitDir:gd, action:'restore', stash:p.stash}).then(() => true))){ toast('Restored your changes on ' + p.branch); loadHistory(); }
+}
+const fileList = f => !f?.length ? 'no files' : `${f.length} file${f.length > 1 ? 's' : ''}: ` + f.slice(0, 8).join(', ') + (f.length > 8 ? ` and ${f.length - 8} more` : '');
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
 });
@@ -1077,19 +1099,36 @@ function renderHistory(){
   const filtered = gitFiltered() || F.flagged || F.local;
   // Alerts: only when something needs attention.
   const fixable = H.commits.filter(c => c.flagged && c.unpushed).length;
-  const cl = R?.clash;
+  const cl = R?.clash, ps = R?.parked || [];
   $('#histAlert').innerHTML = (cl ? `<div class="alert bad" role="status"><span><strong>Smart switch to ${esc(cl.to)}: ${cl.files.length} file${cl.files.length > 1 ? 's clash' : ' clashes'} with it.</strong>
       Open ${cl.files.length > 1 ? 'them' : 'it'} in your editor or IDE and keep the lines you want between the <span class="mono">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</span>, <span class="mono">=======</span> and <span class="mono">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</span> markers, then delete the markers. Your original changes are safe until you finish.
       <br><span class="mono">${cl.files.map(esc).join(', ')}</span></span>
-      <button class="btn primary" id="clashDone">I’ve fixed them</button><button class="btn" id="clashBack">Go back to ${esc(cl.from)}</button></div>`
+      <button class="btn primary" id="clashDone">I’ve fixed them</button><button class="btn" id="clashBack">Go back to ${esc(cl.from)}</button><button class="btn" id="clashPark" title="Go back, park your changes on ${esc(cl.from)} and switch to ${esc(cl.to)} without them">Park instead</button></div>`
     : h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
+    + (ps.length ? `<div class="alert" role="status"><div class="plist"><span><strong>Parked changes</strong> <span class="hint">(git stash)</span></span>${ps.map(p => `<div class="prow"><span>On <strong>${esc(p.branch)}</strong>${p.branch === h?.branch ? ' (this branch)' : ''} · ${esc(ago(p.time))} · <span title="${esc(p.files.join('\n'))}">${esc(fileList(p.files))}</span></span>
+      <button class="btn${p.branch === h?.branch ? ' primary' : ''}" data-park-restore="${esc(p.stash)}"${p.branch === h?.branch ? '' : ` title="Restore them on ${esc(h?.branch || 'this commit')}, not ${esc(p.branch)}"`}>${p.branch === h?.branch ? 'Restore' : 'Restore here'}</button><button class="btn ghost danger" data-park-drop="${esc(p.stash)}">Delete</button></div>`).join('')}</div></div>` : '')
     + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
   $('#clashDone')?.addEventListener('click', async () => {
-    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
+    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}).then(() => true))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
   });
   $('#clashBack')?.addEventListener('click', async () => {
     if (!await ask(`Go back to ${cl.from}? Your changes come back exactly as they were before the switch. Fixes made since on ${cl.to} are thrown away.`, {ok:'Go back', danger:true})) return;
-    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'abort'}))){ toast(`Back on ${cl.from} with your changes`); loadHistory(); }
+    if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'abort'}).then(() => true))){ toast(`Back on ${cl.from} with your changes`); loadHistory(); }
+  });
+  $('#clashPark')?.addEventListener('click', async () => {
+    if (!await ask(`Park your changes on ${cl.from} and stay on ${cl.to} without them? They are parked exactly as they were before the switch. Fixes made since on ${cl.to} are thrown away.`, {ok:'Park instead', danger:true})) return;
+    const res = await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'park'}));
+    if (res){ toast(`Parked your changes on ${cl.from}; you are on ${res.branch}`); loadHistory(); }
+  });
+  $('#histAlert').querySelectorAll('[data-park-restore]').forEach(b => b.onclick = async () => {
+    const p = ps.find(x => x.stash === b.dataset.parkRestore);
+    if (p.branch !== h?.branch && !await ask(`Restore the changes parked on ${p.branch} here, on ${h?.branch || 'this commit'}? If they clash with it, nothing changes and they stay parked.`, {ok:'Restore here'})) return;
+    if (await act(() => api('POST','/api/parked',{gitDir:r.gitDir, action:'restore', stash:p.stash}).then(() => true))){ toast('Restored the changes parked on ' + p.branch); loadHistory(); }
+  });
+  $('#histAlert').querySelectorAll('[data-park-drop]').forEach(b => b.onclick = async () => {
+    const p = ps.find(x => x.stash === b.dataset.parkDrop);
+    if (!await ask(`Delete the changes parked on ${p.branch} ${ago(p.time)} (${fileList(p.files)})? This can't be undone.`, {ok:'Delete', danger:true})) return;
+    if (await act(() => api('POST','/api/parked',{gitDir:r.gitDir, action:'drop', stash:p.stash}).then(() => true))){ toast('Deleted the changes parked on ' + p.branch); loadHistory(); }
   });
   $('#fixBtn')?.addEventListener('click', async () => {
     if (!await ask('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.', {ok:'Rewrite'})) return;
