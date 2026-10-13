@@ -427,3 +427,30 @@ func TestPush(t *testing.T) {
 		t.Fatalf("second push = %v", m)
 	}
 }
+
+// The account check before a push finds not-pushed commits made as
+// another account and a repo email that is not the account's.
+func TestAccountCheck(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	for _, a := range []string{`{"mode":"new","id":"work","host":"github.com","name":"W","email":"w@work.example"}`, `{"mode":"new","id":"home","host":"github.com","name":"H","email":"h@home.example"}`} {
+		if w, m := call(t, h, "POST", "/api/account", a); w.Code != 200 {
+			t.Fatalf("add account = %d %v", w.Code, m)
+		}
+	}
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	call(t, h, "POST", "/api/repo/use", `{`+gd+`,"account":"work"}`)
+	git("config", "user.email", "h@home.example")
+	write("home\n")
+	t.Setenv("GIT_AUTHOR_EMAIL", "h@home.example") // the test's environment sets the author
+	git("commit", "-q", "-am", "made as home")
+	_, m := call(t, h, "GET", "/api/account-check?gitDir="+dir, "")
+	d, _ := m["data"].(map[string]any)
+	if d["account"] != "work" || d["emailBad"] != true || fmt.Sprint(d["wrong"]) != "2" || fmt.Sprint(d["wrongEmails"]) != "[t@x.example h@home.example]" {
+		t.Fatalf("check = %v", m)
+	}
+	call(t, h, "POST", "/api/repo/use", `{`+gd+`,"account":"work","once":true}`)
+	if git("config", "user.email") != "w@work.example" {
+		t.Fatalf("use once: email %q", git("config", "user.email"))
+	}
+}

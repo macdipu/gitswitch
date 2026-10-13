@@ -662,7 +662,8 @@ Repos
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
-  b switch branch   u update (pull)   p push (never forced; -u the first time)   w view in browser   / filter by author, message, date or account
+  b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
+  i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   / filter by author, message, date or account
   U undo the last switch, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
@@ -1210,6 +1211,14 @@ func (t *tui) keyHistory(k string) {
 		t.update()
 	case "p":
 		t.push()
+	case "i":
+		if t.hist == nil || !t.hist.Repo.EmailBad {
+			t.say(nil, "New commits here already use the repo account's name and email.")
+			return
+		}
+		r := t.hist.Repo
+		t.say(t.app.Accounts.UseOnce(r.GitDir, r.Account), "New commits here are made as "+r.Account+".")
+		t.loadHistory()
 	case "U":
 		t.undoLast()
 	case "R":
@@ -1627,7 +1636,7 @@ func (t *tui) push() {
 	if t.hist != nil && t.hist.Repo.Account != "" {
 		as = " as " + t.hist.Repo.Account
 	}
-	t.confirm = &confirmBox{fmt.Sprintf("Push %s to %s%s? GitSwitch never forces a push. (y/n)", h.Branch, to, as), map[string]func() error{"y": func() error {
+	pushIt := func() error {
 		var p refs.Pushed
 		var err error
 		t.suspend(func() {
@@ -1660,7 +1669,23 @@ func (t *tui) push() {
 			return err
 		}}}
 		return nil
-	}}}
+	}
+	// Commits made as another account: fix them first, or push them as
+	// they are.
+	if ch, err := t.app.History.CheckAccount(gd); err == nil && ch.Wrong > 0 {
+		t.confirm = &confirmBox{fmt.Sprintf("Push %s to %s%s? %s  f = fix them as %s first, then push · y = push them as they are · n or Esc = cancel",
+			h.Branch, to, as, ch.Describe(), ch.Account), map[string]func() error{
+			"f": func() error {
+				if _, err := t.app.History.FixAuthor(gd); err != nil {
+					return err
+				}
+				return pushIt()
+			},
+			"y": pushIt,
+		}}
+		return
+	}
+	t.confirm = &confirmBox{fmt.Sprintf("Push %s to %s%s? GitSwitch never forces a push. (y/n)", h.Branch, to, as), map[string]func() error{"y": pushIt}}
 }
 
 // commitAction reverts (v), drops (d) or rolls back to (z) the selected
@@ -2040,6 +2065,9 @@ func (t *tui) drawHistory() ([]string, int) {
 		l = append(l, "\x00 "+cBold+h.Repo.Path+cReset+"  account: "+acct+"  "+flag+cDim+fmt.Sprintf("  %d not pushed", h.Unpushed)+cReset+filter)
 		if t.head != nil {
 			l = append(l, "\x00 branch: "+cBold+history.CleanText(t.head.Describe())+cReset)
+		}
+		if h.Repo.EmailBad {
+			l = append(l, "\x00 "+cRed+"new commits here are made as "+history.CleanText(h.Repo.Email)+", not as "+h.Repo.Account+cReset+cDim+"  · i to use "+h.Repo.Account+"'s name and email"+cReset)
 		}
 		if t.filter.Active() {
 			l = append(l, "\x00 "+cYellow+"filter: "+t.filter.Describe()+cReset+cDim+fmt.Sprintf("  %d commit(s) · / to change", len(h.Commits))+cReset)

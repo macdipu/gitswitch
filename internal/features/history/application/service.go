@@ -391,6 +391,41 @@ func (s *Service) CherryPick(gitDir string, revs []string) ([]history.Target, er
 	return ts, nil
 }
 
+// CheckAccount looks at the account that will push from a repo: whether
+// the repo's user.email is that account's, and which not-pushed commits on
+// the current branch were made with another account's email (FixAuthor
+// fixes them). It changes nothing. With no account for the repo yet, there
+// is nothing to compare with, and the check is empty.
+func (s *Service) CheckAccount(gitDir string) (history.AccountCheck, error) {
+	c := s.Accounts.Load()
+	a, _ := s.Repos.AccountFor(c, gitDir)
+	if a == nil || a.Email == "" {
+		return history.AccountCheck{}, nil
+	}
+	ch := history.AccountCheck{Account: a.ID, AccountEmail: a.Email, Email: s.Repos.InfoFor(c, gitDir).Email}
+	ch.EmailBad = ch.Email != "" && !strings.EqualFold(ch.Email, a.Email)
+	wt := s.Locator.WorktreeOf(gitDir)
+	if s.Log.Branch(wt) == "" {
+		return ch, nil // detached: nothing to push
+	}
+	local, err := s.Log.LocalCommits(wt)
+	if err != nil {
+		return ch, err
+	}
+	seen := map[string]bool{}
+	for _, h := range local {
+		e := s.Log.AuthorEmail(wt, h)
+		if history.IsWrongAccount(c, a, e, true) {
+			ch.Wrong++
+			if !seen[strings.ToLower(e)] {
+				seen[strings.ToLower(e)] = true
+				ch.WrongEmails = append(ch.WrongEmails, e)
+			}
+		}
+	}
+	return ch, nil
+}
+
 // WebURL is the page of a commit on the repo's host (GitHub, GitLab,
 // ...), or of the repo itself when rev is "". It uses the origin remote,
 // else the first one. A commit that is not pushed yet is refused: the

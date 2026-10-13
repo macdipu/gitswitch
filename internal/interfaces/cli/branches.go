@@ -436,18 +436,29 @@ func (x *CLI) cmdBranchNew(args []string) error {
 }
 
 // cmdPush pushes the current branch and says which account pushed; with
-// --open it opens the pull request page too.
+// --open it opens the pull request page too. First it checks the commits
+// to push show that account: when some don't, it offers to fix them, and
+// without a terminal it needs -y to push them anyway.
 func (x *CLI) cmdPush(args []string) error {
-	open := false
+	open, yes := false, false
 	for _, a := range args {
-		if a != "--open" {
-			return usageErr("gitswitch push [--open]")
+		switch a {
+		case "--open":
+			open = true
+		case "-y", "--yes":
+			yes = true
+		default:
+			return usageErr("gitswitch push [--open] [-y]")
 		}
-		open = true
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
+	}
+	if !x.app.DryRun() {
+		if err := x.checkAccount(gd, yes); err != nil {
+			return err
+		}
 	}
 	p, err := x.app.Refs.Push(gd, func(l string) { x.say(" ", l) })
 	if err != nil || x.app.DryRun() {
@@ -473,6 +484,38 @@ func (x *CLI) cmdPush(args []string) error {
 		return process.OpenBrowser(p.PRURL)
 	}
 	return nil
+}
+
+// checkAccount warns before a push when the repo's commits don't show the
+// account that pushes. Commits to push made as another account need an
+// answer: fix them first, push anyway (-y) or cancel.
+func (x *CLI) checkAccount(gd string, yes bool) error {
+	ch, err := x.app.History.CheckAccount(gd)
+	if err != nil || ch.Describe() == "" {
+		return nil // the check only warns; the push says what is wrong with the repo
+	}
+	x.say("Account check:", ch.Describe())
+	if ch.EmailBad {
+		x.sayf("  To make new commits as %s: gitswitch use %s --once\n", ch.Account, ch.Account)
+	}
+	if ch.Wrong == 0 || yes {
+		return nil
+	}
+	if !interactive() {
+		return fmt.Errorf("not pushed. Fix the commits first (gitswitch fix-author rewrites them as %s), or push them as they are with -y", ch.Account)
+	}
+	switch k, _ := choose(fmt.Sprintf("[f]ix them as %s first, then push · [p]ush them as they are · [C]ancel", ch.Account), "c", "f", "p", "c"); k {
+	case "f":
+		n, err := x.app.History.FixAuthor(gd)
+		if err != nil {
+			return err
+		}
+		x.sayf("Fixed %d commit(s): they are now made as %s.\n", n, ch.Account)
+		return nil
+	case "p":
+		return nil
+	}
+	return errors.New("cancelled, nothing pushed")
 }
 
 func (x *CLI) cmdUpdate() error {

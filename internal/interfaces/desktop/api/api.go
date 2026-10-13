@@ -171,7 +171,13 @@ func (s *server) routes() map[string]handler {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := a.Accounts.SetRepoAccount(gd, str(b, "account")); err != nil {
+			// once: only make new commits with the account's name and
+			// email; the repo's saved choice stays as it is.
+			if once, _ := b["once"].(bool); once {
+				if err := a.Accounts.UseOnce(gd, str(b, "account")); err != nil {
+					return nil, err
+				}
+			} else if _, err := a.Accounts.SetRepoAccount(gd, str(b, "account")); err != nil {
 				return nil, err
 			}
 			return a.Repos.Info(gd), nil
@@ -196,6 +202,14 @@ func (s *server) routes() map[string]handler {
 				return nil, err
 			}
 			return a.History.Show(gd, r.URL.Query().Get("hash"))
+		},
+		// Before a push: do the commits show the account that pushes?
+		"GET /api/account-check": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.History.CheckAccount(gd)
 		},
 		"POST /api/repo/fix": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(str(body(r), "gitDir"))

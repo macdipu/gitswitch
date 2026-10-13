@@ -153,6 +153,39 @@ func IsWrongAccount(c *account.Config, repoAcct *account.Account, email string, 
 	return unpushed
 }
 
+// AccountCheck says whether a repo's commits show the account that pushes
+// them: the repo's own email, and the not-pushed commits on its branch.
+type AccountCheck struct {
+	Account string `json:"account"` // the account that pushes; "" when git will ask
+	Email   string `json:"email"`   // the repo's user.email
+	// AccountEmail is the account's email, which new commits should use.
+	AccountEmail string `json:"accountEmail"`
+	// EmailBad: the repo's user.email is not the account's, so new commits
+	// show another person.
+	EmailBad bool `json:"emailBad"`
+	// Wrong counts the not-pushed commits on the current branch made with
+	// another account's email (or an unknown one); WrongEmails lists those
+	// emails.
+	Wrong       int      `json:"wrong"`
+	WrongEmails []string `json:"wrongEmails"`
+}
+
+// Describe explains the problems in plain words; "" when there are none.
+func (c AccountCheck) Describe() string {
+	var parts []string
+	if c.Wrong > 0 {
+		parts = append(parts, fmt.Sprintf("%d not-pushed commit(s) on this branch were made as %s, but %s will push them", c.Wrong, strings.Join(c.WrongEmails, ", "), c.Account))
+	}
+	if c.EmailBad {
+		parts = append(parts, fmt.Sprintf("new commits here are made as %s, not as %s (%s)", c.Email, c.Account, c.AccountEmail))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	s := strings.Join(parts, "; ")
+	return strings.ToUpper(s[:1]) + s[1:] + "."
+}
+
 // AccountColor gives each account the same colour in the TUI and log.
 func AccountColor(c *account.Config, id string) string {
 	pal := []string{"38;5;33", "38;5;37", "38;5;135", "38;5;172", "38;5;168", "38;5;70"}

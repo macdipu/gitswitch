@@ -1055,6 +1055,15 @@ $('#updateBtn').onclick = async e => {
 };
 $('#pushBtn').onclick = async e => {
   const gd = $('#histRepo').value, b = e.currentTarget;
+  // Commits made as another account: fix them first, or push them as they are.
+  const ch = await act(() => api('GET', '/api/account-check?gitDir=' + encodeURIComponent(gd)));
+  if (!ch) return;
+  if (ch.wrong){
+    const how = await ask(`${ch.wrong} not-pushed commit${ch.wrong > 1 ? 's' : ''} on this branch ${ch.wrong > 1 ? 'were' : 'was'} made as ${ch.wrongEmails.join(', ')}, but ${ch.account} will push ${ch.wrong > 1 ? 'them' : 'it'}. Others will see ${ch.wrong > 1 ? 'them' : 'it'} as made by that address.\n\nFix rewrites ${ch.wrong > 1 ? 'them' : 'it'} as ${ch.account} (${ch.accountEmail}) before pushing; pushed commits are never changed.`,
+      {ok:'Fix, then push', alt:'Push as they are'});
+    if (!how) return;
+    if (how === 'ok' && !await act(() => api('POST','/api/repo/fix',{gitDir:gd}))) return;
+  }
   b.disabled = true; b.textContent = 'Pushing…';
   const r = await act(() => api('POST','/api/repo/push',{gitDir:gd}));
   if (r){
@@ -1175,6 +1184,7 @@ function renderHistory(){
     : h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
     + (ps.length ? `<div class="alert" role="status"><div class="plist"><span><strong>Parked changes</strong> <span class="hint">(git stash)</span></span>${ps.map(p => `<div class="prow"><span>On <strong>${esc(p.branch)}</strong>${p.branch === h?.branch ? ' (this branch)' : ''} · ${esc(ago(p.time))} · <span title="${esc(p.files.join('\n'))}">${esc(fileList(p.files))}</span></span>
       <button class="btn${p.branch === h?.branch ? ' primary' : ''}" data-park-restore="${esc(p.stash)}"${p.branch === h?.branch ? '' : ` title="Restore them on ${esc(h?.branch || 'this commit')}, not ${esc(p.branch)}"`}>${p.branch === h?.branch ? 'Restore' : 'Restore here'}</button><button class="btn ghost danger" data-park-drop="${esc(p.stash)}">Delete</button></div>`).join('')}</div></div>` : '')
+    + (r.emailBad ? `<div class="alert bad" role="status"><span><strong>New commits here are made as ${esc(r.email)}, not as ${esc(r.account)}.</strong> They will show another person than the account that pushes them.</span><button class="btn primary" id="useBtn">Use ${esc(r.account)}’s name and email</button></div>` : '')
     + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
   $('#clashDone')?.addEventListener('click', async () => {
     if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}).then(() => true))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
@@ -1197,6 +1207,9 @@ function renderHistory(){
     const p = ps.find(x => x.stash === b.dataset.parkDrop);
     if (!await ask(`Delete the changes parked on ${p.branch} ${ago(p.time)} (${fileList(p.files)})? This can't be undone.`, {ok:'Delete', danger:true})) return;
     if (await act(() => api('POST','/api/parked',{gitDir:r.gitDir, action:'drop', stash:p.stash}).then(() => true))){ toast('Deleted the changes parked on ' + p.branch); loadHistory(); }
+  });
+  $('#useBtn')?.addEventListener('click', async () => {
+    if (await act(() => api('POST','/api/repo/use',{gitDir:r.gitDir, account:r.account, once:true}))){ toast(`New commits here are made as ${r.account}`); loadHistory(); }
   });
   $('#fixBtn')?.addEventListener('click', async () => {
     if (!await ask('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.', {ok:'Rewrite'})) return;

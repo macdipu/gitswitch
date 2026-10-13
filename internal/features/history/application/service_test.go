@@ -25,13 +25,14 @@ type fakeRepos struct {
 	repo.Reader
 	acc     *account.Account
 	remotes []repo.Remote
+	email   string // the repo's user.email
 }
 
 func (f *fakeRepos) AccountFor(*account.Config, string) (*account.Account, string) {
 	return f.acc, ""
 }
 func (f *fakeRepos) InfoFor(_ *account.Config, gitDir string) repo.Info {
-	return repo.Info{GitDir: gitDir, Remotes: f.remotes}
+	return repo.Info{GitDir: gitDir, Remotes: f.remotes, Email: f.email}
 }
 func (f *fakeRepos) GitDirFor(string) string         { return "" }
 func (f *fakeRepos) WorktreeOf(gitDir string) string { return strings.TrimSuffix(gitDir, "/.git") }
@@ -460,5 +461,29 @@ func TestShowRefusesOptions(t *testing.T) {
 	}
 	if d, err := s.Show("/r/.git", "abc1234"); err != nil || d.Hash != "abc1234" {
 		t.Errorf("Show(abc1234) = %+v, %v", d, err)
+	}
+}
+
+func TestCheckAccount(t *testing.T) {
+	s, r, l := newService()
+	l.branch = "main"
+	r.email = "W@x.com"
+	l.local = []string{"c1", "c2", "c3"}
+	l.emails = map[string]string{"c1": "w@x.com", "c2": "me@x.com", "c3": "ME@x.com"}
+	ch, err := s.CheckAccount("/r/.git")
+	if err != nil || ch.EmailBad || ch.Wrong != 2 || strings.Join(ch.WrongEmails, ",") != "me@x.com" ||
+		ch.Describe() != "2 not-pushed commit(s) on this branch were made as me@x.com, but work will push them." {
+		t.Errorf("wrong commits: %+v %v %q", ch, err, ch.Describe())
+	}
+
+	r.email = "me@x.com"
+	l.emails = map[string]string{"c1": "w@x.com", "c2": "w@x.com", "c3": "w@x.com"}
+	if ch, _ := s.CheckAccount("/r/.git"); !ch.EmailBad || ch.Wrong != 0 || ch.Describe() != "New commits here are made as me@x.com, not as work (w@x.com)." {
+		t.Errorf("repo email: %+v %q", ch, ch.Describe())
+	}
+
+	r.acc = nil // no account yet: nothing to compare with
+	if ch, err := s.CheckAccount("/r/.git"); err != nil || ch.Describe() != "" || ch.Account != "" {
+		t.Errorf("no account: %+v %v", ch, err)
 	}
 }

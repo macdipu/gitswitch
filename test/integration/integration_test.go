@@ -1631,6 +1631,49 @@ func TestPush(t *testing.T) {
 	}
 }
 
+// Before a push, commits made as another account than the one that pushes
+// are caught: without a terminal the push needs -y, and fix-author makes
+// them right. A repo email that is not the account's is reported too.
+func TestAccountCheckBeforePush(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+
+	// A commit made with the personal email in the work repo.
+	e.gitIn(api, "config", "user.email", "dipu@me.example")
+	e.commitFile(api, "b.txt", "b\n", "as me")
+	if out := e.gsIn(api, "status"); !strings.Contains(out, "repo email does not match the account") {
+		t.Fatalf("status:\n%s", out)
+	}
+	e.gsErr(api, "push them as they are with -y", "push")
+	if e.gitIn(api, "rev-parse", "origin/main") == e.gitIn(api, "rev-parse", "HEAD") {
+		t.Fatal("pushed without -y")
+	}
+
+	// Fix it, make new commits as client again, then push: no warning.
+	e.gsIn(api, "fix-author")
+	e.gsIn(api, "use", "client", "--once")
+	out := e.gsIn(api, "push")
+	if strings.Contains(out, "Account check") || !strings.Contains(out, "Pushed 1 commit(s) to origin/main as client") {
+		t.Fatalf("push after fix:\n%s", out)
+	}
+	if got := e.gitIn(api, "log", "-1", "--format=%ae", "origin/main"); got != "dipu@client.example" {
+		t.Fatalf("pushed author = %q", got)
+	}
+
+	// -y pushes them as they are, after saying so.
+	e.gitIn(api, "config", "user.email", "dipu@me.example")
+	e.commitFile(api, "c.txt", "c\n", "as me again")
+	out = e.gsIn(api, "push", "-y")
+	if !strings.Contains(out, "1 not-pushed commit(s) on this branch were made as dipu@me.example, but client will push them") ||
+		!strings.Contains(out, "gitswitch use client --once") || !strings.Contains(out, "Pushed 1 commit(s)") {
+		t.Fatalf("push -y:\n%s", out)
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
