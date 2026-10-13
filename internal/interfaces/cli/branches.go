@@ -441,6 +441,49 @@ func (x *CLI) cmdBranchNew(args []string) error {
 	return nil
 }
 
+// cmdCommit commits the staged changes, or with --all every change, as
+// the repo's account.
+func (x *CLI) cmdCommit(args []string) error {
+	const usage = "gitswitch commit -m <message> [--all]"
+	var msg string
+	all, hasMsg := false, false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--all" || a == "-a":
+			all = true
+		case (a == "-m" || a == "--message") && i+1 < len(args) && !hasMsg:
+			i++
+			msg, hasMsg = args[i], true
+		case strings.HasPrefix(a, "--message=") && !hasMsg:
+			msg, hasMsg = strings.TrimPrefix(a, "--message="), true
+		default:
+			return usageErr(usage)
+		}
+	}
+	if !hasMsg {
+		return usageErr(usage)
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	r, err := x.app.Workspace.Commit(gd, msg, all)
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	as, on := "", ""
+	if r.Account != "" {
+		as = " as " + r.Account
+	}
+	if r.Branch != "" {
+		on = " on " + r.Branch
+	}
+	x.sayf("Committed %s %s%s%s (%d file(s)).\n", r.Short, history.CleanText(r.Subject), on, as, r.Files)
+	x.say(undoHint)
+	return nil
+}
+
 // cmdBranchPrune deletes the branches merged into the default branch,
 // after listing them and asking (-y: not).
 func (x *CLI) cmdBranchPrune(args []string) error {

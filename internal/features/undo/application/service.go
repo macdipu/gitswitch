@@ -132,9 +132,9 @@ func (s *Service) Undo(gitDir string) (undo.Record, error) {
 			}
 		}
 		err = s.Git.Recreate(gitDir, gone)
-	case undo.Rollback:
-		// The files already hold the rolled-back commits' changes; only the
-		// branch moves.
+	case undo.Rollback, undo.Commit:
+		// The files already hold the commits' changes; only the branch
+		// moves.
 		err = s.Git.Reset(r.Worktree, r.Before, false)
 	default:
 		err = s.Git.Reset(r.Worktree, r.Before, true)

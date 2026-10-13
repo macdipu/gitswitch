@@ -1625,6 +1625,50 @@ func TestMoveToNewBranch(t *testing.T) {
 	e.gsErr(api, "doesn't pull from a remote branch", "branch", "new", "other", "--move")
 }
 
+// Commits are made as the repo's account, with real git: the staged files,
+// or every change with --all. Undo takes the commit back off, and a repo
+// email of another account is refused.
+func TestCommit(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	e.commitFile(api, "a.txt", "a\n", "first")
+	e.gsErr(api, "nothing to commit", "commit", "-m", "x")
+	e.gsErr(api, "usage", "commit", "--all")
+
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("b\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "new.txt"), []byte("n\n"), 0o644))
+	e.gsErr(api, "nothing is staged", "commit", "-m", "x")
+	e.gitIn(api, "add", "a.txt")
+	out := e.gsIn(api, "commit", "-m", "Change a")
+	if !strings.Contains(out, "Change a on main as client (1 file(s))") || status() != "?? new.txt" ||
+		e.gitIn(api, "log", "-1", "--format=%ae %s") != "dipu@client.example Change a" {
+		t.Fatalf("staged commit: %q, %s\n%s", status(), e.gitIn(api, "log", "-1", "--format=%ae %s"), out)
+	}
+	before := e.gitIn(api, "rev-parse", "HEAD")
+
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("c\n"), 0o644))
+	e.gsIn(api, "commit", "-a", "--message=Everything")
+	if status() != "" || e.gitIn(api, "show", "--name-only", "--format=", "HEAD") != "a.txt\nnew.txt" {
+		t.Fatalf("commit --all: %q, %q", status(), e.gitIn(api, "show", "--name-only", "--format=", "HEAD"))
+	}
+
+	// Undo: the commit is gone, its changes are in the files.
+	e.gsIn(api, "undo", "-y")
+	if e.gitIn(api, "rev-parse", "HEAD") != before || status() != "M a.txt\n?? new.txt" {
+		t.Fatalf("undo: HEAD %s, %q", e.gitIn(api, "rev-parse", "HEAD"), status())
+	}
+
+	// The repo's email is another account's: refused, nothing committed.
+	e.gitIn(api, "config", "user.email", "dipu@work.example")
+	e.gsErr(api, "gitswitch use client --once", "commit", "-a", "-m", "x")
+	if e.gitIn(api, "rev-parse", "HEAD") != before {
+		t.Fatal("committed with the wrong email")
+	}
+}
+
 // Branches merged into the remote's default branch are deleted, with real
 // git; unmerged ones, main, the current one and one checked out in another
 // working folder stay. Undo brings them back, tracking their remote branch.

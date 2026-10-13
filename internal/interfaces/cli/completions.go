@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -37,6 +37,7 @@ _gitswitch() {
     parked) COMPREPLY=( $(compgen -W "show restore drop --json -y" -- "$cur") ) ;;
     drop|rollback) COMPREPLY=( $(compgen -W "-y" -- "$cur") ) ;;
     push) COMPREPLY=( $(compgen -W "--open -y" -- "$cur") ) ;;
+    commit) COMPREPLY=( $(compgen -W "-m --all" -- "$cur") ) ;;
     undo) COMPREPLY=( $(compgen -W "-y --show --json" -- "$cur") ) ;;
     doctor) COMPREPLY=( $(compgen -W "--fix" -- "$cur") ) ;;
     uninstall) COMPREPLY=( $(compgen -W "--purge" -- "$cur") ) ;;
@@ -71,6 +72,7 @@ _gitswitch() {
     parked) compadd -- show restore drop --json -y ;;
     drop|rollback) compadd -- -y ;;
     push) compadd -- --open -y ;;
+    commit) compadd -- -m --all ;;
     undo) compadd -- -y --show --json ;;
     doctor) compadd -- --fix ;;
   esac
@@ -90,6 +92,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add r
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune --json --from --move --no-prefix -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open -y"
+complete -c gitswitch -n "__fish_seen_subcommand_from commit" -a "-m --all"
 complete -c gitswitch -n "__fish_seen_subcommand_from switch-changes" -a "ask smart park global --repo"
 complete -c gitswitch -n "__fish_seen_subcommand_from parked" -a "show restore drop --json -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from resolve" -a "--done --abort --park -y"
@@ -106,7 +109,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $subs = @{
     account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
     repo = 'list clone add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes'; completions = 'bash zsh fish powershell'
-    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune --json'; push = '--open -y'
+    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune --json'; push = '--open -y'; commit = '-m --all'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '

@@ -24,6 +24,8 @@ const (
 	// Move: the commits not pushed were moved to a new branch (Record.To),
 	// and the branch left (Record.Branch) moved back from Before to After.
 	Move Action = "move"
+	// Commit: a commit GitSwitch made.
+	Commit Action = "commit"
 	// Prune: merged branches were deleted (Record.Deleted).
 	Prune Action = "prune"
 )
@@ -95,6 +97,8 @@ func (r Record) Effect() string {
 		return "Puts the commits back on " + r.Branch + ", switches back to it and deletes " + r.To + ". Your uncommitted changes stay as they are."
 	case Rollback:
 		return "Puts the rolled-back commits back on " + r.Branch + ". Your files are not changed."
+	case Commit:
+		return "Takes the commit off " + r.Branch + ". Its changes stay in your files, uncommitted."
 	case Revert, CherryPick:
 		return "Removes the new commit(s) from " + r.Branch + ", as if they had never been made."
 	default:

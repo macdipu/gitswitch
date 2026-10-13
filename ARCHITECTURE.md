@@ -46,9 +46,13 @@ internal/
       domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting, Pushed; port Refs
       application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; move not-pushed commits to a new branch; delete merged branches; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
       infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; merge-base and update-ref (moving or deleting a branch that is not checked out); for-each-ref --merged; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
+    workspace/
+      domain/                 Committed, commit message and file count; port Git
+      application/            commit the staged files or every change, as the repo's account
+      infrastructure/         Git: add --all, commit (Head through the refs infrastructure)
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
-      application/            Recorder for the history and refs use cases (Before, Done); Last, Undo
+      application/            Recorder for the history, refs and workspace use cases (Before, Done, Pruned); Last, Undo
       infrastructure/         the record in refs/gitswitch/undo and [gitswitch "undo"]; reset --keep/--mixed, switch, update-ref (to undo a move or bring back deleted branches)
     ssh/
       domain/                 ssh command line from git, key help per host, login greeting; ports KeyTool, HookRepos, Transport, Prompter
@@ -203,7 +207,7 @@ does not change.
 
 | Feature | Where it goes |
 | --- | --- |
-| Status, staging (files, hunks, lines), commit | A `workspace` feature: porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
+| Staging (files, hunks, lines) | The `workspace` feature (commit exists): porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
 | Diff viewer, blame | A `diff` feature over git parsers. Render only the visible rows. |
 | Branches, checkout, stash, tags | The `refs` feature (branches, switch and update exist; stash and tags go there too). |
 | Merge, rebase, conflict editor | A `merge` feature (3-way conflict model in its domain). New changes report to the `undo` feature's Recorder, as history and refs do. |

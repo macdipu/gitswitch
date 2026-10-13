@@ -338,6 +338,7 @@ dialog .row-actions{justify-content:flex-end}
         </div>
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
+      <button class="btn" id="commitBtn">Commit…</button>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
       <button class="btn" id="pushBtn">Push</button>
       <span class="spacer"></span>
@@ -1021,6 +1022,11 @@ function renderToolbar(){
     : 'This branch is not on a remote yet';
   ub.className = 'btn' + (h?.behind ? ' primary' : '');
   ub.textContent = h?.behind ? `Update (${h.behind} new)` : 'Update';
+  // Commit: the staged changes, or every change when none is staged.
+  const cb = $('#commitBtn'), ch = h?.changes || {}, files = (ch.staged || 0) + (ch.changed || 0) + (ch.new || 0), cas = H?.repo.account ? ' as ' + H.repo.account : '';
+  cb.disabled = !files || !!ch.conflicts || !!h?.busy;
+  cb.title = ch.conflicts ? 'Fix the conflicts first' : h?.busy ? `Finish the ${h.busy} first` : !files ? 'Nothing to commit: no file has changed'
+    : ch.staged ? `Commit the ${ch.staged} staged file${ch.staged > 1 ? 's' : ''}${cas}` : `Commit every change${cas}`;
   // Push: new commits, or a branch not on a remote yet. Never forced.
   const pb = $('#pushBtn'), acct = H?.repo.account, as = acct ? ' as ' + acct : '';
   const first = !!(h && h.branch && h.hash && !h.upstream);
@@ -1072,6 +1078,19 @@ $('#pushBtn').onclick = async e => {
     const msg = !r.commits && !r.first ? 'Nothing to push' : `Pushed ${r.commits} commit${r.commits === 1 ? '' : 's'} to ${r.upstream}${r.account ? ' as ' + r.account : ''}`;
     toast(msg, false, null, r.prUrl ? {label:'Open pull request', run: () => act(() => api('POST','/api/open',{url:r.prUrl}))} : null);
   }
+  loadHistory();
+};
+$('#commitBtn').onclick = async () => {
+  const gd = $('#histRepo').value, h = R?.head, c = h?.changes || {}, acct = H?.repo.account, as = acct ? ` as ${acct}` : '';
+  const others = (c.changed || 0) + (c.new || 0), n = (x, w) => `${x} ${w}${x > 1 ? 's' : ''}`;
+  const what = c.staged ? `the ${n(c.staged, 'staged file')}` : `every change: ${[c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}`;
+  const msg = await ask(`Commit ${what}${h?.branch ? ' on ' + h.branch : ''}${as}. Message:`,
+    {input: '', ok: 'Commit', check: c.staged && others ? `Also commit the ${n(others, 'other changed file')} (new files too)` : ''});
+  if (!msg?.trim()) return;
+  const all = !c.staged || $('#dlgCheck').checked;
+  const r = await act(() => api('POST','/api/repo/commit',{gitDir:gd, message:msg, all}));
+  if (!r) return;
+  toast(`Committed ${r.short} ${r.subject}${r.account ? ' as ' + r.account : ''}`, false, null, undoable(gd));
   loadHistory();
 };
 $('#browseRepo').onclick = () => act(() => api('POST','/api/commit/browse',{gitDir:$('#histRepo').value, hash:''}));

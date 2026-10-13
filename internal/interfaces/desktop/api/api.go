@@ -332,6 +332,11 @@ func (s *server) routes() map[string]handler {
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Update(gd, func(string) {})
 		}),
+		// all commits every change, new files too; otherwise what is staged.
+		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			all, _ := b["all"].(bool)
+			return a.Workspace.Commit(gd, str(b, "message"), all)
+		}),
 		"POST /api/repo/push": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Push(gd, func(string) {})
 		}),

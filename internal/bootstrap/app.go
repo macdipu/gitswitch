@@ -23,6 +23,8 @@ import (
 	sshinfra "github.com/macdipu/gitswitch/internal/features/ssh/infrastructure"
 	undoapp "github.com/macdipu/gitswitch/internal/features/undo/application"
 	undoinfra "github.com/macdipu/gitswitch/internal/features/undo/infrastructure"
+	workspaceapp "github.com/macdipu/gitswitch/internal/features/workspace/application"
+	workspaceinfra "github.com/macdipu/gitswitch/internal/features/workspace/infrastructure"
 	"github.com/macdipu/gitswitch/internal/interfaces/prompt"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
@@ -35,14 +37,15 @@ var Version = "dev"
 // desktop window) calls. They return values and errors and never print;
 // long operations take a report or progress callback.
 type App struct {
-	Accounts *accountapp.Service
-	Keys     *sshapp.Keys
-	Repos    *repoapp.Service
-	History  *historyapp.Service
-	Refs     *refsapp.Service
-	Undo     *undoapp.Service
-	Setup    *setup.Installer
-	Doctor   *doctor.Doctor
+	Accounts  *accountapp.Service
+	Keys      *sshapp.Keys
+	Repos     *repoapp.Service
+	History   *historyapp.Service
+	Refs      *refsapp.Service
+	Undo      *undoapp.Service
+	Workspace *workspaceapp.Service
+	Setup     *setup.Installer
+	Doctor    *doctor.Doctor
 
 	dryRun bool
 }
@@ -69,12 +72,13 @@ func New(dryRun bool, out io.Writer) *App {
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
-		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
-		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
-		Undo:    undos,
-		Setup:   installer,
-		Doctor:  &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
-		dryRun:  dryRun,
+		History:   &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
+		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Undo:      undos,
+		Workspace: &workspaceapp.Service{Git: &workspaceinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Setup:     installer,
+		Doctor:    &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
+		dryRun:    dryRun,
 	}
 }
 

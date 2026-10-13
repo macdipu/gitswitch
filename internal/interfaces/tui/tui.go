@@ -664,12 +664,13 @@ History
   r reload   m load more
   b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   / filter by author, message, date or account
-  U undo the last switch, move, prune, revert, drop, roll back, cherry-pick or fix
+  U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
   M committed on the wrong branch: move the commits not pushed to a new branch
   D delete the branches merged into the remote's default branch
+  C commit the staged files as the repo's account (nothing staged: every change, new files too)
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1239,6 +1240,8 @@ func (t *tui) keyHistory(k string) {
 		t.moveToNewBranch()
 	case "D":
 		t.pruneBranches()
+	case "C":
+		t.commit()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1410,6 +1413,34 @@ func (t *tui) newBranch(from string) {
 				with = ", with your changes"
 			}
 			t.say(nil, "Started branch "+r.Branch+with+"."+undoHint)
+			return nil
+		}}
+}
+
+// commit asks for a message, then commits the staged files, or every
+// change when none is staged.
+func (t *tui) commit() {
+	if t.histDir == "" || t.head == nil {
+		return
+	}
+	gd, c := t.histDir, t.head.Changes
+	all := c.Staged == 0
+	title := fmt.Sprintf("Commit the %d staged file(s)", c.Staged)
+	if all {
+		title = fmt.Sprintf("Commit every change (%d changed, %d new)", c.Changed, c.New)
+	}
+	t.form = &form{title: title, fields: []field{{label: "Message", hint: "what the change does"}},
+		submit: func(v []string) error {
+			r, err := t.app.Workspace.Commit(gd, v[0], all)
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			as := ""
+			if r.Account != "" {
+				as = " as " + r.Account
+			}
+			t.say(nil, "Committed "+r.Short+" "+history.CleanText(r.Subject)+as+"."+undoHint)
 			return nil
 		}}
 }
@@ -2021,7 +2052,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
+		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}

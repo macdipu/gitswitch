@@ -95,6 +95,7 @@ func TestUndoEachAction(t *testing.T) {
 		{undo.CherryPick, "b", "main", "keep a"},
 		{undo.FixAuthor, "b", "main", "keep a"},
 		{undo.Rollback, "b", "main", "mixed a"},
+		{undo.Commit, "b", "main", "mixed a"},
 		{undo.Switch, "c", "feat", "switch main"},
 	} {
 		s, st, g := newService()

@@ -70,6 +70,8 @@ History and branches
                                     commits not pushed yet, and take them off the current branch
   gitswitch branch prune [-y]       delete the local branches merged into the remote's default
                                     branch (never the current one, main or master); asks first
+  gitswitch commit -m <message> [--all]   commit the staged changes as the repo's account;
+                                    --all commits every change, new files too
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -87,7 +89,7 @@ History and branches
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
   gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
-  gitswitch undo [-y] [--show [--json]]   undo the last switch, new branch, move, prune,
+  gitswitch undo [-y] [--show [--json]]   undo the last commit, switch, new branch, move, prune,
                                     revert, drop, rollback, cherry-pick or fix-author (--show: only say what it would do)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
@@ -248,6 +250,8 @@ func (x *CLI) dispatch(args []string) error {
 			return x.cmdBranchPrune(rest[1:])
 		}
 		return x.cmdBranch(hasFlag(rest, "--json"))
+	case "commit":
+		return x.cmdCommit(rest)
 	case "switch":
 		return x.cmdSwitch(rest)
 	case "update", "pull":

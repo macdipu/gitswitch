@@ -78,7 +78,7 @@ func TestEffect(t *testing.T) {
 	for a, want := range map[Action]string{
 		Switch: "Switches back to main", Rollback: "Your files are not changed", Revert: "Removes the new commit",
 		CherryPick: "Removes the new commit", Drop: "back exactly as it was", FixAuthor: "back exactly as it was",
-		Move: "Puts the commits back on main", Prune: "Brings back the deleted branches",
+		Move: "Puts the commits back on main", Prune: "Brings back the deleted branches", Commit: "Takes the commit off main",
 	} {
 		r := Record{Action: a, Branch: "main"}
 		if got := r.Effect(); !strings.Contains(got, want) {

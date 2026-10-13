@@ -511,3 +511,18 @@ func TestPrune(t *testing.T) {
 		t.Fatalf("undo = %d %v", w.Code, m)
 	}
 }
+
+// A commit from the page: the staged file, or every change with all.
+func TestCommit(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	write("mine\n")
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"x"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "nothing is staged") {
+		t.Fatalf("nothing staged = %d %v", w.Code, m)
+	}
+	w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"Mine","all":true}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["subject"] != "Mine" || d["all"] != true || git("status", "--porcelain") != "" {
+		t.Fatalf("commit all = %d %v", w.Code, m)
+	}
+}
