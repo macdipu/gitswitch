@@ -23,9 +23,52 @@ type Head struct {
 	Ahead  int    `json:"ahead"`  // commits not pushed to the upstream
 	Behind int    `json:"behind"` // commits on the upstream not pulled yet
 	Busy   string `json:"busy"`   // an operation git is in the middle of, e.g. "rebase"
+	// Changes counts what is not committed yet in the working folder.
+	Changes Changes `json:"changes"`
 }
 
-// Describe is a one-line summary, e.g. "main → origin/main, 2 to push · HEAD 1a2b3c4 Fix login".
+// Changes counts the files with uncommitted changes. A file changed again
+// after it was staged counts as both staged and changed.
+type Changes struct {
+	Staged    int `json:"staged"`    // changes added to the next commit
+	Changed   int `json:"changed"`   // tracked files changed but not staged
+	New       int `json:"new"`       // files git does not track yet
+	Conflicts int `json:"conflicts"` // files with unresolved conflicts
+}
+
+// Any reports whether there is anything not committed.
+func (c Changes) Any() bool { return c.Staged+c.Changed+c.New+c.Conflicts > 0 }
+
+// Describe is e.g. "uncommitted: 1 conflict, 2 staged, 3 changed, 1 new";
+// "" when there is nothing to commit.
+func (c Changes) Describe() string {
+	if !c.Any() {
+		return ""
+	}
+	var parts []string
+	if c.Conflicts > 0 {
+		parts = append(parts, plural(c.Conflicts, "conflict"))
+	}
+	for _, p := range []struct {
+		n    int
+		what string
+	}{{c.Staged, "staged"}, {c.Changed, "changed"}, {c.New, "new"}} {
+		if p.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.what))
+		}
+	}
+	return "uncommitted: " + strings.Join(parts, ", ")
+}
+
+func plural(n int, what string) string {
+	if n == 1 {
+		return "1 " + what
+	}
+	return fmt.Sprintf("%d %ss", n, what)
+}
+
+// Describe is a one-line summary, e.g. "main → origin/main, 2 to push ·
+// HEAD 1a2b3c4 Fix login · uncommitted: 3 changed".
 func (h Head) Describe() string {
 	var b strings.Builder
 	switch {
@@ -58,6 +101,9 @@ func (h Head) Describe() string {
 		b.WriteString(" · HEAD " + h.Short + " " + h.Subject)
 	} else {
 		b.WriteString(" · no commits yet")
+	}
+	if c := h.Changes.Describe(); c != "" {
+		b.WriteString(" · " + c)
 	}
 	if h.Busy != "" {
 		b.WriteString(" · " + h.Busy + " in progress")
@@ -101,7 +147,7 @@ func Find(branches []Branch, name string) *Branch {
 
 // Refs reads and moves branches with git.
 type Refs interface {
-	// Head reads where the repo is.
+	// Head reads where the repo is, its uncommitted changes included.
 	Head(gitDir string) (Head, error)
 	// Branches lists local branches, then remote ones.
 	Branches(gitDir string) ([]Branch, error)

@@ -16,7 +16,7 @@ type Git struct {
 }
 
 func (g *Git) Head(gitDir string) (refs.Head, error) {
-	h := refs.Head{Busy: gitinfra.InProgress(gitDir)}
+	h := refs.Head{Busy: gitinfra.InProgress(gitDir), Changes: g.changes(gitDir)}
 	// The branch name works in a repo without commits too.
 	if b, err := g.Git.Run("--git-dir="+gitDir, "symbolic-ref", "-q", "--short", "HEAD"); err == nil {
 		h.Branch = b
@@ -47,6 +47,57 @@ func (g *Git) Head(gitDir string) (refs.Head, error) {
 		h.Gone = g.goneUpstream(gitDir, h.Branch)
 	}
 	return h, nil
+}
+
+// changes counts the uncommitted changes in the repo's working folder. A
+// repo without one (bare) has none. --no-optional-locks: only reading, so
+// git must not take the index lock an editor or IDE may be using.
+func (g *Git) changes(gitDir string) refs.Changes {
+	wt := g.Git.WorktreeOf(gitDir)
+	if wt == gitDir { // bare: git would list the git dir itself as new files
+		return refs.Changes{}
+	}
+	out, err := g.Git.Run("--no-optional-locks", "-C", wt, "--git-dir="+gitDir, "--work-tree="+wt,
+		"status", "--porcelain=v2", "-z", "--untracked-files=normal")
+	if err != nil {
+		return refs.Changes{}
+	}
+	return parseStatus(out)
+}
+
+// parseStatus counts the entries of `git status --porcelain=v2 -z`:
+// "1 XY …" changed, "2 XY … path\0orig" renamed or copied, "u XY …"
+// unmerged, "? path" untracked. X is the staged state, Y the working
+// folder's; "." means unchanged.
+func parseStatus(out string) refs.Changes {
+	var c refs.Changes
+	fields := strings.Split(out, "\x00")
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		if len(f) < 2 {
+			continue
+		}
+		switch f[0] {
+		case '1', '2':
+			if f[0] == '2' {
+				i++ // the original path follows as its own field
+			}
+			if len(f) < 4 {
+				continue
+			}
+			if f[2] != '.' {
+				c.Staged++
+			}
+			if f[3] != '.' {
+				c.Changed++
+			}
+		case 'u':
+			c.Conflicts++
+		case '?':
+			c.New++
+		}
+	}
+	return c
 }
 
 // goneUpstream is the remote branch a branch is set to pull from when git

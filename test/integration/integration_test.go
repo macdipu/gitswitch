@@ -1103,6 +1103,48 @@ func TestUpdateExplainsAMissingRemoteBranch(t *testing.T) {
 	e.gsErr(api, "has no copy of that remote branch", "update")
 }
 
+// The branch line counts uncommitted changes: staged, changed and new
+// files, in a linked worktree too.
+func TestBranchShowsUncommittedChanges(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "a")
+	e.commitFile(api, "b.txt", "b\n", "b")
+	if out := e.gsIn(api, "branch"); strings.Contains(out, "uncommitted") {
+		t.Fatalf("clean repo:\n%s", out)
+	}
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("a2\n"), 0o644))
+	e.gitIn(api, "add", "a.txt")
+	must(t, os.WriteFile(filepath.Join(api, "b.txt"), []byte("b2\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "new 1.txt"), []byte("n\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "new2.txt"), []byte("n\n"), 0o644))
+	const want = "uncommitted: 1 staged, 1 changed, 2 new"
+	if out := e.gsIn(api, "branch"); !strings.Contains(out, want) {
+		t.Fatalf("branch:\n%s", out)
+	}
+	if out := e.gsIn(api, "status"); !strings.Contains(out, want) {
+		t.Fatalf("status:\n%s", out)
+	}
+	var st struct {
+		Head struct {
+			Changes struct{ Staged, Changed, New, Conflicts int }
+		}
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "status", "--json")), &st))
+	if c := st.Head.Changes; c.Staged != 1 || c.Changed != 1 || c.New != 2 || c.Conflicts != 0 {
+		t.Fatalf("status --json changes: %+v", c)
+	}
+
+	wt := filepath.Join(e.root, "api-wt")
+	e.gitIn(api, "worktree", "add", "-q", "-b", "side", wt)
+	must(t, os.WriteFile(filepath.Join(wt, "w.txt"), []byte("w\n"), 0o644))
+	if out := e.gsIn(wt, "branch"); !strings.Contains(out, "side (not on a remote)") || !strings.Contains(out, "uncommitted: 1 new") {
+		t.Fatalf("worktree branch:\n%s", out)
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {

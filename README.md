@@ -251,7 +251,7 @@ gitswitch log -n 200                                  # more than the latest 40 
 Work with branches and commits, always with the repo's account:
 
 ```sh
-gitswitch branch                     # current branch, HEAD, what to push and pull, all branches
+gitswitch branch                     # current branch, HEAD, what to push and pull, uncommitted files, all branches
 gitswitch switch origin/feature-x    # a remote branch becomes a local branch that tracks it
 gitswitch update                     # pull, fast-forward only; never a surprise merge commit
 gitswitch revert 1a2b3c4             # a new commit that undoes one (safe after pushing)

@@ -111,6 +111,7 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .branch-btn span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sync{font-size:13px;color:var(--muted);white-space:nowrap}
 .sync b{color:var(--ink);font-weight:600}
+.sync b.bad{color:var(--bad)}
 .pop-wrap{position:relative}
 .popover{position:absolute;top:calc(100% + 6px);left:0;z-index:5;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .14);padding:10px;width:320px;max-width:calc(100vw - 32px)}
 .popover input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin-bottom:8px}
@@ -972,7 +973,12 @@ function renderToolbar(){
     sync = parts.length ? parts.join(' · ') : 'Up to date with ' + esc(h.upstream);
   } else if (h && h.gone) sync = esc(h.gone) + ' is missing from this clone';
   else if (h && h.branch) sync = 'Not on a remote yet';
+  const c = h?.changes || {};
+  const work = [c.conflicts && `<b class="bad">${c.conflicts}</b> ${c.conflicts > 1 ? 'conflicts' : 'conflict'}`,
+    c.staged && `<b>${c.staged}</b> staged`, c.changed && `<b>${c.changed}</b> changed`, c.new && `<b>${c.new}</b> new`].filter(Boolean);
+  if (work.length) sync = 'Uncommitted: ' + work.join(', ') + (sync ? ' · ' + sync : '');
   $('#syncState').innerHTML = sync;
+  $('#syncState').title = work.length ? 'Files not committed yet. Staged: added to the next commit. Changed: edited but not staged. New: not tracked by git yet.' : '';
   const canUpdate = !!(h && h.branch && h.upstream);
   ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)'
     : h?.gone ? h.gone + ' was deleted on the server, or this is a single-branch clone; fetch it or push the branch again'

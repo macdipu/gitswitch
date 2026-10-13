@@ -171,7 +171,7 @@ renamed or deleted branch are still listed.
 
 | # | Feature | Status | How |
 | --- | --- | --- | --- |
-| B1 | **Status line**: changed, new and staged files, to push, to pull, parked, open clash | planned | `git status --porcelain=v2` in `refs`. Desktop toolbar, terminal app header, `gitswitch status [--json]`. The others build on it. |
+| B1 | **Status line**: changed, new and staged files, to push, to pull, parked, open clash | partly | Uncommitted files are done: `refs.Head` reads `git status --porcelain=v2` (staged, changed, new, conflicts), shown in the desktop toolbar, the terminal app's History header, `gitswitch branch`, `log` and `status [--json]`. Parked changes and an open clash join it with B3 and B4. |
 | B2 | **Smart switch**: take uncommitted changes to the other branch | planned | `refs.Switch` with a `smart` choice. CLI `gitswitch switch <branch> --smart`, terminal app `s`. |
 | B3 | **Park**: leave changes on their branch, restore them on return | planned | Labeled stashes in `refs`. Branch menu badge, desktop "Parked changes" list, terminal app `p` / `P`, `gitswitch switch <branch> --park`, `gitswitch parked [show\|restore\|drop]`. |
 | B4 | **Resolve a clash** after Smart switch: done, go back or park instead | planned | `gitswitch resolve [--done\|--abort\|--park]`; terminal app `e`, `d`, `a`, `p`; desktop banner. |

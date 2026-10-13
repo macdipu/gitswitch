@@ -356,10 +356,14 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 	var info any
 	gd := x.app.Repos.Current()
 	if asJSON {
+		var head any
 		if gd != "" {
 			info = x.app.Repos.Info(gd)
+			if h, err := x.app.Refs.Head(gd); err == nil {
+				head = h
+			}
 		}
-		return json.NewEncoder(x.out).Encode(map[string]any{"config": c, "repo": info, "installed": x.app.Setup.Installed()})
+		return json.NewEncoder(x.out).Encode(map[string]any{"config": c, "repo": info, "head": head, "installed": x.app.Setup.Installed()})
 	}
 	x.say("Hook:    ", orNone(x.app.Setup.Hook()))
 	if c.Default == "" {
@@ -389,6 +393,9 @@ func (x *CLI) cmdStatus(asJSON bool) error {
 	}
 	r := x.app.Repos.Info(gd)
 	x.say("\nThis repo:", r.Path)
+	if h, err := x.app.Refs.Head(gd); err == nil {
+		x.say("  branch: ", history.CleanText(h.Describe()))
+	}
 	x.say("  remote: ", orNone(r.Remote))
 	if r.Reason == "asks-every-time" {
 		x.say("  account: asks on every pull and push (gitswitch use --ask)")
