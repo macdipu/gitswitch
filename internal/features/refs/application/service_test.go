@@ -24,6 +24,8 @@ type fakeRefs struct {
 	stashMsg   string
 	parked     []refs.Parked
 	modes      map[string]string // gitDir ("" for every repo) -> saved switch mode
+	createErr  error
+	prefix     string
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -71,6 +73,27 @@ func (f *fakeRefs) Parked(string) ([]refs.Parked, error) { return f.parked, nil 
 func (f *fakeRefs) ParkedPatch(_, st string) (string, error) {
 	return "diff of " + st, nil
 }
+func (f *fakeRefs) Create(_, b, c string) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	f.ran = append(f.ran, strings.TrimSpace("create "+b+" "+c))
+	return nil
+}
+func (f *fakeRefs) CheckName(b string) error {
+	if strings.ContainsAny(b, " ~^:?*[\\") || strings.Contains(b, "..") || strings.HasSuffix(b, "/") {
+		return errors.New("fatal: not a valid branch name")
+	}
+	return nil
+}
+func (f *fakeRefs) Commit(_, rev string) (string, error) {
+	if rev == "nope" {
+		return "", errors.New("exit status 1")
+	}
+	return "hash-of-" + rev, nil
+}
+func (f *fakeRefs) BranchPrefix() string            { return f.prefix }
+func (f *fakeRefs) SaveBranchPrefix(p string) error { f.prefix = p; return nil }
 func (f *fakeRefs) SwitchModes(gitDir string) (string, string) {
 	if gitDir == "" {
 		return f.modes[""], ""
@@ -376,5 +399,60 @@ func TestSwitchSetting(t *testing.T) {
 	must(s.SetSwitchSetting("/r/.git", "")) // follow every repo's again
 	if got := s.SwitchSetting("/r/.git"); got.Mode != refs.Smart || got.Repo != "" {
 		t.Errorf("repo cleared = %+v", got)
+	}
+}
+
+func TestNewBranch(t *testing.T) {
+	s, r := newService()
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	r.head.Changes = refs.Changes{Changed: 1}
+	got, err := s.NewBranch("/r/.git", " feature/login ", "")
+	if err != nil || got.Branch != "feature/login" || !got.Carried || strings.Join(r.ran, ",") != "create feature/login" ||
+		strings.Join(rec.done, "|") != "switch main: Started branch feature/login from main" {
+		t.Fatalf("from HEAD: %+v %v %v %v", got, err, r.ran, rec.done)
+	}
+
+	r.ran = nil
+	if _, err := s.NewBranch("/r/.git", "x", "v1.0"); err != nil || strings.Join(r.ran, ",") != "create x hash-of-v1.0" {
+		t.Errorf("from a tag: %v %v", err, r.ran)
+	}
+
+	for _, c := range []struct{ name, from, want string }{
+		{"", "", "can't be a branch name"},
+		{"has space", "", "can't be a branch name"},
+		{"-f", "", "can't be a branch name"},
+		{"fix", "", "already a branch fix"},
+		{"y", "nope", "no commit, branch or tag \"nope\""},
+		{"y", "--all", "not a commit"},
+	} {
+		r.ran = nil
+		if _, err := s.NewBranch("/r/.git", c.name, c.from); err == nil || !strings.Contains(err.Error(), c.want) || len(r.ran) != 0 {
+			t.Errorf("NewBranch(%q, %q) = %v %v, want %q", c.name, c.from, err, r.ran, c.want)
+		}
+	}
+	// A name that is only on the remote (origin/feature/x) is free here.
+	if _, err := s.NewBranch("/r/.git", "feature/x", ""); err != nil {
+		t.Errorf("a name only on the remote: %v", err)
+	}
+
+	r.createErr = overwrite
+	if _, err := s.NewBranch("/r/.git", "z", "v1.0"); err == nil || !strings.Contains(err.Error(), "can't come along; nothing changed") {
+		t.Errorf("changes clash: %v", err)
+	}
+}
+
+func TestBranchPrefix(t *testing.T) {
+	s, r := newService()
+	for _, bad := range []string{"has space/", "-x", "a..b"} {
+		if err := s.SetBranchPrefix(bad); err == nil || r.prefix != "" {
+			t.Errorf("SetBranchPrefix(%q) = %v", bad, err)
+		}
+	}
+	if err := s.SetBranchPrefix(" feature/ "); err != nil || s.BranchPrefix() != "feature/" {
+		t.Errorf("prefix = %q %v", s.BranchPrefix(), err)
+	}
+	if err := s.SetBranchPrefix(""); err != nil || s.BranchPrefix() != "" {
+		t.Errorf("cleared = %q %v", s.BranchPrefix(), err)
 	}
 }

@@ -117,3 +117,16 @@ func TestSwitchSetting(t *testing.T) {
 		}
 	}
 }
+
+func TestWithPrefix(t *testing.T) {
+	for _, c := range []struct{ prefix, name, want string }{
+		{"", "login", "login"},
+		{"feature/", "login", "feature/login"},
+		{"feature/", "feature/login", "feature/login"},
+		{"ana-", "fix", "ana-fix"},
+	} {
+		if got := WithPrefix(c.prefix, c.name); got != c.want {
+			t.Errorf("WithPrefix(%q, %q) = %q", c.prefix, c.name, got)
+		}
+	}
+}

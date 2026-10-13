@@ -215,7 +215,7 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 | --- | --- |
 | Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `x` remove (then `y` keeps the key files, `D` deletes them too) |
 | Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `f` add projects folder · `a` add one repo · `p` pin · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
-| History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
+| History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check · `r` runs the health checks again |
 
@@ -253,6 +253,8 @@ Work with branches and commits, always with the repo's account:
 ```sh
 gitswitch branch                     # current branch, HEAD, what to push and pull, uncommitted files, all branches
 gitswitch switch origin/feature-x    # a remote branch becomes a local branch that tracks it
+gitswitch branch new login           # start a branch here and switch to it, uncommitted changes and all
+gitswitch branch new hotfix --from v1.2   # ...or at any commit, branch or tag
 gitswitch switch main --smart        # take your uncommitted changes along (asked in a terminal)
 gitswitch switch main --park         # leave them on this branch until you come back
 gitswitch parked                     # parked changes, newest first; parked restore|show|drop [<n>]
@@ -268,6 +270,8 @@ gitswitch undo                       # undo the last switch, revert, drop, rollb
 ```
 
 **Switching with uncommitted changes.** When you switch with uncommitted changes, GitSwitch first asks what to do with them: take them along (smart switch, preselected for a new branch) or park them (preselected for a branch with its own work). Use `--smart` or `--park` to skip the question. To stop being asked, save a choice: `gitswitch set switch-changes smart` (or `park`, or `ask` again) for every repo, or add `--repo` for the current repo only, whose choice comes first; `gitswitch set switch-changes global --repo` removes it. The question can save it too: tick **Remember my choice for this repo** in the desktop app, press `S` or `P` in the terminal app, or answer `s!` or `p!` in a terminal. The apps' Settings pages have the choice for every repo, and `gitswitch status` shows the one in effect. Without a terminal, a flag or a saved choice, a switch with uncommitted changes stops and says how to choose, so a script never guesses. Smart switch just switches when git can keep your changes. When git refuses because they would be overwritten, GitSwitch sets them aside, switches and puts them back, staged files staged. If some files clash with the new branch, you stay on it: those files have conflict markers to fix in your editor or IDE, and your original changes are kept safe until you finish. Then run `gitswitch resolve --done`, which refuses while markers remain. Or run `gitswitch resolve --abort` to go back to the old branch with your changes exactly as before. Or run `gitswitch resolve --park` to park them instead (as they were before the switch) and stay on the new branch without them. Other GitSwitch actions wait until you choose. The desktop app shows the choices above the commits, and the terminal app uses `R`.
+
+**New branch.** `gitswitch branch new <name>` starts a branch at the current commit and switches to it. Your uncommitted changes come along as they are, staged files staged, with no stash involved. With `--from <commit>` (or a branch or tag) it starts there instead. If your changes touch files that are different at that commit, git can't bring them along, so nothing changes; commit or park them first. It also works from a detached HEAD, to keep commits made there. With a prefix set (`gitswitch set branch-prefix feature/`), `branch new login` makes `feature/login`; `--no-prefix` skips it, and `gitswitch set branch-prefix ""` removes it. The desktop app has "New branch…" in the branch menu and "New branch here" on a commit, both with the prefix already typed; the terminal app uses `n` and `N`. Undo switches back to the branch you were on and keeps the new branch.
 
 **Park.** Parking leaves your uncommitted changes on their branch, new files included, and switches clean. When you come back to that branch, GitSwitch offers them back: restore them, look first, or not now. Parked changes are ordinary stashes named `gitswitch park: <branch>`, so `git stash list`, IntelliJ and VS Code show them too. `gitswitch parked` lists them, newest first, with the branch, when and which files; `gitswitch parked restore`, `show` and `drop` take the number from that list, or else the newest parked on the current branch. Restoring puts staged files back staged, and needs no uncommitted changes, so that a clash can't leave a half-restored mix: if the changes clash with the branch, nothing changes and they stay parked. Parking twice keeps both. Parked changes are never deleted automatically, and those of a renamed or deleted branch are still listed. The desktop app lists them above the commits and badges the branches that have some; the terminal app uses `P`, and the status line says how many are parked on the current branch.
 
@@ -327,7 +331,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo`, `browse` |
 | Branches | `branch`, `switch`, `update` |
 | Diagnostics | `doctor [--fix]` |
-| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>`, `set switch-changes ask\|smart\|park [--repo]` |
+| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>`, `set switch-changes ask\|smart\|park [--repo]`, `set branch-prefix <prefix>` |
 | Shell | `completions bash\|zsh\|fish\|powershell` |
 
 ### Shell completions

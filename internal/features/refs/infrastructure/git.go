@@ -154,6 +154,39 @@ func (g *Git) Track(wt, local, remoteBranch string) error {
 	return g.Git.Change(wt, "switch", "--no-guess", "--create", local, "--track", remoteBranch)
 }
 
+func (g *Git) Create(wt, branch, commit string) error {
+	args := []string{"switch", "--no-guess", "--create", branch}
+	if commit != "" {
+		args = append(args, commit)
+	}
+	return g.Git.Change(wt, args...)
+}
+
+func (g *Git) CheckName(branch string) error {
+	_, err := g.Git.Run("check-ref-format", "--branch", branch)
+	return err
+}
+
+func (g *Git) Commit(gitDir, rev string) (string, error) {
+	return g.Git.Run("--git-dir="+gitDir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+}
+
+// prefixKey holds the prefix of new branch names, in the global config.
+const prefixKey = "gitswitch.branchPrefix"
+
+func (g *Git) BranchPrefix() string { return g.Git.GlobalGet(prefixKey) }
+
+func (g *Git) SaveBranchPrefix(prefix string) error {
+	if prefix != "" {
+		_, err := g.Git.Global(prefixKey, prefix)
+		return err
+	}
+	if _, err := g.Git.Global("--unset", prefixKey); gitinfra.ExitCode(err) != 5 { // 5: was not set
+		return err
+	}
+	return nil
+}
+
 func (g *Git) Pull(wt string, progress func(string)) error {
 	return g.Git.Stream(wt, progress, "pull", "--ff-only", "--progress")
 }

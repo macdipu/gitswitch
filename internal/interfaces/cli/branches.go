@@ -385,6 +385,56 @@ func (x *CLI) cmdResolve(args []string) error {
 	return nil
 }
 
+// cmdBranchNew starts a branch at HEAD (or --from) and switches to it,
+// with the branch-prefix setting in front of the name (--no-prefix: not).
+func (x *CLI) cmdBranchNew(args []string) error {
+	const usage = "gitswitch branch new <name> [--from <commit>] [--no-prefix]"
+	var name, from string
+	noPrefix := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--no-prefix":
+			noPrefix = true
+		case a == "--from" && i+1 < len(args) && from == "":
+			i++
+			from = args[i]
+		case strings.HasPrefix(a, "--from=") && from == "":
+			from = strings.TrimPrefix(a, "--from=")
+		case name == "" && !strings.HasPrefix(a, "-"):
+			name = a
+		default:
+			return usageErr(usage)
+		}
+	}
+	if name == "" {
+		return usageErr(usage)
+	}
+	if !noPrefix {
+		name = refs.WithPrefix(x.app.Refs.BranchPrefix(), name)
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	r, err := x.app.Refs.NewBranch(gd, name, from)
+	if err != nil || x.app.DryRun() {
+		return err
+	}
+	at := ""
+	if from != "" {
+		at = " from " + from
+	}
+	if r.Carried {
+		x.sayf("Started branch %s%s and switched to it, with your uncommitted changes.\n", r.Branch, at)
+	} else {
+		x.sayf("Started branch %s%s and switched to it.\n", r.Branch, at)
+	}
+	x.say("  Push it when ready: git push -u origin " + r.Branch)
+	x.say(undoHint)
+	return nil
+}
+
 func (x *CLI) cmdUpdate() error {
 	gd, err := x.requireRepo()
 	if err != nil {

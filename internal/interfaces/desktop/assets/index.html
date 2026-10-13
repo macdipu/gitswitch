@@ -331,6 +331,7 @@ dialog .row-actions{justify-content:flex-end}
         <div class="popover" id="branchPop" hidden>
           <input id="branchFind" placeholder="Find a branch" aria-label="Find a branch" autocomplete="off">
           <div class="blist" id="branchList" role="listbox" aria-label="Branches"></div>
+          <button class="btn" id="newBranchBtn" type="button" style="margin:8px 4px 0">New branch…</button>
           <p class="hint" style="margin:8px 4px 0">A remote branch (origin/…) becomes a local branch that tracks it. <span id="switchNote"></span></p>
         </div>
       </div>
@@ -396,6 +397,7 @@ dialog .row-actions{justify-content:flex-end}
     <form class="card" id="setForm">
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
       <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, <span id="afterWait">then use the default account</span></label>
+      <label class="full set-row">New branch names start with <input name="branchPrefix" placeholder="e.g. feature/" style="width:12em" aria-label="New branch name prefix"> <span class="hint">(empty: no prefix)</span></label>
       <label class="full set-row">When you switch branch with uncommitted changes <select name="switchChanges">
         <option value="ask">ask each time</option><option value="smart">take them along (smart switch)</option><option value="park">park them on their branch (git stash)</option></select></label>
       <p class="hint full" style="margin:0">A repo can have its own choice: tick “Remember my choice for this repo” when GitSwitch asks, or run <span class="mono">gitswitch set switch-changes park --repo</span>.</p>
@@ -455,7 +457,8 @@ function hintHTML(h, raw, buttons){
 }
 // ask shows a modal question. With opts.input it returns the typed text (null
 // on cancel); with opts.alt (a second choice's label) 'ok', 'alt' or false,
-// opts.pick: 'alt' preselecting it; otherwise true or false. opts.check
+// opts.pick: 'alt' preselecting it; otherwise true or false. opts.atEnd puts
+// the caret after the given text instead of selecting it. opts.check
 // adds an unticked checkbox with that label; read it afterwards from
 // $('#dlgCheck').checked. (Native confirm/prompt do not work in every OS
 // webview.)
@@ -467,7 +470,8 @@ function ask(msg, opts = {}){
   alt.hidden = !opts.alt; alt.textContent = opts.alt || ''; alt.className = 'btn' + (altFirst ? ' primary' : '');
   $('#dlgCancel').textContent = opts.cancel || 'Cancel';
   $('#dlgCheckRow').hidden = !opts.check; $('#dlgCheck').checked = false; $('#dlgCheckLabel').textContent = opts.check || '';
-  d.returnValue = ''; d.showModal(); (hasInput ? inp : altFirst ? alt : ok).focus(); if (hasInput) inp.select();
+  d.returnValue = ''; d.showModal(); (hasInput ? inp : altFirst ? alt : ok).focus();
+  if (hasInput) opts.atEnd ? inp.setSelectionRange(inp.value.length, inp.value.length) : inp.select();
   return new Promise(res => d.onclose = () => {
     const v = d.returnValue;
     res(hasInput ? (v === 'ok' ? inp.value : null) : opts.alt ? (v === 'ok' || v === 'alt' ? v : false) : v === 'ok');
@@ -1113,6 +1117,19 @@ async function offerParked(gd, p){
   if (!await ask(`You parked changes on ${p.branch} ${ago(p.time)}: ${fileList(p.files)}. Restore them now?`, {ok:'Restore', cancel:'Not now'})) return;
   if (await act(() => api('POST','/api/parked',{gitDir:gd, action:'restore', stash:p.stash}).then(() => true))){ toast('Restored your changes on ' + p.branch); loadHistory(); }
 }
+// newBranch starts a branch at from (a commit; '' for the current one),
+// named with the prefix setting already typed, and switches to it.
+async function newBranch(from, where){
+  const gd = $('#histRepo').value, c = R?.head.changes || {}, carried = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
+  const name = await ask(`Start a new branch ${where} and switch to it.` + (carried ? ' Your uncommitted changes come along.' : ''),
+    {input: S.branchPrefix || '', atEnd: true, ok: 'Start branch'});
+  if (!name?.trim() || name.trim() === S.branchPrefix) return;
+  const r = await act(() => api('POST','/api/branch/new',{gitDir:gd, name:name.trim(), from}));
+  if (!r) return;
+  toast(`Started ${r.branch}` + (r.carried ? ', with your changes' : ''), false, null, undoable(gd));
+  picked.clear(); loadHistory();
+}
+$('#newBranchBtn').onclick = () => { toggleBranches(false); newBranch('', R?.head.branch ? 'from ' + R.head.branch : 'here'); };
 const fileList = f => !f?.length ? 'no files' : `${f.length} file${f.length > 1 ? 's' : ''}: ` + f.slice(0, 8).join(', ') + (f.length > 8 ? ` and ${f.length - 8} more` : '');
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
@@ -1239,6 +1256,7 @@ function renderDetails(){
     <div class="agroup"><h3>Safe</h3>
       ${actionRow('revert', 'Revert', 'Adds a new commit that undoes this one. History is kept, so it is safe after pushing.')}
       ${actionRow('pick', 'Cherry-pick', `Copies this commit from another branch onto ${branch} as a new commit.`)}
+      ${actionRow('branch', 'New branch here', 'Starts a branch at this commit and switches to it. Uncommitted changes come along when they don’t clash with it.')}
       ${actionRow('browse', 'View on web ↗', pushed ? 'Opens this commit on GitHub, GitLab, …' : 'Push it first: the server does not have it yet.', {disabled: pushed ? '' : 'Not pushed yet'})}
     </div>
     <div class="agroup"><h3>Rewrite history</h3>
@@ -1286,6 +1304,7 @@ async function commitAction(a){
   if (!c) return;
   if (a === 'copy'){ try { await navigator.clipboard.writeText(c.hash); toast('Hash copied'); } catch { await act(() => api('POST','/api/copy',{text:c.hash}), 'Hash copied'); } return; }
   if (a === 'browse'){ act(() => api('POST','/api/commit/browse',{gitDir:gd, hash:c.hash})); return; }
+  if (a === 'branch'){ newBranch(c.hash, `at ${c.short} “${c.subject}”`); return; }
   const n = cs.length, s = n > 1 ? 's' : '', name = `${c.short} “${c.subject}”`;
   const q = {
     pick: [`Cherry-pick ${n > 1 ? n + ' commits' : name} onto ${branch}${n > 1 ? ', oldest first' : ''}? Each becomes a new commit on ${branch}. If one does not apply cleanly, nothing changes.`, 'Cherry-pick'],
@@ -1345,7 +1364,7 @@ $('#rules').addEventListener('click', async e => { const i = e.target.dataset.ru
 
 // ---- settings ----
 function renderSettings(){
-  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges;
+  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix;
   $('#afterWait').textContent = !S.config.default ? 'then stop: there is no default account to fall back on' : 'then use the default account';
 }
 // The health checks start several programs, so they run only while Settings is shown.
@@ -1366,7 +1385,7 @@ async function loadChecks(){
 async function saveSettings(){
   const f = $('#setForm'), t = +f.promptTimeout.value;
   if (!f.promptTimeout.checkValidity() || !t){ f.promptTimeout.reportValidity(); return; }
-  await act(() => Promise.all([api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t}),
+  await act(() => Promise.all([api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t, branchPrefix:f.branchPrefix.value.trim()}),
     f.switchChanges.value !== S.switchChanges && api('POST','/api/switch-setting',{mode:f.switchChanges.value})]), 'Settings saved');
   refresh(); if (R) loadHistory(); // the branch menu says what switching does
 }

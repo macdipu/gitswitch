@@ -131,6 +131,15 @@ type Switched struct {
 	Waiting []Parked `json:"waiting"`
 }
 
+// WithPrefix puts the branch name prefix (e.g. "feature/") in front of a
+// new branch's name, unless it is already there.
+func WithPrefix(prefix, name string) string {
+	if prefix == "" || strings.HasPrefix(name, prefix) {
+		return name
+	}
+	return prefix + name
+}
+
 // SwitchMode is what switching branch does with uncommitted changes.
 type SwitchMode string
 
@@ -331,6 +340,17 @@ type Refs interface {
 	Switch(worktree, branch string) error
 	// Track creates a local branch from a remote one and checks it out.
 	Track(worktree, local, remoteBranch string) error
+	// Create starts a branch at a commit ("" for HEAD) and checks it out,
+	// keeping the uncommitted changes.
+	Create(worktree, branch, commit string) error
+	// CheckName refuses what git does not accept as a branch name.
+	CheckName(branch string) error
+	// Commit resolves a commit, branch or tag to its commit hash.
+	Commit(gitDir, rev string) (string, error)
+	// BranchPrefix and SaveBranchPrefix keep the prefix of new branch
+	// names, for every repo ("" for none).
+	BranchPrefix() string
+	SaveBranchPrefix(prefix string) error
 	// Pull fast-forwards the current branch from its upstream, through the
 	// repo's account. Each progress line goes to progress.
 	Pull(worktree string, progress func(string)) error

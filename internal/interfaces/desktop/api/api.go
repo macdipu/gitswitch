@@ -258,6 +258,11 @@ func (s *server) routes() map[string]handler {
 			}
 			return r, err
 		}),
+		// name is the whole name (the page puts the prefix in front); from
+		// is a commit, or "" for the current one.
+		"POST /api/branch/new": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.NewBranch(gd, str(b, "name"), str(b, "from"))
+		}),
 		// action "done" finishes a smart switch that clashed, "abort" goes
 		// back, "park" goes back and parks the changes instead.
 		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {
@@ -359,6 +364,7 @@ func (s *server) state(r *http.Request) (any, error) {
 		"installed": s.app.Setup.Installed(),
 		// what switching does with uncommitted changes in every repo
 		"switchChanges": s.app.Refs.SwitchSetting("").Global,
+		"branchPrefix":  s.app.Refs.BranchPrefix(),
 		"home":          filesystem.HomeDir(),
 	}, nil
 }
@@ -430,6 +436,11 @@ func (s *server) settings(r *http.Request) (any, error) {
 	}
 	if v, ok := b["promptTimeout"].(float64); ok && v >= 5 {
 		if err := s.app.Accounts.SetSetting("promptTimeout", fmt.Sprint(int(v))); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["branchPrefix"].(string); ok && v != s.app.Refs.BranchPrefix() {
+		if err := s.app.Refs.SetBranchPrefix(v); err != nil {
 			return nil, err
 		}
 	}

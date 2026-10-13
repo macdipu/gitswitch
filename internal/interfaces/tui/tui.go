@@ -666,6 +666,7 @@ History
   U undo the last switch, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
+  n new branch here   N new branch at the selected commit (uncommitted changes come along)
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1213,6 +1214,14 @@ func (t *tui) keyHistory(k string) {
 		t.resolve()
 	case "P":
 		t.pickParked()
+	case "n":
+		t.newBranch("")
+	case "N":
+		if h := t.selectedCommit(); h != "" {
+			t.newBranch(h)
+		} else {
+			t.say(fmt.Errorf("select a commit line first (↑↓)"), "")
+		}
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1355,6 +1364,37 @@ func (t *tui) pickBranch() {
 		t.offerParked(gd, w)
 		return nil
 	}}
+}
+
+// newBranch asks for a name, the prefix setting already typed, then starts
+// the branch at from (a commit; "" for the current one) and switches to it.
+func (t *tui) newBranch(from string) {
+	if t.histDir == "" {
+		return
+	}
+	gd, where := t.histDir, "here"
+	if from != "" {
+		where = "at " + from[:min(7, len(from))]
+	}
+	prefix := t.app.Refs.BranchPrefix()
+	t.form = &form{title: "New branch " + where, fields: []field{{label: "Name", value: prefix, hint: "uncommitted changes come along"}},
+		submit: func(v []string) error {
+			name := strings.TrimSpace(v[0])
+			if name == "" || name == prefix {
+				return fmt.Errorf("type a name for the branch")
+			}
+			r, err := t.app.Refs.NewBranch(gd, name, from)
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			with := ""
+			if r.Carried {
+				with = ", with your changes"
+			}
+			t.say(nil, "Started branch "+r.Branch+with+"."+undoHint)
+			return nil
+		}}
 }
 
 // park switches leaving the uncommitted changes parked on their branch.
@@ -1671,6 +1711,13 @@ func (t *tui) keySettings(k string) {
 				}
 				return t.app.Accounts.SetSetting("promptTimeout", v[0])
 			}}
+	case i == 3:
+		t.form = &form{title: "New branch names", fields: []field{{label: "Start with", value: t.app.Refs.BranchPrefix(), hint: "e.g. feature/; empty for none"}},
+			submit: func(v []string) error {
+				err := t.app.Refs.SetBranchPrefix(v[0])
+				t.say(err, "Saved.")
+				return nil
+			}}
 	case i == 2:
 		next := map[refs.SwitchMode]string{refs.Ask: "smart", refs.Smart: "park", refs.Park: "ask"}[t.app.Refs.SwitchSetting("").Global]
 		t.say(t.app.Refs.SetSwitchSetting("", next), "Saved.")
@@ -1977,7 +2024,7 @@ func (t *tui) drawRules() ([]string, int) {
 
 // settingRows is how many settings come before the health checks on the
 // Settings page.
-const settingRows = 3
+const settingRows = 4
 
 func (t *tui) drawSettings() ([]string, int) {
 	s := t.sel[tabSettings]
@@ -1987,6 +2034,7 @@ func (t *tui) drawSettings() ([]string, int) {
 		fmt.Sprintf("%sSeconds to wait for an answer: %d %s%s", mark(s == 1), t.cfg.PromptTimeout, map[bool]string{true: "(then git does not connect: no default account)", false: "(then the default account, " + t.cfg.Default + ")"}[t.cfg.Default == ""], cReset),
 		fmt.Sprintf("%sSwitching branch with uncommitted changes, in every repo: %s%s %s(Enter: ask → smart switch → park; a repo's own choice comes first)%s", mark(s == 2), cBold,
 			map[refs.SwitchMode]string{refs.Ask: "ask each time", refs.Smart: "take them along (smart switch)", refs.Park: "park them on their branch"}[t.app.Refs.SwitchSetting("").Global], cReset+cDim, cReset),
+		fmt.Sprintf("%sNew branch names start with: %s%s", mark(s == 3), map[bool]string{true: cDim + "nothing (Enter to set, e.g. feature/)", false: cBold + t.app.Refs.BranchPrefix()}[t.app.Refs.BranchPrefix() == ""], cReset),
 	}
 	for i, c := range t.checks {
 		st := cGreen + "ok " + cReset

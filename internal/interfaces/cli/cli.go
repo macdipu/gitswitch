@@ -63,6 +63,9 @@ History and branches
                                     only matching commits (author name or email, message, dates
                                     like 2024-05-01 or "2 weeks ago", gitswitch account)
   gitswitch branch [--json]         current branch, HEAD and the branch list
+  gitswitch branch new <name> [--from <commit>] [--no-prefix]   start a branch here (or at a
+                                    commit, branch or tag) and switch to it, bringing uncommitted
+                                    changes; the branch-prefix setting goes in front of the name
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -87,6 +90,7 @@ Settings
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
   gitswitch set editor <command>    editor for repo open --editor (e.g. code)
+  gitswitch set branch-prefix <prefix>   put e.g. feature/ in front of new branch names ("" for none)
   gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
                                     uncommitted changes, in every repo or this one (default: ask;
                                     "global --repo": this repo follows every repo's again)
@@ -230,6 +234,9 @@ func (x *CLI) dispatch(args []string) error {
 	case "fix-author":
 		return x.cmdFixAuthor()
 	case "branch", "branches":
+		if len(rest) > 0 && rest[0] == "new" {
+			return x.cmdBranchNew(rest[1:])
+		}
 		return x.cmdBranch(hasFlag(rest, "--json"))
 	case "switch":
 		return x.cmdSwitch(rest)

@@ -44,8 +44,8 @@ internal/
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/
       domain/                 Head (branch, HEAD, upstream, ahead/behind, uncommitted files, parked count), Branch, Switched, Clash, Parked, SwitchSetting; port Refs
-      application/            show where a repo is, list branches, switch, smart switch, park and resolve; restore, show and drop parked changes; the switch-changes setting; update (pull --ff-only)
-      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; gitswitch.switchChanges (global and per repo); an open clash in GITSWITCH_SWITCH
+      application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
+      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history and refs use cases (Before, Done); Last, Undo

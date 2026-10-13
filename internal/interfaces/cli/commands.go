@@ -12,6 +12,7 @@ import (
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
@@ -512,7 +513,18 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.setSwitchChanges(args[1:])
 	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | switch-changes ask|smart|park [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | switch-changes ask|smart|park [--repo]")
+	}
+	if args[0] == "branch-prefix" {
+		if err := x.app.Refs.SetBranchPrefix(args[1]); err != nil || x.app.DryRun() {
+			return err
+		}
+		if p := x.app.Refs.BranchPrefix(); p != "" {
+			x.sayf("New branch names start with %s (gitswitch branch new login → %s).\n", p, refs.WithPrefix(p, "login"))
+		} else {
+			x.say("New branch names get no prefix.")
+		}
+		return nil
 	}
 	switch args[0] {
 	case "gui-prompt":

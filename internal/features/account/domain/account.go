@@ -19,6 +19,8 @@
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch.switchChanges      ask | smart | park: what switching branch does with
 //	                             uncommitted changes (kept by the refs feature)
+//	gitswitch.branchPrefix       optional: put in front of new branch names, e.g. feature/
+//	                             (kept by the refs feature)
 //	gitswitch-account.<id>.host|name|email|key|user
 //
 // Per repo (.git/config):

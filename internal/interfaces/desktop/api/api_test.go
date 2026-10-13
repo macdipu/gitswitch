@@ -371,3 +371,34 @@ func TestSwitchSetting(t *testing.T) {
 		t.Fatalf("state switchChanges = %v", d["switchChanges"])
 	}
 }
+
+// A new branch starts at HEAD or a commit and brings uncommitted changes;
+// the name prefix is a setting the page puts in front.
+func TestNewBranch(t *testing.T) {
+	dir, git, write := testRepo(t)
+	write("mine\n")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	if w, m := call(t, h, "POST", "/api/settings", `{"branchPrefix":"has space"}`); w.Code != 400 {
+		t.Fatalf("bad prefix = %d %v", w.Code, m)
+	}
+	call(t, h, "POST", "/api/settings", `{"branchPrefix":"feature/"}`)
+	if _, m := call(t, h, "GET", "/api/state", ""); fmt.Sprint(m["data"].(map[string]any)["branchPrefix"]) != "feature/" {
+		t.Fatalf("state branchPrefix = %v", m)
+	}
+	w, m := call(t, h, "POST", "/api/branch/new", `{`+gd+`,"name":"feature/login"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["branch"] != "feature/login" || d["carried"] != true {
+		t.Fatalf("new branch = %d %v", w.Code, m)
+	}
+	if git("branch", "--show-current") != "feature/login" || git("status", "--porcelain") != "M f.txt" {
+		t.Fatalf("on %s, %q", git("branch", "--show-current"), git("status", "--porcelain"))
+	}
+	// side changes f.txt too, so the changes can't come along there.
+	if w, m := call(t, h, "POST", "/api/branch/new", `{`+gd+`,"name":"from-side","from":"side"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "nothing changed") {
+		t.Fatalf("clash = %d %v", w.Code, m)
+	}
+	git("checkout", "--", "f.txt")
+	if w, m := call(t, h, "POST", "/api/branch/new", `{`+gd+`,"name":"from-side","from":"side"}`); w.Code != 200 || git("rev-parse", "HEAD") != git("rev-parse", "side") {
+		t.Fatalf("from side = %d %v", w.Code, m)
+	}
+}

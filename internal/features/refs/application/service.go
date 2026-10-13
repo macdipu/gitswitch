@@ -101,6 +101,72 @@ func (s *Service) SmartSwitch(gitDir, name string) (refs.Switched, error) {
 	return r, s.Refs.SaveClash(gitDir, *r.Clash)
 }
 
+// NewBranch starts a branch at from (a commit, branch or tag; "" for the
+// current commit) and switches to it. Uncommitted changes come along: git
+// keeps them, without a stash, when the branch starts at the current
+// commit, or when they touch no file that is different at from. Otherwise
+// it refuses and nothing changes.
+func (s *Service) NewBranch(gitDir, name, from string) (refs.Switched, error) {
+	name, from = strings.TrimSpace(name), strings.TrimSpace(from)
+	h, err := s.ready(gitDir)
+	r := refs.Switched{Branch: name, Carried: h.Changes.Any()}
+	if err != nil {
+		return r, err
+	}
+	if name == "" || strings.HasPrefix(name, "-") || s.Refs.CheckName(name) != nil {
+		return r, fmt.Errorf("%q can't be a branch name: use letters, digits, - _ . and /, with no spaces, no .. and no ~ ^ : ? * [ or \\", name)
+	}
+	all, err := s.Refs.Branches(gitDir)
+	if err != nil {
+		return r, err
+	}
+	if b := refs.Find(all, name); b != nil && !b.Remote {
+		return r, fmt.Errorf("there is already a branch %s; switch to it, or choose another name", name)
+	}
+	at, commit := "the current commit", ""
+	if h.Branch != "" {
+		at = h.Branch
+	}
+	if from != "" {
+		if strings.HasPrefix(from, "-") {
+			return r, fmt.Errorf("not a commit: %q", from)
+		}
+		if commit, err = s.Refs.Commit(gitDir, from); err != nil {
+			return r, fmt.Errorf("no commit, branch or tag %q to start the branch from", from)
+		}
+		at = from
+	}
+	wt := s.Locator.WorktreeOf(gitDir)
+	if s.FS.Dry(fmt.Sprintf("start branch %s from %s in %s and switch to it", name, at, wt)) {
+		return r, nil
+	}
+	m := s.before(gitDir)
+	if err := s.Refs.Create(wt, name, commit); err != nil {
+		if refs.WouldOverwrite(err) {
+			return r, fmt.Errorf("your uncommitted changes touch files that are different at %s, so they can't come along; nothing changed. Start the branch from the current commit, or commit or park the changes first", from)
+		}
+		return r, err
+	}
+	s.done(gitDir, m, switchPlan{head: h, local: name}, "Started branch "+name+" from "+at)
+	return r, nil
+}
+
+// BranchPrefix is the prefix of new branch names, e.g. "feature/"; "" for
+// none.
+func (s *Service) BranchPrefix() string { return s.Refs.BranchPrefix() }
+
+// SetBranchPrefix saves the prefix of new branch names ("" for none).
+func (s *Service) SetBranchPrefix(prefix string) error {
+	prefix = strings.TrimSpace(prefix)
+	if prefix != "" && (strings.HasPrefix(prefix, "-") || s.Refs.CheckName(prefix+"x") != nil) {
+		return fmt.Errorf("%q can't start a branch name: use letters, digits, - _ . and /, with no spaces", prefix)
+	}
+	if s.FS.Dry(fmt.Sprintf("new branch names start with %q", prefix)) {
+		return nil
+	}
+	return s.Refs.SaveBranchPrefix(prefix)
+}
+
 // Park is Switch that leaves the uncommitted changes on the branch they
 // were made on: they are stashed with a message naming the branch, and the
 // new branch is checked out clean. If the switch fails, they are put back.

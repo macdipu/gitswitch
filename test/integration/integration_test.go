@@ -1517,6 +1517,67 @@ func TestSwitchSetting(t *testing.T) {
 	e.gsIn(api, "set", "switch-changes", "global", "--repo") // already gone: fine
 }
 
+// A new branch starts at HEAD or any commit and brings uncommitted
+// changes, with real git; the prefix setting goes in front of its name.
+func TestNewBranch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(file, text string) {
+		t.Helper()
+		must(t, os.WriteFile(filepath.Join(api, file), []byte(text), 0o644))
+	}
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	on := func() string { return e.gitIn(api, "branch", "--show-current") }
+	first := e.commitFile(api, "f.txt", "1\n", "first")
+	e.commitFile(api, "f.txt", "2\n", "second")
+
+	// 1. From HEAD, with the prefix: staged, changed and new files come along.
+	e.gs("set", "branch-prefix", "feature/")
+	write("f.txt", "3\n")
+	e.gitIn(api, "add", "f.txt")
+	write("g.txt", "g\n")
+	before := status()
+	out := e.gsIn(api, "branch", "new", "login")
+	if on() != "feature/login" || status() != before || !strings.Contains(out, "with your uncommitted changes") {
+		t.Fatalf("new from HEAD: on %s, status %q\n%s", on(), status(), out)
+	}
+	e.gsErr(api, "already a branch feature/login", "branch", "new", "feature/login")
+	e.gsErr(api, "can't be a branch name", "branch", "new", "has space", "--no-prefix")
+	e.gsErr(api, "no commit, branch or tag", "branch", "new", "x", "--from", "nope")
+
+	// 2. From an older commit: the changes touch f.txt, which is different
+	// there, so nothing changes.
+	e.gsErr(api, "nothing changed", "branch", "new", "old", "--from", first)
+	if on() != "feature/login" || status() != before {
+		t.Fatalf("refused: on %s, status %q", on(), status())
+	}
+
+	// 3. Undo switches back; the branch stays.
+	e.gsIn(api, "undo", "-y")
+	if on() != "main" || status() != before || !strings.Contains(e.gitIn(api, "branch"), "feature/login") {
+		t.Fatalf("undo: on %s, status %q", on(), status())
+	}
+
+	// 4. From a commit with a clean folder, without the prefix.
+	e.gitIn(api, "reset", "-q", "--hard")
+	must(t, os.Remove(filepath.Join(api, "g.txt")))
+	e.gsIn(api, "branch", "new", "hotfix", "--no-prefix", "--from="+first[:7])
+	if on() != "hotfix" || e.gitIn(api, "rev-parse", "HEAD") != first {
+		t.Fatalf("from a commit: on %s at %s", on(), e.gitIn(api, "rev-parse", "HEAD"))
+	}
+
+	// 5. A detached HEAD gets a branch to keep its commits on.
+	e.gitIn(api, "checkout", "-q", "--detach", "main")
+	e.gs("set", "branch-prefix", "")
+	e.gsIn(api, "branch", "new", "rescue")
+	if on() != "rescue" {
+		t.Fatalf("from a detached HEAD: on %q", on())
+	}
+	e.gsErr(api, "can't start a branch name", "set", "branch-prefix", "a b")
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
