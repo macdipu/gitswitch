@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
+	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
 
@@ -46,6 +48,9 @@ func (x *CLI) cmdBranch(asJSON bool) error {
 	return nil
 }
 
+// undoHint follows a change that can be undone.
+const undoHint = "  (undo with: gitswitch undo)"
+
 func (x *CLI) cmdSwitch(args []string) error {
 	if len(args) != 1 {
 		return usageErr("gitswitch switch <branch>")
@@ -60,6 +65,7 @@ func (x *CLI) cmdSwitch(args []string) error {
 	}
 	if !x.app.DryRun() {
 		x.say("Switched to", b)
+		x.say(undoHint)
 	}
 	return nil
 }
@@ -93,6 +99,7 @@ func (x *CLI) cmdRevert(args []string) error {
 	}
 	if !x.app.DryRun() {
 		x.say("Reverted", history.CleanText(t.Label())+". Push when ready.")
+		x.say(undoHint)
 	}
 	return nil
 }
@@ -119,6 +126,7 @@ func (x *CLI) cmdDrop(args []string) error {
 	}
 	if !x.app.DryRun() {
 		x.say("Dropped", history.CleanText(t.Label()))
+		x.say(undoHint)
 	}
 	return nil
 }
@@ -143,8 +151,79 @@ func (x *CLI) cmdRollback(args []string) error {
 	}
 	if !x.app.DryRun() {
 		x.sayf("Rolled back to %s. The changes of %d commit(s) are now uncommitted changes.\n", history.CleanText(t.Label()), n)
+		x.say(undoHint)
 	}
 	return nil
+}
+
+// cmdUndo undoes the repo's last change after saying what it does.
+// --show only says it, --json as JSON.
+func (x *CLI) cmdUndo(args []string) error {
+	var yes, show, asJSON bool
+	for _, a := range args {
+		switch a {
+		case "-y", "--yes":
+			yes = true
+		case "--show":
+			show = true
+		case "--json":
+			asJSON = true
+		default:
+			return usageErr("gitswitch undo [-y] [--show [--json]]")
+		}
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	st, err := x.app.Undo.Last(gd)
+	if show && asJSON {
+		if errors.Is(err, undo.ErrNothing) {
+			return json.NewEncoder(x.out).Encode(nil)
+		}
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(x.out).Encode(st)
+	}
+	if err != nil {
+		return err
+	}
+	x.sayf("Last change: %s (%s)\n", history.CleanText(st.Label), ago(st.Time))
+	if st.Blocked != "" {
+		return errors.New("it can't be undone: " + st.Blocked)
+	}
+	x.say("Undo:", st.Effect)
+	if show {
+		return nil
+	}
+	if !yes && !x.app.DryRun() {
+		if err := x.ask("Undo it?"); err != nil {
+			return err
+		}
+	}
+	if _, err := x.app.Undo.Undo(gd); err != nil {
+		return err
+	}
+	if !x.app.DryRun() {
+		x.say("Undone.")
+	}
+	return nil
+}
+
+// ago says how long ago a Unix time was, roughly.
+func ago(unix int64) string {
+	d := time.Since(time.Unix(unix, 0))
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	}
 }
 
 // ask confirms on the terminal; without one, -y is required.
@@ -202,6 +281,7 @@ func (x *CLI) cmdCherryPick(args []string) error {
 		for _, t := range ts {
 			x.say("Cherry-picked", history.CleanText(t.Label()))
 		}
+		x.say(undoHint)
 	}
 	return nil
 }

@@ -21,6 +21,8 @@ import (
 	"github.com/macdipu/gitswitch/internal/features/setup"
 	sshapp "github.com/macdipu/gitswitch/internal/features/ssh/application"
 	sshinfra "github.com/macdipu/gitswitch/internal/features/ssh/infrastructure"
+	undoapp "github.com/macdipu/gitswitch/internal/features/undo/application"
+	undoinfra "github.com/macdipu/gitswitch/internal/features/undo/infrastructure"
 	"github.com/macdipu/gitswitch/internal/interfaces/prompt"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
@@ -38,6 +40,7 @@ type App struct {
 	Repos    *repoapp.Service
 	History  *historyapp.Service
 	Refs     *refsapp.Service
+	Undo     *undoapp.Service
 	Setup    *setup.Installer
 	Doctor   *doctor.Doctor
 
@@ -59,13 +62,16 @@ func New(dryRun bool, out io.Writer) *App {
 	reader := &repoinfra.Reader{Git: git}
 	keys := &sshinfra.Keys{FS: fs}
 	installer := &setup.Installer{Git: git, FS: fs, Store: store, Version: Version}
+	undoGit := &undoinfra.Git{Git: git}
+	undos := &undoapp.Service{Store: undoGit, Git: undoGit, FS: fs}
 	return &App{
 		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
-		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs},
-		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Locator: git, FS: fs},
+		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
+		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos},
+		Undo:    undos,
 		Setup:   installer,
 		Doctor:  &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
 		dryRun:  dryRun,

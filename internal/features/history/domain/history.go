@@ -206,6 +206,11 @@ func isControl(r rune) bool { return r < 0x20 || r >= 0x7f && r <= 0x9f }
 // ErrNoCommits is returned for a repo that has no commits yet.
 var ErrNoCommits = errors.New("this repo has no commits yet")
 
+// ErrStashKept marks a rewrite (drop, fix-author) that was done, but whose
+// uncommitted changes could not be put back cleanly: they are kept in the
+// stash.
+var ErrStashKept = errors.New("uncommitted changes kept in the stash")
+
 // Annotate fills in each commit's account, whether it is pushed and whether
 // it used the wrong account, and the history's totals.
 func Annotate(c *account.Config, h *History, cs []Commit, unpushed map[string]bool) {

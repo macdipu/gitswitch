@@ -45,7 +45,11 @@ internal/
     refs/
       domain/                 Head (branch, HEAD, upstream, ahead/behind), Branch; port Refs
       application/            show where a repo is, list branches, switch, update (pull --ff-only)
-      infrastructure/         Git: symbolic-ref, for-each-ref, switch, pull
+      infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, pull
+    undo/
+      domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
+      application/            Recorder for the history and refs use cases (Before, Done); Last, Undo
+      infrastructure/         the record in refs/gitswitch/undo and [gitswitch "undo"]; reset --keep/--mixed, switch
     ssh/
       domain/                 ssh command line from git, key help per host, login greeting; ports KeyTool, HookRepos, Transport, Prompter
       application/            Hook (git runs it on every clone/pull/push/fetch); Keys (show, list, test, agent)
@@ -71,7 +75,8 @@ Packages are named after their layer (`domain`, `application`,
 naturally: `account.Account`, `accountapp.Service`, `accountinfra.Store`,
 `remote.Parse`, `gitinfra.Runner`, `resolve.Decide`, `repo.Info`,
 `repoapp`, `repoinfra`, `history.Commit`, `historyapp`, `historyinfra`,
-`refs.Head`, `refsapp`, `refsinfra`, `ssh.Invocation`, `sshapp`, `sshinfra`.
+`refs.Head`, `refsapp`, `refsinfra`, `ssh.Invocation`, `sshapp`, `sshinfra`,
+`undo.Record`, `undoapp`, `undoinfra`.
 
 ## Layers and what each may import
 
@@ -201,7 +206,7 @@ does not change.
 | Status, staging (files, hunks, lines), commit | A `workspace` feature: porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
 | Diff viewer, blame | A `diff` feature over git parsers. Render only the visible rows. |
 | Branches, checkout, stash, tags | The `refs` feature (branches, switch and update exist; stash and tags go there too). |
-| Merge, rebase, conflict editor, cherry-pick, undo | A `merge` feature (3-way conflict model in its domain) and an `undo` feature over the reflog. |
+| Merge, rebase, conflict editor | A `merge` feature (3-way conflict model in its domain). New changes report to the `undo` feature's Recorder, as history and refs do. |
 | Pull requests and issues | A `hosting` feature (GitHub/GitLab APIs in its infrastructure) that uses the account domain so each repo talks to its host as the right account. |
 | File watching (live refresh) | File events in `platform` + a `watch` feature that tells the front ends what changed. |
 

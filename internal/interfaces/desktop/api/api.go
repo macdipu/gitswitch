@@ -218,8 +218,17 @@ func (s *server) routes() map[string]handler {
 			if bs == nil {
 				bs = []refs.Branch{}
 			}
-			return map[string]any{"head": h, "branches": bs}, err
+			// The last change GitSwitch made here, for the Undo button.
+			var last any
+			if st, uerr := a.Undo.Last(gd); uerr == nil {
+				last = st
+			}
+			return map[string]any{"head": h, "branches": bs, "undo": last}, err
 		},
+		"POST /api/undo": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			r, err := a.Undo.Undo(gd)
+			return map[string]string{"label": r.Label}, err
+		}),
 		"POST /api/repo/switch": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			name, err := a.Refs.Switch(gd, str(b, "branch"))
 			return map[string]string{"branch": name}, err

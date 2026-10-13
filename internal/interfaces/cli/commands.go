@@ -471,6 +471,7 @@ func (x *CLI) cmdFixAuthor() error {
 		x.say("Nothing to fix: every not-pushed commit already uses this repo's account.")
 	} else if !x.app.DryRun() {
 		x.sayf("Fixed the author of %d not-pushed commit(s).\n", n)
+		x.say(undoHint)
 	}
 	return nil
 }

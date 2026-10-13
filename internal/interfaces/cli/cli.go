@@ -69,6 +69,8 @@ History and branches
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
   gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
+  gitswitch undo [-y] [--show [--json]]   undo the last switch, revert, drop, rollback,
+                                    cherry-pick or fix-author (--show: only say what it would do)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
 
@@ -230,6 +232,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdRollback(rest)
 	case "cherry-pick", "pick":
 		return x.cmdCherryPick(rest)
+	case "undo":
+		return x.cmdUndo(rest)
 	case "browse":
 		return x.cmdBrowse(rest)
 	case "show":

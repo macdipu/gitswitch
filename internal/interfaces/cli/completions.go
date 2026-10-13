@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author branch switch update revert drop rollback cherry-pick undo show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -30,6 +30,7 @@ _gitswitch() {
     branch) COMPREPLY=( $(compgen -W "--json" -- "$cur") ) ;;
     switch) COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") ) ;;
     drop|rollback) COMPREPLY=( $(compgen -W "-y" -- "$cur") ) ;;
+    undo) COMPREPLY=( $(compgen -W "-y --show --json" -- "$cur") ) ;;
     doctor) COMPREPLY=( $(compgen -W "--fix" -- "$cur") ) ;;
     uninstall) COMPREPLY=( $(compgen -W "--purge" -- "$cur") ) ;;
   esac
@@ -56,6 +57,7 @@ _gitswitch() {
     branch) compadd -- --json ;;
     switch) compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"} ;;
     drop|rollback) compadd -- -y ;;
+    undo) compadd -- -y --show --json ;;
     doctor) compadd -- --fix ;;
   esac
 }

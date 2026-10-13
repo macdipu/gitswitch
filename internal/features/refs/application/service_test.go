@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
+	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
@@ -116,5 +117,25 @@ func TestUpdate(t *testing.T) {
 	s.FS = &filesystem.FS{DryRun: true, Out: &out}
 	if _, err := s.Update("/r/.git", func(string) {}); err != nil || len(r.ran) != 0 || !strings.Contains(out.String(), "git pull --ff-only") {
 		t.Errorf("dry run: err=%v ran=%v out=%q", err, r.ran, out.String())
+	}
+}
+
+type fakeRecorder struct{ done []string }
+
+func (f *fakeRecorder) Before(string) undo.Mark { return undo.Mark{Branch: "main"} }
+func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) {
+	f.done = append(f.done, string(a)+" "+m.Branch+": "+label)
+}
+
+func TestSwitchIsRecordedForUndo(t *testing.T) {
+	s, _ := newService()
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	if _, err := s.Switch("/r/.git", "origin/fix"); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.Switch("/r/.git", "main") // already there: nothing to record
+	if strings.Join(rec.done, "|") != "switch main: Switched from main to fix" {
+		t.Errorf("recorded %v", rec.done)
 	}
 }

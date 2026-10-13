@@ -208,6 +208,8 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .toast.err{background:var(--panel);color:var(--ink);border:1px solid var(--bad);border-left-width:4px;pointer-events:auto;max-width:460px;box-shadow:0 8px 24px rgb(0 0 0 / .18)}
 .toast .x{float:right;margin:-4px -6px 0 10px;border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}
 .toast .x:hover{color:var(--ink)}
+.toast.act{pointer-events:auto;display:flex;gap:14px;align-items:center}
+.toast .tact{border:1px solid currentColor;background:none;color:inherit;border-radius:var(--radius);padding:3px 10px;font:inherit;font-weight:600;cursor:pointer}
 .toast b{display:block;color:var(--bad);margin-bottom:4px}
 .toast p,.explain p{margin:0 0 6px;line-height:1.4}
 .toast details,.explain details{font-size:12.5px;color:var(--muted)}
@@ -330,6 +332,7 @@ dialog .row-actions{justify-content:flex-end}
       <span class="sync" id="syncState" aria-live="polite"></span>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
       <span class="spacer"></span>
+      <button class="btn" id="undoBtn" hidden>↶ Undo</button>
       <button class="btn ghost" id="browseRepo" title="Open the repo on GitHub, GitLab, …">View on web ↗</button>
       <button class="btn ghost" id="histReload" title="Reload (r)" aria-label="Reload" style="font-size:17px;line-height:1">↻</button>
     </div>
@@ -418,8 +421,16 @@ async function api(method, path, data){
 // toast shows a short note. An error stays until it is closed, and when
 // the server could explain it (hint) it says what happened and what to do,
 // with git's own message under Details.
-function toast(msg, err, hint){
+// With action ({label, run}) a success note offers a button and stays
+// longer.
+function toast(msg, err, hint, action){
   const t = $('#toast'); clearTimeout(t._h);
+  if (!err && action){
+    t.innerHTML = `<span>${esc(msg)}</span><button class="tact">${esc(action.label)}</button>`;
+    t.className = 'toast show act';
+    t.querySelector('.tact').onclick = () => { t.className = 'toast'; action.run(); };
+    t._h = setTimeout(() => t.className = 'toast', 8000); return;
+  }
   if (!err){ t.textContent = msg; t.className = 'toast show'; t._h = setTimeout(() => t.className = 'toast', 2600); return; }
   t.innerHTML = `<button class="x" aria-label="Close">×</button>` + (hint
     ? `<b>${esc(hint.problem)}</b><p>${esc(hint.fix)}</p><details><summary>Details</summary><pre class="mono">${esc(msg)}</pre></details>`
@@ -985,7 +996,23 @@ function renderToolbar(){
     : 'This branch is not on a remote yet';
   ub.className = 'btn' + (h?.behind ? ' primary' : '');
   ub.textContent = h?.behind ? `Update (${h.behind} new)` : 'Update';
+  // Undo: only while the last change can still be undone.
+  const u = R?.undo, can = !!(u && !u.blocked), btn = $('#undoBtn');
+  btn.hidden = !can;
+  btn.title = can ? `Undo “${u.label}” (Shift+U). ${u.effect}` : '';
 }
+// undoLast asks, then undoes the repo's last change.
+async function undoLast(gd){
+  const r = await act(() => api('GET', '/api/refs?gitDir=' + encodeURIComponent(gd)));
+  const u = r?.undo;
+  if (!u){ toast('Nothing to undo in this repo'); return; }
+  if (u.blocked){ toast(u.blocked, true); return; }
+  if (!await ask(`Undo “${u.label}”? ${u.effect}`, {ok:'Undo'})) return;
+  if (await act(() => api('POST', '/api/undo', {gitDir:gd}))){ toast('Undone: ' + u.label); picked.clear(); loadHistory(); }
+}
+// undoable is the toast action that undoes the change just made.
+const undoable = gd => ({label:'Undo', run: () => undoLast(gd)});
+$('#undoBtn').onclick = () => undoLast($('#histRepo').value);
 $('#updateBtn').onclick = async e => {
   const gd = $('#histRepo').value, b = e.currentTarget;
   b.disabled = true; b.textContent = 'Updating…';
@@ -1023,7 +1050,7 @@ $('#branchList').addEventListener('click', async e => {
   toggleBranches(false);
   if (b === R?.head.branch) return;
   const r = await act(() => api('POST','/api/repo/switch',{gitDir:$('#histRepo').value, branch:b}));
-  if (r){ toast('Switched to ' + r.branch); picked.clear(); loadHistory(); }
+  if (r){ toast('Switched to ' + r.branch, false, null, undoable($('#histRepo').value)); picked.clear(); loadHistory(); }
 });
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
@@ -1045,7 +1072,7 @@ function renderHistory(){
   $('#fixBtn')?.addEventListener('click', async () => {
     if (!await ask('Rewrite the author of not-pushed commits on the current branch to ' + r.account + '? Pushed commits are never changed.', {ok:'Rewrite'})) return;
     const res = await act(() => api('POST','/api/repo/fix',{gitDir:r.gitDir}));
-    if (res){ toast(`Fixed ${res.fixed} commit${res.fixed === 1 ? '' : 's'}`); loadHistory(); }
+    if (res){ toast(`Fixed ${res.fixed} commit${res.fixed === 1 ? '' : 's'}`, false, null, res.fixed ? undoable(r.gitDir) : null); loadHistory(); }
   });
   $('#histMeta').innerHTML = `<span>Repo account: <strong style="color:${colorOf(r.account)}">${esc(r.account || 'not set')}</strong></span>
     <span>${filtered ? `<strong>${shown.length}</strong> matching commit${shown.length === 1 ? '' : 's'}` : `${H.commits.length} commit${H.commits.length === 1 ? '' : 's'}`}</span>
@@ -1180,7 +1207,7 @@ async function commitAction(a){
   const res = await act(() => api('POST', path, {gitDir:gd, hash:c.hash, hashes:cs.map(x => x.hash)}));
   if (!res) return;
   toast({pick:`Cherry-picked ${res.picked} commit${res.picked > 1 ? 's' : ''} onto ${branch}`, revert:'Reverted ' + res.commit,
-    drop:'Dropped ' + res.commit, rollback:`Rolled back; ${res.undone} commit${res.undone > 1 ? 's are' : ' is'} now uncommitted changes`}[a]);
+    drop:'Dropped ' + res.commit, rollback:`Rolled back; ${res.undone} commit${res.undone > 1 ? 's are' : ' is'} now uncommitted changes`}[a], false, null, undoable(gd));
   picked.clear(); loadHistory();
 }
 
@@ -1204,6 +1231,7 @@ document.addEventListener('keydown', e => {
     if (next){ next.focus(); picked.clear(); pick(next.dataset.hash, true); next.scrollIntoView({block:'nearest'}); }
   }
   else if (e.key === 'b'){ e.preventDefault(); toggleBranches(true); }
+  else if (e.key === 'U'){ e.preventDefault(); undoLast($('#histRepo').value); }
   else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
   else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }
 });

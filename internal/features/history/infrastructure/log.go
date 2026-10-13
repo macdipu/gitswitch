@@ -19,14 +19,15 @@ type Log struct {
 	Git *gitinfra.Runner
 }
 
-// allRefs is every branch, remote branch and tag, but not the stash: its
-// commits are saved uncommitted changes, not history. --exclude only
-// applies to the --all after it.
-var allRefs = [2]string{"--exclude=refs/stash", "--all"}
+// allRefs is every branch, remote branch and tag, but not the stash (its
+// commits are saved uncommitted changes, not history) or GitSwitch's own
+// refs (refs/gitswitch/undo keeps what an undo goes back to). --exclude
+// only applies to the --all after it.
+var allRefs = [3]string{"--exclude=refs/stash", "--exclude=refs/gitswitch/*", "--all"}
 
 func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Commit, error) {
 	git := l.Git
-	args := []string{"--git-dir=" + gitDir, "log", allRefs[0], allRefs[1], "--topo-order", "-n", strconv.Itoa(limit),
+	args := []string{"--git-dir=" + gitDir, "log", allRefs[0], allRefs[1], allRefs[2], "--topo-order", "-n", strconv.Itoa(limit),
 		"--format=%H%x1f%P%x1f%ae%x1f%an%x1f%at%x1f%D%x1f%s%x1e"}
 	args = append(args, filterArgs(f)...)
 	out, err := git.Run(args...)
@@ -100,7 +101,7 @@ func (l *Log) OnRemote(gitDir, hash string) bool {
 }
 
 func (l *Log) Graph(gitDir string, n int, color bool) (string, error) {
-	gargs := []string{"--git-dir=" + gitDir, "log", "--graph", allRefs[0], allRefs[1], "-n", strconv.Itoa(n), "--format=%x1f%H"}
+	gargs := []string{"--git-dir=" + gitDir, "log", "--graph", allRefs[0], allRefs[1], allRefs[2], "-n", strconv.Itoa(n), "--format=%x1f%H"}
 	if color {
 		gargs = append(gargs, "--color=always")
 	}
@@ -290,8 +291,14 @@ func (l *Log) autostashKept(wt, before, done string) error {
 	if after := l.stashTop(wt); after == "" || after == before {
 		return nil
 	}
-	return fmt.Errorf("%s, but your uncommitted changes clash with the new history. They are safe in the stash (the newest entry in `git stash list`, named autostash), and the files that clash now have conflict markers. Either fix those files and run `git stash drop`, or discard the half-applied changes with `git reset --hard` and get them back later with `git stash pop`", done)
+	return stashKept(fmt.Sprintf("%s, but your uncommitted changes clash with the new history. They are safe in the stash (the newest entry in `git stash list`, named autostash), and the files that clash now have conflict markers. Either fix those files and run `git stash drop`, or discard the half-applied changes with `git reset --hard` and get them back later with `git stash pop`", done))
 }
+
+// stashKept is an explained history.ErrStashKept.
+type stashKept string
+
+func (e stashKept) Error() string        { return string(e) }
+func (e stashKept) Is(target error) bool { return target == history.ErrStashKept }
 
 func (l *Log) Reset(wt, hash string) error {
 	return l.Git.Change(wt, "reset", "--mixed", "-q", hash)

@@ -10,6 +10,7 @@ import (
 
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
+	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
@@ -18,6 +19,7 @@ type Service struct {
 	Refs    refs.Refs
 	Locator repo.Locator
 	FS      *filesystem.FS // dry-run: changes are only printed
+	Undo    undo.Recorder  // remembers each switch so it can be undone; may be nil
 }
 
 // Head reads where a repo is: branch, HEAD commit and upstream.
@@ -64,10 +66,19 @@ func (s *Service) Switch(gitDir, name string) (string, error) {
 	if s.FS.Dry(fmt.Sprintf("switch %s to branch %s", wt, local)) {
 		return local, nil
 	}
-	if exists {
-		return local, s.Refs.Switch(wt, local)
+	var m undo.Mark
+	if s.Undo != nil {
+		m = s.Undo.Before(gitDir)
 	}
-	return local, s.Refs.Track(wt, local, b.Name)
+	if exists {
+		err = s.Refs.Switch(wt, local)
+	} else {
+		err = s.Refs.Track(wt, local, b.Name)
+	}
+	if err == nil && s.Undo != nil {
+		s.Undo.Done(gitDir, m, undo.Switch, "Switched from "+h.Branch+" to "+local)
+	}
+	return local, err
 }
 
 // Update brings the current branch up to date with its upstream (git pull

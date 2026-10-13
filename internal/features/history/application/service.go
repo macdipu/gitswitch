@@ -15,6 +15,7 @@ import (
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
+	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
@@ -25,6 +26,22 @@ type Service struct {
 	Locator  repo.Locator
 	Log      history.Log
 	FS       *filesystem.FS // dry-run: rewrites are only printed
+	Undo     undo.Recorder  // remembers each change so it can be undone; may be nil
+}
+
+// before reads where the repo is before a change, for undo.
+func (s *Service) before(gitDir string) undo.Mark {
+	if s.Undo == nil {
+		return undo.Mark{}
+	}
+	return s.Undo.Before(gitDir)
+}
+
+// done records a change that succeeded, so it can be undone.
+func (s *Service) done(gitDir string, before undo.Mark, a undo.Action, label string) {
+	if s.Undo != nil {
+		s.Undo.Done(gitDir, before, a, history.CleanText(label))
+	}
 }
 
 // Build loads a repo's latest commits with lanes, accounts and flags. With
@@ -165,7 +182,13 @@ func (s *Service) FixAuthor(gitDir string) (int, error) {
 	if name == "" {
 		name = s.Log.HeadAuthorName(wt)
 	}
-	if err := s.Log.RewriteAuthor(wt, name, a.Email, local[0], wrong); err != nil {
+	m := s.before(gitDir)
+	err = s.Log.RewriteAuthor(wt, name, a.Email, local[0], wrong)
+	if err != nil && !errors.Is(err, history.ErrStashKept) {
+		return 0, err
+	}
+	s.done(gitDir, m, undo.FixAuthor, fmt.Sprintf("Fixed the author of %d commit(s) on %s", bad, s.Log.Branch(wt)))
+	if err != nil {
 		return 0, err
 	}
 	return bad, nil
@@ -191,7 +214,12 @@ func (s *Service) Revert(gitDir, rev string) (history.Target, error) {
 	if s.FS.Dry("revert " + t.Label() + " in " + wt) {
 		return t, nil
 	}
-	return t, s.Log.Revert(wt, t)
+	m := s.before(gitDir)
+	if err := s.Log.Revert(wt, t); err != nil {
+		return t, err
+	}
+	s.done(gitDir, m, undo.Revert, "Reverted "+t.Label())
+	return t, nil
 }
 
 // Drop removes a not-pushed commit from the current branch; the commits
@@ -214,7 +242,13 @@ func (s *Service) Drop(gitDir, rev string) (history.Target, error) {
 	if s.FS.Dry("drop " + t.Label() + " from " + s.Log.Branch(wt)) {
 		return t, nil
 	}
-	return t, s.Log.Drop(wt, t)
+	m := s.before(gitDir)
+	err = s.Log.Drop(wt, t)
+	if err == nil || errors.Is(err, history.ErrStashKept) {
+		// Kept in the stash: the drop itself was done.
+		s.done(gitDir, m, undo.Drop, "Dropped "+t.Label())
+	}
+	return t, err
 }
 
 // Rollback moves the current branch back to a commit. The commits after
@@ -249,7 +283,12 @@ func (s *Service) Rollback(gitDir, rev string) (int, history.Target, error) {
 	if s.FS.Dry(fmt.Sprintf("roll %s back to %s, keeping the changes of %d commit(s) as uncommitted changes", s.Log.Branch(wt), t.Label(), len(after))) {
 		return len(after), t, nil
 	}
-	return len(after), t, s.Log.Reset(wt, t.Hash)
+	m := s.before(gitDir)
+	if err := s.Log.Reset(wt, t.Hash); err != nil {
+		return 0, t, err
+	}
+	s.done(gitDir, m, undo.Rollback, fmt.Sprintf("Rolled %s back to %s (%d commit(s))", s.Log.Branch(wt), t.Label(), len(after)))
+	return len(after), t, nil
 }
 
 // pick checks the repo can be changed and finds a commit on its current
@@ -340,7 +379,16 @@ func (s *Service) CherryPick(gitDir string, revs []string) ([]history.Target, er
 	if s.FS.Dry("cherry-pick onto " + s.Log.Branch(wt) + ": " + strings.Join(labels, ", ")) {
 		return ts, nil
 	}
-	return ts, s.Log.CherryPick(wt, ts)
+	m := s.before(gitDir)
+	if err := s.Log.CherryPick(wt, ts); err != nil {
+		return ts, err
+	}
+	label := "Cherry-picked " + labels[0]
+	if len(ts) > 1 {
+		label = fmt.Sprintf("Cherry-picked %d commits", len(ts))
+	}
+	s.done(gitDir, m, undo.CherryPick, label+" onto "+s.Log.Branch(wt))
+	return ts, nil
 }
 
 // WebURL is the page of a commit on the repo's host (GitHub, GitLab,

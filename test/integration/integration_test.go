@@ -1145,6 +1145,115 @@ func TestBranchShowsUncommittedChanges(t *testing.T) {
 	}
 }
 
+// Every change GitSwitch makes can be undone once, with real git: the
+// branch goes back exactly, uncommitted work is kept, pushed history and
+// later work are never lost.
+func TestUndo(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "pushed a")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	b := e.commitFile(api, "b.txt", "b\n", "local b")
+	c := e.commitFile(api, "c.txt", "c\n", "local c")
+	head := func() string { return e.gitIn(api, "rev-parse", "HEAD") }
+	clean := func(what string) {
+		t.Helper()
+		if st := e.gitIn(api, "status", "--porcelain"); st != "" {
+			t.Fatalf("%s: files changed:\n%s", what, st)
+		}
+	}
+
+	e.gsErr(api, "nothing to undo", "undo", "-y")
+
+	// Drop, then git gc: the ref keeps the dropped commit, so undo works.
+	e.gsIn(api, "drop", b[:7], "-y")
+	if strings.Contains(e.gsIn(api, "log"), "local b") {
+		t.Fatal("the dropped commit must not show in the history graph")
+	}
+	e.gitIn(api, "reflog", "expire", "--expire=now", "--all")
+	e.gitIn(api, "gc", "-q", "--prune=now")
+	if out := e.gsIn(api, "undo", "--show"); !strings.Contains(out, "Dropped") || !strings.Contains(out, "exactly as it was") {
+		t.Fatalf("undo --show:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if head() != c {
+		t.Fatalf("undo drop: HEAD %s, want %s", head(), c)
+	}
+	clean("undo drop")
+	e.gsErr(api, "nothing to undo", "undo", "-y")
+
+	// Roll back, edit a file, undo: the commits are back and the edit stays.
+	e.gsIn(api, "rollback", b[:7], "-y")
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("edited\n"), 0o644))
+	e.gsIn(api, "undo", "-y")
+	if head() != c || e.gitIn(api, "status", "--porcelain") != "M a.txt" {
+		t.Fatalf("undo rollback: HEAD %s, status %q", head(), e.gitIn(api, "status", "--porcelain"))
+	}
+	e.gitIn(api, "checkout", "--", "a.txt")
+
+	// Revert and cherry-pick add commits; undo removes them.
+	e.gsIn(api, "revert", c[:7])
+	e.gsIn(api, "undo", "-y")
+	if head() != c {
+		t.Fatal("undo revert")
+	}
+	clean("undo revert")
+	e.gitIn(api, "switch", "-q", "-c", "side", b)
+	side := e.commitFile(api, "s.txt", "s\n", "side s")
+	e.gitIn(api, "switch", "-q", "main")
+	e.gsIn(api, "cherry-pick", side[:7])
+	e.gsIn(api, "undo", "-y")
+	if head() != c {
+		t.Fatal("undo cherry-pick")
+	}
+	clean("undo cherry-pick")
+
+	// Switch, then undo: back on main.
+	e.gsIn(api, "switch", "side")
+	var st struct {
+		Action, Branch, To, Effect, Blocked string
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "undo", "--show", "--json")), &st))
+	if st.Action != "switch" || st.Branch != "main" || st.To != "side" || st.Blocked != "" {
+		t.Fatalf("undo --show --json: %+v", st)
+	}
+	e.gsIn(api, "undo", "-y")
+	if br := e.gitIn(api, "branch", "--show-current"); br != "main" {
+		t.Fatalf("undo switch: on %s", br)
+	}
+
+	// Refused: a commit made since would be lost.
+	e.gsIn(api, "revert", c[:7])
+	d := e.commitFile(api, "d.txt", "d\n", "later d")
+	e.gsErr(api, "has changed since", "undo", "-y")
+
+	// Refused: the revert to undo is already pushed.
+	e.gsIn(api, "revert", d[:7])
+	e.gitIn(api, "push", "-q", "origin", "main")
+	before := head()
+	e.gsErr(api, "already pushed", "undo", "-y")
+	if head() != before {
+		t.Fatal("a refused undo must change nothing")
+	}
+
+	// Refused cleanly: uncommitted changes in a file the undo would change.
+	e.gsIn(api, "cherry-pick", side[:7])
+	must(t, os.WriteFile(filepath.Join(api, "s.txt"), []byte("mine\n"), 0o644))
+	before = head()
+	e.gsErr(api, "uncommitted changes in files the undo would change", "undo", "-y")
+	if head() != before || e.gitIn(api, "status", "--porcelain") != "M s.txt" {
+		t.Fatal("a refused undo must keep the uncommitted changes")
+	}
+
+	// --dry-run says what it would do and changes nothing.
+	e.gitIn(api, "checkout", "--", ".")
+	if out := e.gsIn(api, "--dry-run", "undo"); !strings.Contains(out, "[dry-run] undo") || head() != before {
+		t.Fatalf("dry run:\n%s", out)
+	}
+}
+
 // Repos under a scan folder that is a symlink are found.
 func TestScanFolderThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {

@@ -9,6 +9,7 @@ import (
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
+	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
@@ -286,6 +287,34 @@ func TestDropOnlyNotPushedCommits(t *testing.T) {
 	}
 	if strings.Join(l.changed, ",") != "drop mine1" {
 		t.Errorf("changed = %v", l.changed)
+	}
+}
+
+type fakeRecorder struct{ done []string }
+
+func (f *fakeRecorder) Before(string) undo.Mark { return undo.Mark{Head: "before"} }
+func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) {
+	f.done = append(f.done, string(a)+" "+m.Head+" "+label)
+}
+
+func TestChangesAreRecordedForUndo(t *testing.T) {
+	s, _, l := newService()
+	branchLog(s, l)
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	if _, err := s.Revert("/r/.git", "pushed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Drop("/r/.git", "mine1"); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.Drop("/r/.git", "pushed") // refused: nothing to record
+	s.FS = &filesystem.FS{DryRun: true, Out: &bytes.Buffer{}}
+	_, _ = s.Drop("/r/.git", "mine2") // dry run: nothing changed
+	want := "revert before Reverted pushed|drop before Dropped mine1"
+	if got := strings.Join(rec.done, "|"); !strings.HasPrefix(rec.done[0], "revert before Reverted ") || len(rec.done) != 2 ||
+		!strings.HasPrefix(rec.done[1], "drop before Dropped ") {
+		t.Errorf("recorded %q, want like %q", got, want)
 	}
 }
 

@@ -213,6 +213,16 @@ func TestHistoryActions(t *testing.T) {
 	if d := post("/api/repo/switch", `{`+gd+`,"branch":"side"}`); d["branch"] != "side" {
 		t.Fatalf("switch = %v", d)
 	}
+	_, m = call(t, h, "GET", "/api/refs?gitDir="+dir, "")
+	data, _ = m["data"].(map[string]any)
+	if u, _ := data["undo"].(map[string]any); u["action"] != "switch" || u["blocked"] != "" || u["effect"] != "Switches back to main." {
+		t.Fatalf("refs undo = %v", data["undo"])
+	}
+	if d := post("/api/undo", `{`+gd+`}`); d["label"] != "Switched from main to side" || git("branch", "--show-current") != "main" {
+		t.Fatalf("undo = %v, on %s", d, git("branch", "--show-current"))
+	}
+	fails("/api/undo", `{`+gd+`}`, "nothing to undo")
+	post("/api/repo/switch", `{`+gd+`,"branch":"side"}`)
 	fails("/api/repo/update", `{`+gd+`}`, "not on a remote")
 	fails("/api/commit/browse", `{`+gd+`,"hash":""}`, "no remote")
 	fails("/api/commit/drop", `{`+gd+`,"hash":"--force"}`, "not a commit")

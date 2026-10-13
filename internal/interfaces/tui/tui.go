@@ -660,6 +660,7 @@ History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
   b switch branch   u update (pull)   w view in browser   / filter by author, message, date or account
+  U undo the last switch, revert, drop, roll back, cherry-pick or fix
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Rules
   a add rule   x remove rule
@@ -1193,7 +1194,7 @@ func (t *tui) keyHistory(k string) {
 				n, err := t.app.History.FixAuthor(gd)
 				if err == nil {
 					t.loadHistory()
-					t.say(nil, fmt.Sprintf("Fixed %d commit(s).", n))
+					t.say(nil, fmt.Sprintf("Fixed %d commit(s).", n)+undoHint)
 				}
 				return err
 			}}}
@@ -1201,6 +1202,8 @@ func (t *tui) keyHistory(k string) {
 		t.pickBranch()
 	case "u":
 		t.update()
+	case "U":
+		t.undoLast()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1283,7 +1286,7 @@ func (t *tui) cherryPick() {
 				return err
 			}
 			t.loadHistory()
-			t.say(nil, fmt.Sprintf("Cherry-picked %d commit(s) onto %s.", len(ts), branch))
+			t.say(nil, fmt.Sprintf("Cherry-picked %d commit(s) onto %s.", len(ts), branch)+undoHint)
 			return nil
 		}}}
 }
@@ -1313,9 +1316,39 @@ func (t *tui) pickBranch() {
 			return err
 		}
 		t.loadHistory()
-		t.say(nil, "Switched to "+name+".")
+		t.say(nil, "Switched to "+name+"."+undoHint)
 		return nil
 	}}
+}
+
+// undoHint follows a change that can be undone.
+const undoHint = "  (U to undo)"
+
+// undoLast undoes the repo's last change, after asking.
+func (t *tui) undoLast() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	st, err := t.app.Undo.Last(gd)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	label := history.CleanText(st.Label)
+	if st.Blocked != "" {
+		t.say(fmt.Errorf("can't undo “%s”: %s", label, st.Blocked), "")
+		return
+	}
+	t.confirm = &confirmBox{"Undo “" + label + "”? " + st.Effect + " (y/n)", map[string]func() error{"y": func() error {
+		if _, err := t.app.Undo.Undo(gd); err != nil {
+			return err
+		}
+		t.marked = map[string]bool{}
+		t.loadHistory()
+		t.say(nil, "Undone: "+label)
+		return nil
+	}}}
 }
 
 // update pulls the current branch. It leaves the TUI while git runs, so
@@ -1377,7 +1410,7 @@ func (t *tui) commitAction(k string) {
 			return err
 		}
 		t.loadHistory()
-		t.say(nil, msg)
+		t.say(nil, msg+undoHint)
 		return nil
 	}}}
 }
@@ -1584,7 +1617,7 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
-		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · m more · ? all keys · q quit"
+		return "Enter details · / filter · b branch · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	}

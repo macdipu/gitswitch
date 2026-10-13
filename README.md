@@ -260,13 +260,16 @@ gitswitch drop 1a2b3c4               # remove a not-pushed commit
 gitswitch rollback 1a2b3c4           # undo the not-pushed commits after it; their changes stay in your files
 gitswitch show 1a2b3c4               # the whole message and the files it changed
 gitswitch browse 1a2b3c4             # open the commit on GitHub, GitLab, Bitbucket, ...
+gitswitch undo                       # undo the last switch, revert, drop, rollback, cherry-pick or fix-author
 ```
+
+**Undo.** The last change GitSwitch made in a repo can be undone once: `gitswitch undo` says what it will do and asks (`-y` to skip, `--show` to only look, `--show --json` for scripts). The desktop app offers **Undo** in the message after each change and in the History toolbar, and the terminal app uses `U`. Undo puts the branch back exactly as it was. After a rollback only the branch moves, so files you edited since are kept. It refuses, and changes nothing, when undoing would lose work: new commits or a pull since, commits that are already pushed (revert them instead), or uncommitted changes in files it would change. GitSwitch keeps what it would go back to in `refs/gitswitch/undo` and the repo's `[gitswitch "undo"]` config, so `git gc` doesn't delete a dropped commit while it can still be undone.
 
 `drop` and `rollback` rewrite history, so they only work on commits that are not pushed, and ask first (`-y` to skip). If a revert, drop or cherry-pick does not apply cleanly, it is aborted and nothing changes. If your uncommitted changes clash with the new history, git keeps them in the stash and GitSwitch tells you how to get them back.
 
 `drop`, `rollback` and `fix-author` refuse when the branch pushes to a remote branch this clone has no copy of (a single-branch clone, or a branch deleted on the server), since they can't tell what is pushed; `update` explains the same case. `fix-author` also refuses when a merge brought pushed commits in after your first not-pushed one: run `git pull --rebase` first. `switch upstream/main` is refused while your local `main` pulls from `origin/main`; it tells you how to make a separate branch. `browse` only opens commits that are on a remote branch. The stash is not shown as history.
 
-The apps' History page has all of this, and the desktop app's toolbar says when the remote branch is missing from the clone. In the desktop app, click a commit to see its full message, the files it changed and what you can do with it (each action explains itself), Ctrl/⌘-click several to cherry-pick them, and search with words or tokens like `author:ana since:7d`. Keys: `/` search, `j`/`k` move, `b` branch, `Esc` clear. In the terminal app, Enter shows a commit's message and files. Both apps show the latest 300–400 commits first, with "Load more" (`m` in the terminal app) for older ones.
+The apps' History page has all of this, and the desktop app's toolbar says when the remote branch is missing from the clone. In the desktop app, click a commit to see its full message, the files it changed and what you can do with it (each action explains itself), Ctrl/⌘-click several to cherry-pick them, and search with words or tokens like `author:ana since:7d`. Keys: `/` search, `j`/`k` move, `b` branch, `Shift+U` undo, `Esc` clear. In the terminal app, Enter shows a commit's message and files. Both apps show the latest 300–400 commits first, with "Load more" (`m` in the terminal app) for older ones.
 
 ## Repo list
 
@@ -313,7 +316,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
-| History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `browse` |
+| History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo`, `browse` |
 | Branches | `branch`, `switch`, `update` |
 | Diagnostics | `doctor [--fix]` |
 | Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>` |
