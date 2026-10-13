@@ -28,6 +28,12 @@ func call(t *testing.T, h http.Handler, method, path, body string) (*httptest.Re
 	return w, m
 }
 
+// quote writes s as a JSON string, so Windows paths keep their backslashes.
+func quote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func TestHandler(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -47,7 +53,7 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("open file:// = %d %v, want an error", w.Code, m)
 	}
 	// A clone runs in the background; a bad URL ends the job with an error.
-	if w, _ := call(t, h, "POST", "/api/repo/clone", `{"url":"ext::sh -c id","parent":"`+home+`","name":"x"}`); w.Code != 200 {
+	if w, _ := call(t, h, "POST", "/api/repo/clone", `{"url":"ext::sh -c id","parent":`+quote(home)+`,"name":"x"}`); w.Code != 200 {
 		t.Fatalf("start clone = %d", w.Code)
 	}
 	var job map[string]any

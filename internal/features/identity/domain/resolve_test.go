@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"path/filepath"
 	"testing"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
@@ -24,7 +25,7 @@ func TestMatchesOwner(t *testing.T) {
 func TestMatchesFolder(t *testing.T) {
 	link := map[string]string{"/home/me/link": "/data/work"}
 	real := func(p string) string {
-		if r, ok := link[p]; ok {
+		if r, ok := link[filepath.ToSlash(p)]; ok {
 			return r
 		}
 		return p
