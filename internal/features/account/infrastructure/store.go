@@ -39,7 +39,7 @@ func (s *Store) Load() *account.Config {
 func (s *Store) LoadChecked() (*account.Config, error) {
 	// Lists start empty, not nil, so the apps get [] rather than null in JSON.
 	c := &account.Config{GUIPrompt: true, PromptTimeout: 60, Accounts: []account.Account{}, Rules: []account.Rule{},
-		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}}
+		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}, Recent: []string{}}
 	accts := map[string]*account.Account{}
 	var order []string
 	out, err := s.Git.Run("config", "--global", "-z", "--get-regexp", `^gitswitch`)
@@ -102,6 +102,8 @@ func (s *Store) LoadChecked() (*account.Config, error) {
 			c.HiddenRepos = append(c.HiddenRepos, v)
 		case k == "gitswitch.pin":
 			c.Pinned = append(c.Pinned, v)
+		case k == "gitswitch.recent": // the file lists the newest last
+			c.Recent = append([]string{v}, c.Recent...)
 		case k == "gitswitch.editor":
 			c.Editor = v
 		case k == "gitswitch.renamed":
@@ -371,7 +373,7 @@ func (s *Store) RemoveScanFolder(p string) error {
 	return err
 }
 
-// Repo lists: key is "repo", "hideRepo" or "pin". Values are absolute
+// Repo lists: key is "repo", "hideRepo", "pin" or "recent". Values are absolute
 // working folders; adding one twice or removing a missing one is a no-op.
 
 // AddRepoPath adds a folder to a repo list.
@@ -398,7 +400,7 @@ func (s *Store) RemoveRepoPath(key, p string) error {
 
 func (s *Store) repoList(key string) []string {
 	c := s.Load()
-	return map[string][]string{"repo": c.Repos, "hideRepo": c.HiddenRepos, "pin": c.Pinned}[key]
+	return map[string][]string{"repo": c.Repos, "hideRepo": c.HiddenRepos, "pin": c.Pinned, "recent": c.Recent}[key]
 }
 
 // Rename renames an account's stored settings, rules, default, identity

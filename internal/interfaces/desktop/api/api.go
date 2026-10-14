@@ -149,6 +149,13 @@ func (s *server) routes() map[string]handler {
 			ed, _ := b["editor"].(bool)
 			return nil, a.Repos.Open(str(b, "path"), ed)
 		},
+		"POST /api/repo/opened": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(str(body(r), "gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return nil, a.Repos.Opened(gd)
+		},
 		"POST /api/repo/clone": s.startClone,
 		"GET /api/repo/clone": func(r *http.Request) (any, error) {
 			s.mu.Lock()

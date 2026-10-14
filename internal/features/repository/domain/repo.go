@@ -23,6 +23,7 @@ type Info struct {
 	Remotes     []Remote `json:"remotes"`
 	Added       bool     `json:"added"` // added by hand (gitswitch repo add)
 	Pinned      bool     `json:"pinned"`
+	Recent      int      `json:"recent"`  // 1 for the repo opened last, 2 for the one before; 0 when not recent
 	Missing     bool     `json:"missing"` // added by hand, but the folder is gone or no longer a repo
 }
 
@@ -37,7 +38,11 @@ const (
 	ListAdded  = "repo"     // added by hand
 	ListHidden = "hideRepo" // found by a scan, then removed from the list
 	ListPinned = "pin"      // pinned to the top
+	ListRecent = "recent"   // opened in gitswitch, newest last
 )
+
+// RecentMax is how many recently opened repos gitswitch remembers.
+const RecentMax = 10
 
 // Reader finds and reads repos on disk.
 type Reader interface {

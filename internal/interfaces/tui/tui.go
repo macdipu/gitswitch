@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -913,6 +914,41 @@ func (t *tui) keyAccounts(k string) {
 
 // ---------------- repos ----------------
 
+// openHistory shows a repo's history and records it as recently opened.
+func (t *tui) openHistory(gitDir string) {
+	t.histDir = gitDir
+	_ = t.app.Repos.Opened(gitDir) // only the order of the recent list depends on it
+	// Move it to the front of the recent ones here too, without reading
+	// every repo again.
+	was := 0
+	for _, r := range t.repos {
+		if r.GitDir == gitDir {
+			was = r.Recent
+		}
+	}
+	for i := range t.repos {
+		switch r := &t.repos[i]; {
+		case r.GitDir == gitDir:
+			r.Recent = 1
+		case r.Recent > 0 && (was == 0 || r.Recent < was):
+			r.Recent++
+		}
+	}
+	t.loadHistory()
+}
+
+// recentRepos are the listed repos opened lately, newest first, at most 5.
+func (t *tui) recentRepos() []repo.Info {
+	var out []repo.Info
+	for _, r := range t.repos {
+		if r.Recent > 0 && !r.Missing {
+			out = append(out, r)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Recent < out[j].Recent })
+	return out[:min(len(out), 5)]
+}
+
 func (t *tui) scanRepos() {
 	t.repos = t.app.Repos.List()
 	if gd := t.app.Repos.Current(); gd != "" {
@@ -995,8 +1031,7 @@ func (t *tui) keyRepos(k string) {
 			}}
 	case "h":
 		if r != nil && !r.Missing {
-			t.histDir = r.GitDir
-			t.loadHistory()
+			t.openHistory(r.GitDir)
 			t.tab = tabHistory
 		}
 	case "c":
@@ -1180,6 +1215,9 @@ func (t *tui) keyHistory(k string) {
 			t.scanRepos()
 		}
 		var opts, dirs []string
+		for _, r := range t.recentRepos() {
+			opts, dirs = append(opts, r.Path+"  · recent"), append(dirs, r.GitDir)
+		}
 		for _, r := range t.repos {
 			if !r.Missing { // its folder is gone: there is no history to show
 				opts, dirs = append(opts, r.Path), append(dirs, r.GitDir)
@@ -1190,8 +1228,7 @@ func (t *tui) keyHistory(k string) {
 			return
 		}
 		t.picker = &picker{title: "Show history for", options: opts, pick: func(i int) error {
-			t.histDir = dirs[i]
-			t.loadHistory()
+			t.openHistory(dirs[i])
 			return nil
 		}}
 	case "x":

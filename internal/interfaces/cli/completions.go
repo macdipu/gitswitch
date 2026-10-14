@@ -22,7 +22,7 @@ _gitswitch() {
     account) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add edit list remove rename" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --email --name --host --key --default --delete-keys -y" -- "$cur") ) ;;
     key) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "new show pick agent" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --open --copy" -- "$cur") ) ;;
     rule) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add list remove" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) owner: folder:" -- "$cur") ) ;;
-    repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list clone add remove show open pin unpin" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --editor --account" -- "$cur") ) ;;
+    repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list clone add remove show open pin unpin recent" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --editor --account" -- "$cur") ) ;;
     set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes" -- "$cur") )
       elif [ "${COMP_WORDS[2]}" = switch-changes ]; then COMPREPLY=( $(compgen -W "ask smart park global --repo" -- "$cur") )
       else COMPREPLY=( $(compgen -W "on off" -- "$cur") ); fi ;;
@@ -57,7 +57,7 @@ _gitswitch() {
     account) (( CURRENT == 3 )) && compadd add edit list remove rename || compadd -a accts -- --email --name --host --key --default --delete-keys -y ;;
     key) (( CURRENT == 3 )) && compadd new show pick agent || compadd -a accts -- --open --copy ;;
     rule) (( CURRENT == 3 )) && compadd add list remove || compadd -a accts -- owner: folder: ;;
-    repo) (( CURRENT == 3 )) && compadd list clone add remove show open pin unpin || { _files -/; compadd -- --json --pinned --editor --account; } ;;
+    repo) (( CURRENT == 3 )) && compadd list clone add remove show open pin unpin recent || { _files -/; compadd -- --json --pinned --editor --account; } ;;
     set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes
       elif [[ ${words[3]} == switch-changes ]]; then compadd ask smart park global --repo
       else compadd on off; fi ;;
@@ -88,7 +88,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from account" -a "add edit list
 complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick agent (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
-complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin (__fish_complete_directories)"
+complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin recent (__fish_complete_directories)"
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune compare --json --from --move --no-prefix -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open -y"
@@ -108,7 +108,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
     account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
-    repo = 'list clone add remove show open pin unpin'; set = 'gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes'; completions = 'bash zsh fish powershell'
+    repo = 'list clone add remove show open pin unpin recent'; set = 'gui-prompt prompt-timeout ssh-path editor branch-prefix switch-changes'; completions = 'bash zsh fish powershell'
     parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune compare --json'; push = '--open -y'; commit = '-m --all'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {

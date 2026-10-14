@@ -1,5 +1,5 @@
 // Package application holds the repo list use cases: show, add, clone,
-// remove, pin and open repos. Adding or removing a repo changes only
+// remove, pin and open repos, and the recently opened ones. Adding or removing a repo changes only
 // gitswitch's own list, never the repo. It depends only on domain ports.
 // Import it as repoapp.
 package application
@@ -163,6 +163,9 @@ func (s *Service) Remove(path string) error {
 	if err := s.Lists.RemoveRepoPath(repo.ListPinned, root); err != nil {
 		return err
 	}
+	if err := s.Lists.RemoveRepoPath(repo.ListRecent, root); err != nil {
+		return err
+	}
 	for _, r := range s.Reader.Scan(c, c.ScanFolders) {
 		if samePlace(r.Path, root) {
 			return s.Lists.AddRepoPath(repo.ListHidden, root)
@@ -191,7 +194,7 @@ func (s *Service) Open(path string, editor bool) error {
 		return fmt.Errorf("folder not found: %s", root)
 	}
 	if !editor {
-		return process.OpenFolder(root)
+		return s.opened(root, process.OpenFolder(root))
 	}
 	cmd := s.Lists.Load().Editor
 	for _, v := range []string{"VISUAL", "EDITOR"} {
@@ -202,7 +205,57 @@ func (s *Service) Open(path string, editor bool) error {
 	if cmd == "" {
 		return errors.New("no editor set; choose one with: gitswitch set editor <command> (e.g. code)")
 	}
-	return process.StartProgram(cmd, root)
+	return s.opened(root, process.StartProgram(cmd, root))
+}
+
+// opened records a repo the user opened, when opening it worked. The folder
+// is open either way, so a failure to record it is not reported.
+func (s *Service) opened(root string, err error) error {
+	if err == nil {
+		_ = s.Opened(root)
+	}
+	return err
+}
+
+// Opened puts a repo first among the recently opened ones, keeping the
+// newest RecentMax. The apps call it when they show a repo's history, and
+// Open calls it; reading a repo from the command line does not.
+func (s *Service) Opened(path string) error {
+	gd, err := s.For(filesystem.ExpandHome(path))
+	if err != nil {
+		return err
+	}
+	root, _ := s.listed(s.Locator.WorktreeOf(gd))
+	recent := s.Lists.Load().Recent
+	if len(recent) > 0 && samePlace(recent[0], root) {
+		return nil // already the newest: no need to rewrite the settings
+	}
+	if err := s.Lists.RemoveRepoPath(repo.ListRecent, root); err != nil {
+		return err
+	}
+	if err := s.Lists.AddRepoPath(repo.ListRecent, root); err != nil {
+		return err
+	}
+	recent = s.Lists.Load().Recent
+	for i := len(recent) - 1; i >= repo.RecentMax; i-- { // the oldest are last
+		if err := s.Lists.RemoveRepoPath(repo.ListRecent, recent[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Recent lists the recently opened repos, newest first. Repos whose folder
+// is gone or no longer a repo are left out.
+func (s *Service) Recent() []repo.Info {
+	c := s.Lists.Load()
+	out := []repo.Info{}
+	for _, p := range c.Recent {
+		if gd := s.At(p); gd != "" {
+			out = append(out, s.Reader.InfoFor(c, gd))
+		}
+	}
+	return out
 }
 
 // listed finds the repo holding path in the list. It returns the path as

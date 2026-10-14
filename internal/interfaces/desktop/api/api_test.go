@@ -52,6 +52,9 @@ func TestHandler(t *testing.T) {
 	if w, m := call(t, h, "POST", "/api/open", `{"url":"file:///etc/passwd"}`); w.Code != 400 || m["error"] == nil {
 		t.Fatalf("open file:// = %d %v, want an error", w.Code, m)
 	}
+	if w, m := call(t, h, "POST", "/api/repo/opened", `{"gitDir":`+quote(home)+`}`); w.Code != 400 || m["error"] == nil {
+		t.Fatalf("opened a folder that is not a repo = %d %v, want an error", w.Code, m)
+	}
 	// A clone runs in the background; a bad URL ends the job with an error.
 	if w, _ := call(t, h, "POST", "/api/repo/clone", `{"url":"ext::sh -c id","parent":`+quote(home)+`,"name":"x"}`); w.Code != 200 {
 		t.Fatalf("start clone = %d", w.Code)

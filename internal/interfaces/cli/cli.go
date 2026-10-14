@@ -54,6 +54,7 @@ Repos and rules
   gitswitch repo show [path] [--json]     folder, branch, remotes, account
   gitswitch repo open [path] [--editor]   open in the file manager or your editor
   gitswitch repo pin|unpin [path]   keep a repo at the top of the list
+  gitswitch repo recent [--json]    repos you opened lately, newest first
   gitswitch status [--json]
   gitswitch fix-author              fix not-pushed commits made with the wrong account
 

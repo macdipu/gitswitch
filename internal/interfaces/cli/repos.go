@@ -9,7 +9,7 @@ import (
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 )
 
-const repoUsage = "gitswitch repo list [--pinned] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path]"
+const repoUsage = "gitswitch repo list [--pinned] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path] | recent [--json]"
 
 // cmdRepo manages the repo list. Paths default to the current folder.
 func (x *CLI) cmdRepo(args []string) error {
@@ -64,6 +64,19 @@ func (x *CLI) cmdRepo(args []string) error {
 		return nil
 	case "pin", "unpin":
 		return x.app.Repos.Pin(path, sub == "pin")
+	case "recent":
+		list := x.app.Repos.Recent()
+		if asJSON {
+			return json.NewEncoder(x.out).Encode(list)
+		}
+		if len(list) == 0 {
+			x.say("No recent repos yet. Repos you open with `gitswitch repo open` or in the apps show up here.")
+			return nil
+		}
+		for _, r := range list {
+			x.sayf("%s %-48s %-20s %s\n", repoMarks(r), r.Path, orDash(r.Branch), repoAccount(r))
+		}
+		return nil
 	case "open":
 		return x.app.Repos.Open(path, hasFlag(rest, "--editor"))
 	case "show", "info":

@@ -56,6 +56,7 @@ func (r *Reader) InfoFor(c *account.Config, gitDir string) repo.Info {
 	ri.Branch, _ = r.Git.Run("--git-dir="+gitDir, "symbolic-ref", "--short", "-q", "HEAD")
 	ri.Remotes = r.remotes(gitDir)
 	ri.Added, ri.Pinned = filesystem.HasPath(c.Repos, ri.Path), filesystem.HasPath(c.Pinned, ri.Path)
+	ri.Recent = recentRank(c, ri.Path)
 	if a, why := r.AccountFor(c, gitDir); a != nil {
 		ri.Account, ri.Reason = a.ID, why
 		ri.EmailBad = ri.Email != "" && !strings.EqualFold(ri.Email, a.Email)
@@ -98,7 +99,8 @@ func (r *Reader) List(c *account.Config) []repo.Info {
 		if gd := r.Git.GitDirFor(p); gd != "" {
 			dirs = append(dirs, gd)
 		} else {
-			missing = append(missing, repo.Info{Path: p, Added: true, Missing: true, Pinned: filesystem.HasPath(c.Pinned, p), Remotes: []repo.Remote{}})
+			missing = append(missing, repo.Info{Path: p, Added: true, Missing: true, Pinned: filesystem.HasPath(c.Pinned, p),
+				Recent: recentRank(c, p), Remotes: []repo.Remote{}})
 		}
 	}
 	var out []repo.Info
@@ -115,6 +117,17 @@ func (r *Reader) List(c *account.Config) []repo.Info {
 		return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path)
 	})
 	return out
+}
+
+// recentRank is a repo's place among the recently opened ones: 1 for the
+// newest, 0 when it is not there.
+func recentRank(c *account.Config, path string) int {
+	for i, p := range c.Recent {
+		if filesystem.SamePath(p, path) {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // Scan finds repos in folders (up to 5 levels deep) and reads them in parallel.

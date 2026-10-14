@@ -16,7 +16,14 @@ type fakeLists struct {
 	lists map[string][]string
 }
 
-func (f *fakeLists) Load() *account.Config { c := f.c; return &c }
+func (f *fakeLists) Load() *account.Config {
+	c := f.c
+	c.Recent = nil
+	for _, p := range f.lists[repo.ListRecent] { // stored newest last, loaded newest first
+		c.Recent = append([]string{p}, c.Recent...)
+	}
+	return &c
+}
 func (f *fakeLists) AddRepoPath(list, path string) error {
 	for _, p := range f.lists[list] {
 		if p == path {
@@ -190,6 +197,63 @@ func TestPinNeedsAListedRepo(t *testing.T) {
 	}
 	if err := s.Pin(wt, false); err != nil || len(l.lists[repo.ListPinned]) != 0 {
 		t.Errorf("err=%v pinned=%v", err, l.lists[repo.ListPinned])
+	}
+}
+
+func TestOpenedKeepsTheNewestFirst(t *testing.T) {
+	s, g, l, _ := newService(t)
+	var wts []string
+	for i := 0; i < repo.RecentMax+2; i++ {
+		wt := abs(t, "/src/r"+string(rune('a'+i)))
+		g.repos[wt] = filepath.Join(wt, ".git")
+		wts = append(wts, wt)
+	}
+	if err := s.Opened(filepath.Join(wts[0], "cmd")); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.lists[repo.ListRecent]; len(got) != 1 || got[0] != wts[0] {
+		t.Fatalf("a folder inside a repo must record the repo: %v", got)
+	}
+	for _, wt := range wts {
+		if err := s.Opened(wt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Opened(wts[3]); err != nil { // opened again: moves to the front
+		t.Fatal(err)
+	}
+	r := s.Recent()
+	if len(r) != repo.RecentMax || r[0].Path != wts[3] || r[1].Path != wts[len(wts)-1] {
+		t.Errorf("recent = %v", r)
+	}
+	for _, x := range r {
+		if x.Path == wts[0] || x.Path == wts[1] {
+			t.Errorf("the oldest must be forgotten past %d: %v", repo.RecentMax, r)
+		}
+	}
+	if err := s.Opened(abs(t, "/not/a/repo")); err == nil {
+		t.Error("a folder that is not a repo must not be recorded")
+	}
+
+	delete(g.repos, wts[3]) // its folder is gone
+	if r := s.Recent(); len(r) != repo.RecentMax-1 || r[0].Path != wts[len(wts)-1] {
+		t.Errorf("a repo that is gone must be left out: %v", r)
+	}
+}
+
+func TestRemoveForgetsARecentRepo(t *testing.T) {
+	s, g, l, _ := newService(t)
+	wt := abs(t, "/src/api")
+	g.repos[wt] = filepath.Join(wt, ".git")
+	l.lists[repo.ListAdded] = []string{wt}
+	if err := s.Opened(wt); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Remove(wt); err != nil {
+		t.Fatal(err)
+	}
+	if len(l.lists[repo.ListRecent]) != 0 {
+		t.Errorf("recent = %v", l.lists[repo.ListRecent])
 	}
 }
 

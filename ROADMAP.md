@@ -30,7 +30,7 @@ desktop app, the terminal app and the CLI alike.
 | 7 | **Local repository manager**: paths, branches, remotes, identities | partly | Branch and remotes added; grouping and sorting still to come. |
 | 16 | **Repository details**: URL, remotes, branch, git root, account | done | `gitswitch repo show [--json]`. |
 | 9 | **Open repository** in the file manager or editor | done | `gitswitch repo open [--editor]`; editor from `gitswitch set editor`, `$VISUAL` or `$EDITOR`. |
-| 11 | **Favorites and recent repositories** | partly | Pinning is done (`gitswitch repo pin`). Recently opened is planned. |
+| 11 | **Favorites and recent repositories** | done | Pinning (`gitswitch repo pin`), and the last 10 repos opened (`gitswitch.recent`, newest last): `repo open` and showing a repo's history record one. `gitswitch repo recent [--json]`, the top of the desktop History repo menu, and the terminal app's `o` list. |
 | 12 | **Repository grouping** by account, organization, parent folder or custom group | planned | |
 | 14 | **Multiple local clones** of the same remote | partly | Each clone is its own entry today; showing them together is planned. |
 

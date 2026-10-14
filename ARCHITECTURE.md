@@ -36,7 +36,7 @@ internal/
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
     repository/
       domain/                 Info, Remote; ports Reader, Locator, Cloner, ListStore
-      application/            the repo list: show, add, clone, remove, pin, open
+      application/            the repo list: show, add, clone, remove, pin, open; the recently opened repos
       infrastructure/         Reader (find repos on disk, read them with git), Cloner
     history/
       domain/                 commits, graph lanes, the wrong-account rule, filters and dates, line rendering, commit details (numstat), AccountCheck; port Log

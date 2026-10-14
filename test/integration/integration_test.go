@@ -578,6 +578,7 @@ type repoRow struct {
 	Branch  string `json:"branch"`
 	Added   bool   `json:"added"`
 	Pinned  bool   `json:"pinned"`
+	Recent  int    `json:"recent"`
 	Missing bool   `json:"missing"`
 	Remotes []struct {
 		Name, URL string
@@ -625,10 +626,30 @@ func TestRepoRegistry(t *testing.T) {
 		t.Fatalf("pinned repo should come first: %+v", rows)
 	}
 
+	// Opening a repo makes it the newest recent one; opening it again
+	// moves it back to the front instead of listing it twice.
+	if out := e.gs("repo", "recent"); !strings.Contains(out, "No recent repos") {
+		t.Fatalf("recent should start empty:\n%s", out)
+	}
+	e.gs("repo", "open", notes)
+	e.gs("repo", "open", filepath.Join(work, "api"))
+	e.gs("repo", "open", notes)
+	var recent []repoRow
+	must(t, json.Unmarshal([]byte(e.gs("repo", "recent", "--json")), &recent))
+	if len(recent) != 2 || filepath.Base(recent[0].Path) != "notes" || filepath.Base(recent[1].Path) != "api" {
+		t.Fatalf("recent = %+v, want notes then api", recent)
+	}
+	if l := e.repoList(); l["notes"].Recent != 1 || l["api"].Recent != 2 {
+		t.Fatalf("list ranks: notes=%d api=%d", l["notes"].Recent, l["api"].Recent)
+	}
+
 	// A scanned repo is hidden when removed, and comes back when added.
 	e.gs("repo", "remove", filepath.Join(work, "api"))
 	if _, ok := e.repoList()["api"]; ok {
 		t.Fatal("removed scanned repo is still listed")
+	}
+	if out := e.gs("repo", "recent"); strings.Contains(out, "api") {
+		t.Fatalf("a removed repo must leave the recent list:\n%s", out)
 	}
 	e.gs("repo", "add", filepath.Join(work, "api", "."))
 	if r, ok := e.repoList()["api"]; !ok || r.Pinned {

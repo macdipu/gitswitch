@@ -15,6 +15,7 @@
 //	gitswitch.repo               multi-valued: repos added by hand (working folders)
 //	gitswitch.hideRepo           multi-valued: scanned repos removed from the list
 //	gitswitch.pin                multi-valued: pinned repos (working folders)
+//	gitswitch.recent             multi-valued: repos opened lately, newest last (at most 10)
 //	gitswitch.editor             command that opens a repo folder in an editor
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch.switchChanges      ask | smart | park: what switching branch does with
@@ -68,6 +69,7 @@ type Config struct {
 	Repos         []string          `json:"repos"`       // added by hand
 	HiddenRepos   []string          `json:"hiddenRepos"` // found by a scan, then removed
 	Pinned        []string          `json:"pinned"`
+	Recent        []string          `json:"recent"` // opened in gitswitch, newest first
 	Editor        string            `json:"editor"`
 	Renamed       map[string]string `json:"-"` // old id (lower case) -> new id
 }

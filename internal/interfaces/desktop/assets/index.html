@@ -881,11 +881,20 @@ const picked = new Set();        // selected commit hashes
 const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false};
 const histVisible = () => !$('#tab-history').hidden;
 
+// renderRepoOptions fills the History repo menu: recently opened first,
+// newest at the top, then every repo again.
+function renderRepoOptions(ok){
+  const opt = r => { const p = r.path.replace(/[\\/]+$/, ''), i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+    return `<option value="${esc(r.gitDir)}" title="${esc(p)}">${esc(p.slice(i + 1))} — ${esc(p.slice(0, i) || '/')}</option>`; };
+  const recent = ok.filter(r => r.recent).sort((a, b) => a.recent - b.recent).slice(0, 5);
+  $('#histRepo').innerHTML = !ok.length ? '<option value="">Add a projects folder on the Repos page first</option>'
+    : recent.length ? `<optgroup label="Recent">${recent.map(opt).join('')}</optgroup><optgroup label="All repos">${ok.map(opt).join('')}</optgroup>`
+    : ok.map(opt).join('');
+}
 async function fillRepoSelect(){
   if (!repos.length && (S.config.scanFolders.length || S.config.repos.length)) repos = await act(() => api('GET','/api/repos')) || [];
   const cur = $('#histRepo').value, ok = repos.filter(r => !r.missing);
-  $('#histRepo').innerHTML = ok.length ? ok.map(r => { const p = r.path.replace(/[\\/]+$/, ''), i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
-    return `<option value="${esc(r.gitDir)}" title="${esc(p)}">${esc(p.slice(i + 1))} — ${esc(p.slice(0, i) || '/')}</option>`; }).join('') : '<option value="">Add a projects folder on the Repos page first</option>';
+  renderRepoOptions(ok);
   if (cur) $('#histRepo').value = cur;
   const fa = $('#filterPanel').account;
   fa.innerHTML = '<option value="">Any account</option>' + S.config.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
@@ -896,6 +905,18 @@ async function fillRepoSelect(){
   if (gone || !$('#history').dataset.loaded) loadHistory();
 }
 $('#histRepo').onchange = () => { picked.clear(); H = null; loadHistory(); };
+// markOpened records the repo shown as the newest recent one, in the
+// settings and in the menu. It never holds up the history.
+function markOpened(gd){
+  const r = repos.find(x => x.gitDir === gd);
+  if (!r || r.recent === 1) return;
+  const was = r.recent || Infinity;
+  for (const x of repos) if (x.recent && x.recent < was) x.recent++;
+  r.recent = 1;
+  api('POST', '/api/repo/opened', {gitDir:gd}).catch(() => {});
+  renderRepoOptions(repos.filter(x => !x.missing));
+  $('#histRepo').value = gd;
+}
 $('#histReload').onclick = () => loadHistory();
 
 // The search box takes plain words (the commit message) and, for people
@@ -988,6 +1009,7 @@ const HIST_PAGE = 400;
 let histN = HIST_PAGE, histKey = '';
 async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
+  markOpened(gd);
   const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until].join('|');
   histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
   histKey = key;
