@@ -439,6 +439,8 @@ type Refs interface {
 	Head(gitDir string) (Head, error)
 	// Branches lists local branches, then remote ones.
 	Branches(gitDir string) ([]Branch, error)
+	// Tags lists the tags, newest first.
+	Tags(gitDir string) ([]string, error)
 	// Switch checks out a local branch.
 	Switch(worktree, branch string) error
 	// Track creates a local branch from a remote one and checks it out.

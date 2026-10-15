@@ -33,6 +33,9 @@ func (s *Service) Head(gitDir string) (refs.Head, error) { return s.Refs.Head(gi
 // Branches lists local branches, then remote ones.
 func (s *Service) Branches(gitDir string) ([]refs.Branch, error) { return s.Refs.Branches(gitDir) }
 
+// Tags lists the repo's tags, newest first.
+func (s *Service) Tags(gitDir string) ([]string, error) { return s.Refs.Tags(gitDir) }
+
 // Switch checks out a branch. A remote branch (origin/x) checks out the
 // local branch x, creating it to track the remote one when it does not
 // exist; it is refused when x exists but pulls from another remote branch.

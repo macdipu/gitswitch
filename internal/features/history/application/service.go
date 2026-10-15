@@ -60,6 +60,9 @@ func (s *Service) build(c *account.Config, gitDir string, limit int, f history.F
 			gf.Author = a.Email
 		}
 	}
+	if err := history.CheckRef(f.Ref); err != nil {
+		return nil, err
+	}
 	gf, none, err := gf.ForGit(time.Now())
 	if err != nil {
 		return nil, err
@@ -71,11 +74,22 @@ func (s *Service) build(c *account.Config, gitDir string, limit int, f history.F
 		}
 	}
 	h := &history.History{Repo: s.Repos.InfoFor(c, gitDir), More: limit > 0 && len(cs) >= limit}
-	if !f.Active() {
+	if !f.Narrows() {
 		h.Lanes = history.LayoutLanes(cs)
 	}
 	history.Annotate(c, h, cs, s.Log.Unpushed(gitDir))
-	if f.Active() {
+	if n := len(h.Commits); n > 0 {
+		oldest := h.Commits[n-1].Time
+		for _, cm := range h.Commits {
+			oldest = min(oldest, cm.Time)
+		}
+		// A day early: commit dates can be a little out of order.
+		on := s.Log.OnHead(gitDir, oldest-86400)
+		for i := range h.Commits {
+			h.Commits[i].OnHead = on[h.Commits[i].Hash]
+		}
+	}
+	if f.Narrows() {
 		h.Commits = f.Keep(h.Commits)
 		h.Lanes = 1
 		h.Flagged, h.Unpushed = 0, 0
@@ -196,6 +210,17 @@ func (s *Service) FixAuthor(gitDir string) (int, error) {
 
 // Show reads a commit's full message and the files it changed. It only
 // reads, so it works on any commit, on any branch.
+// Diff is one file's changes in a commit.
+func (s *Service) Diff(gitDir, rev, path string) (history.Diff, error) {
+	if rev == "" || strings.HasPrefix(rev, "-") {
+		return history.Diff{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	if path == "" {
+		return history.Diff{}, fmt.Errorf("say which file")
+	}
+	return s.Log.FileDiff(gitDir, rev, path)
+}
+
 func (s *Service) Show(gitDir, rev string) (history.Detail, error) {
 	if rev == "" || strings.HasPrefix(rev, "-") {
 		return history.Detail{}, fmt.Errorf("no commit %q in this repo", rev)

@@ -236,6 +236,15 @@ When the terminal app creates a key or tests a login, it steps aside so `ssh-key
 
 ## Commit history and branches
 
+The desktop app's History page reads like an IDE's git log, with the account behind every commit:
+
+- **Branches panel** on the left: local branches, each remote and tags, with folders for names like `feature/login`; the current branch shows how many commits it has to push and pull. Click a branch or tag to show only its commits (the graph stays), double-click to switch to it, right-click for more (switch, new branch from it, copy its name). `t` hides the panel.
+- **The log**: branch and tag labels at the end of each row (a branch and its remote branch as one label), merge commits greyed, the account and author, dates like "Today 10:45", and ↑ on commits that are not pushed. Graph lanes have their own soft colors; each dot is the account's color.
+- **Details** on the right: the full message, the changed files by folder (or as a flat list) with their line counts, and a file's diff when you click it, then what you can do with the commit.
+- **Sort and options** (⇅): by commit date or topologically, first parent (a branch's own story), no merges.
+- **View** (eye): compact or full references, tag names, exact dates, references on the left, the account, author and date columns, and highlighting my commits, merge commits or the current branch. These choices are remembered on this computer.
+- Search tokens `branch:` and `path:` (or Filters, Path) show one branch's commits or those that changed a file or folder.
+
 - `gitswitch log` shows the commit graph with the account of each commit, and the current branch.
 - `gitswitch log --flagged` lists commits made with another of your accounts.
 - `gitswitch fix-author` corrects those that are not pushed yet, on the current branch. Pushed commits are never changed.
@@ -357,7 +366,7 @@ gitswitch github list billing --private --not-cloned --account work
 gitswitch github clone acme/api          # clone it with the account that sees it, over ssh
 ```
 
-Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same on its GitHub page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If GitHub cannot be reached, the last list is shown and says so.
+Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same under the accounts on its Accounts page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If GitHub cannot be reached, the last list is shown and says so.
 
 **HTTPS remotes.** While an account is signed in, git gets its token for the HTTPS remotes of that account's repos, so `git clone https://…`, `fetch` and `push` work as the right account too, with no password prompt. GitSwitch adds itself as a credential helper for that host only (a `credential.https://github.com/` section in your global git config) ahead of your own helpers, and answers only when it is sure which signed-in account a repo uses. Everything else (other accounts' repos, other hosts, a folder that is not a repo) goes to your own helpers exactly as before. Signing out the last account on a host, or `gitswitch uninstall`, removes the section. To push over HTTPS, give the token **Contents: read and write**; read-only is enough to clone and fetch.
 

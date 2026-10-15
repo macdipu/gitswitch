@@ -61,6 +61,7 @@ func (f *fakeRefs) SavePullMode(gitDir, v string) error {
 	return nil
 }
 func (f *fakeRefs) Merges(string, string, string) int { return f.merges }
+func (f *fakeRefs) Tags(string) ([]string, error)     { return []string{"v1"}, nil }
 func (f *fakeRefs) Resolve(_, rev string) string {
 	if rev == "@{upstream}" {
 		return "upstream-tip"

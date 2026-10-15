@@ -223,7 +223,9 @@ func (s *server) routes() map[string]handler {
 			}
 			q := r.URL.Query()
 			return a.History.Build(gd, n, history.Filter{Author: strings.TrimSpace(q.Get("author")), Text: strings.TrimSpace(q.Get("text")),
-				Since: strings.TrimSpace(q.Get("since")), Until: strings.TrimSpace(q.Get("until")), Account: strings.TrimSpace(q.Get("account"))})
+				Since: strings.TrimSpace(q.Get("since")), Until: strings.TrimSpace(q.Get("until")), Account: strings.TrimSpace(q.Get("account")),
+				Ref: strings.TrimSpace(q.Get("ref")), Path: strings.TrimSpace(q.Get("path")),
+				Order: q.Get("order"), FirstParent: q.Get("firstParent") == "1", NoMerges: q.Get("noMerges") == "1"})
 		},
 		"GET /api/commit/show": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
@@ -231,6 +233,13 @@ func (s *server) routes() map[string]handler {
 				return nil, err
 			}
 			return a.History.Show(gd, r.URL.Query().Get("hash"))
+		},
+		"GET /api/commit/diff": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.History.Diff(gd, r.URL.Query().Get("hash"), r.URL.Query().Get("path"))
 		},
 		// Before a push: do the commits show the account that pushes?
 		"GET /api/account-check": func(r *http.Request) (any, error) {
@@ -277,7 +286,11 @@ func (s *server) routes() map[string]handler {
 			if parked == nil {
 				parked = []refs.Parked{}
 			}
-			return map[string]any{"head": h, "branches": bs, "undo": last, "clash": clash, "parked": parked,
+			tags, _ := a.Refs.Tags(gd)
+			if tags == nil {
+				tags = []string{}
+			}
+			return map[string]any{"head": h, "branches": bs, "tags": tags, "undo": last, "clash": clash, "parked": parked,
 				"switchSetting": a.Refs.SwitchSetting(gd)}, err
 		},
 		"POST /api/undo": s.withRepo(func(gd string, b map[string]any) (any, error) {

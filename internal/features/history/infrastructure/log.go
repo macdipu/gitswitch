@@ -27,17 +27,34 @@ var allRefs = [3]string{"--exclude=refs/stash", "--exclude=refs/gitswitch/*", "-
 
 func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Commit, error) {
 	git := l.Git
-	args := []string{"--git-dir=" + gitDir, "log", allRefs[0], allRefs[1], allRefs[2], "--topo-order", "-n", strconv.Itoa(limit),
+	order := "--topo-order"
+	if f.Order == "date" {
+		order = "--date-order"
+	}
+	args := []string{"--git-dir=" + gitDir, "log", order, "-n", strconv.Itoa(limit), "--decorate=full",
 		"--format=%H%x1f%P%x1f%ae%x1f%an%x1f%at%x1f%D%x1f%s%x1e"}
 	args = append(args, filterArgs(f)...)
+	// The revisions after every option, so a name can never be one.
+	if f.Ref != "" {
+		args = append(args, "--end-of-options", f.Ref)
+	} else {
+		args = append(args, allRefs[:]...)
+	}
+	if f.Path != "" {
+		args = append(args, "--", f.Path)
+	}
 	out, err := git.Run(args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not have any commits") {
 			return nil, nil
 		}
+		if f.Ref != "" && (strings.Contains(err.Error(), "unknown revision") || strings.Contains(err.Error(), "bad revision")) {
+			return nil, fmt.Errorf("there is no branch or tag %s in this repo (any more)", f.Ref)
+		}
 		return nil, err
 	}
 	var cs []history.Commit
+	firstParent := f.FirstParent
 	for _, rec := range strings.Split(out, "\x1e") {
 		rec = strings.TrimLeft(rec, "\r\n")
 		if rec == "" {
@@ -48,12 +65,19 @@ func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Com
 			continue
 		}
 		t, _ := strconv.ParseInt(f[4], 10, 64)
-		c := history.Commit{Hash: f[0], Email: f[2], Author: f[3], Time: t, Refs: f[5], Subject: f[6]}
+		c := history.Commit{Hash: f[0], Email: f[2], Author: f[3], Time: t, Labels: history.ParseLabels(f[5]), Subject: f[6]}
+		c.Refs = history.RefsText(c.Labels)
 		if len(c.Hash) >= 7 {
 			c.Short = c.Hash[:7]
 		}
 		if f[1] != "" {
 			c.Parents = strings.Fields(f[1])
+		}
+		c.Merge = len(c.Parents) > 1
+		if firstParent && c.Merge {
+			// Only the first parent is listed: the graph must not draw
+			// lines to the others, which are not there.
+			c.Parents = c.Parents[:1]
 		}
 		cs = append(cs, c)
 	}
@@ -75,6 +99,12 @@ func filterArgs(f history.Filter) []string {
 	}
 	if f.Since != "" {
 		args = append(args, "--since="+f.Since)
+	}
+	if f.FirstParent {
+		args = append(args, "--first-parent")
+	}
+	if f.NoMerges {
+		args = append(args, "--no-merges")
 	}
 	if f.Until != "" {
 		args = append(args, "--until="+f.Until)
@@ -229,6 +259,31 @@ func (l *Log) Show(gitDir, rev string) (history.Detail, error) {
 	d := history.Detail{Hash: strings.TrimSpace(hash), Message: strings.TrimSpace(msg)}
 	history.ParseNumstat(&d, stat)
 	return d, nil
+}
+
+func (l *Log) FileDiff(gitDir, rev, path string) (history.Diff, error) {
+	out, err := l.Git.Run("--git-dir="+gitDir, "show", "--no-color", "--format=", "--diff-merges=first-parent", "--no-ext-diff",
+		"--end-of-options", rev+"^{commit}", "--", path)
+	if err != nil {
+		return history.Diff{}, fmt.Errorf("no commit %q in this repo", rev)
+	}
+	d := history.Diff{Path: path, Text: out}
+	if len(d.Text) > history.MaxDiffBytes {
+		d.Text, d.Truncated = d.Text[:history.MaxDiffBytes], true
+	}
+	return d, nil
+}
+
+func (l *Log) OnHead(gitDir string, since int64) map[string]bool {
+	set := map[string]bool{}
+	out, err := l.Git.Run("--git-dir="+gitDir, "rev-list", "--since="+strconv.FormatInt(since, 10), "HEAD", "--")
+	if err != nil {
+		return set
+	}
+	for _, h := range strings.Fields(out) {
+		set[h] = true
+	}
+	return set
 }
 
 func (l *Log) Branch(wt string) string {

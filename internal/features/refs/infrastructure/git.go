@@ -253,6 +253,14 @@ func (g *Git) PullRebase(wt string, progress func(string)) error {
 	return err
 }
 
+func (g *Git) Tags(gitDir string) ([]string, error) {
+	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)", "refs/tags")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(out), nil
+}
+
 func (g *Git) Merges(gitDir, from, to string) int {
 	out, _ := g.Git.Run("--git-dir="+gitDir, "rev-list", "--count", "--merges", from+".."+to, "--")
 	n, _ := strconv.Atoi(out)

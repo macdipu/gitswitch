@@ -39,7 +39,7 @@ internal/
       application/            the repo list: show, add, clone, remove, pin, open; the recently opened repos
       infrastructure/         Reader (find repos on disk, read them with git), Cloner
     history/
-      domain/                 commits, graph lanes, the wrong-account rule, filters and dates, line rendering, commit details (numstat), AccountCheck; port Log
+      domain/                 commits, graph lanes, the wrong-account rule, filters (branch, path, order, first parent, no merges) and dates, branch and tag labels, line rendering, commit details (numstat), a file's diff, AccountCheck; port Log
       application/            commit graph with accounts and filters (paged: History.More); commit details; fix authors; account check before a push; revert, drop, roll back, cherry-pick; web links
       infrastructure/         Log: git log, rev-list, revert, rebase, reset, cherry-pick (aborted on failure)
     refs/

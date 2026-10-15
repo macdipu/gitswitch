@@ -96,6 +96,8 @@ th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px
 td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
 td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 .path{font-weight:600}
+.gh-sec{margin-top:28px;padding-top:18px;border-top:1px solid var(--rule)}
+.gh-sec h2{font-size:18px;margin:0 0 4px}
 .gh-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
 .gh-bar input[type=search]{flex:1 1 220px;padding:6px 9px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);font-size:14px}
 .gh-bar select{padding:5px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
@@ -156,12 +158,31 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .prow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .prow>span{flex:1;min-width:0}
 .hmeta{display:flex;gap:14px;align-items:center;font-size:13px;color:var(--muted);margin:0 0 6px}
-.hist-main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
-.hist-main.open{grid-template-columns:minmax(0,1fr) 340px}
+main.wide{max-width:none}
+/* History: branches | commits | details, like an IDE's git log */
+.hist-main{display:grid;grid-template-columns:var(--side,232px) minmax(0,1fr) 380px;gap:12px;align-items:start}
+.hist-main.noside{grid-template-columns:minmax(0,1fr) 380px}
+.hist-main.noside .refside{display:none}
+.refside{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:8px 6px 10px;font-size:13.5px}
+.refside input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin:0 0 6px;font-size:13px}
+.rt-sec{display:flex;align-items:center;gap:4px;width:100%;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 6px 3px}
+.rt-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;width:100%;padding:3px 6px;border-radius:4px;cursor:pointer;white-space:nowrap;overflow:hidden;color:var(--ink)}
+.rt-row:hover{background:var(--hover)}
+.rt-row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rt-row.on{background:var(--hover);box-shadow:inset 2px 0 0 var(--focus)}
+.rt-row.cur{font-weight:650}
+.rt-row .nm{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.rt-row svg{flex:none;color:var(--muted)}
+.rt-row.cur svg{color:var(--focus)}
+.rt-row.gone .nm{color:var(--muted);text-decoration:line-through}
+.rt-badge{font-size:11px;color:var(--muted);flex:none}
+.rt-caret{width:10px;flex:none;color:var(--muted);transition:transform .12s}
+.rt-caret.shut{transform:rotate(-90deg)}
+.rmenu{position:fixed;z-index:20;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .18);padding:4px;min-width:200px}
+.rmenu button{all:unset;display:block;box-sizing:border-box;width:100%;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13.5px}
+.rmenu button:hover,.rmenu button:focus-visible{background:var(--hover)}
 .history{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);overflow:auto}
-.hrow{display:grid;grid-template-columns:var(--gw) 104px minmax(0,1fr) 200px 92px;align-items:center;height:32px;font-size:13.5px;border-bottom:1px solid var(--rule);cursor:pointer}
-.open .hrow{grid-template-columns:var(--gw) 96px minmax(0,1fr) 84px}
-.open .hrow .em{display:none}
+.hrow{display:grid;grid-template-columns:var(--gw) minmax(0,1fr) minmax(120px,190px) 132px;align-items:center;height:28px;font-size:13.5px;border-bottom:1px solid var(--rule);cursor:pointer}
 .hrow:last-child{border-bottom:0}
 .hrow:hover{background:var(--hover)}
 .hrow.flag{background:var(--bad-soft)}
@@ -169,12 +190,30 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .hrow:focus-visible{outline-offset:-2px}
 .hrow svg{display:block}
 .chip{font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid;justify-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
-.subj{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
-.refs{font-size:12px;color:var(--muted);margin-right:6px}
-.em{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
-.flag .em{color:var(--bad);font-weight:600}
+.subj{display:flex;align-items:center;gap:8px;min-width:0;padding-right:10px}
+.stext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-merges .merge .stext{color:var(--muted)}
+.hi-head .hrow:not(.onhead) .subj{opacity:.55}
+.hrow{grid-template-columns:var(--cols) !important}
+@media (max-width:1180px){.hrow{grid-template-columns:var(--cols-m) !important}}
+@media (max-width:900px){.hrow{grid-template-columns:var(--cols-s) !important}}
+.pills{display:flex;gap:4px;flex:none;max-width:55%;overflow:hidden}
+.pill{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;line-height:18px;padding:0 6px;border-radius:4px;border:1px solid var(--rule);color:var(--muted);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.pill svg{flex:none}
+.pill.head{border-color:var(--focus);color:var(--focus);font-weight:600}
+.pill.remote{border-style:dashed}
+.pill.tag{color:var(--a3)}
+.pill .also{font-weight:400;color:var(--muted)}
+.who{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;font-size:13px}
+.who .chip{max-width:84px;font-size:11px;padding:0 6px}
+.who .aname{overflow:hidden;text-overflow:ellipsis}
+.hi-mine .who .aname.mine{font-weight:600}
+.hi-mine .who .aname.other{color:var(--muted)}
+.flag .who .aname{color:var(--bad)}
 .when{color:var(--muted);text-align:right;padding-right:12px;font-size:12.5px;white-space:nowrap}
+.when .up{color:var(--focus);font-weight:700;margin-right:5px}
 .details{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:14px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.details .dempty{color:var(--muted);text-align:center;padding:48px 12px;font-size:13.5px}
 .dhead{display:flex;align-items:center;gap:6px;margin:-4px -4px 0 0}
 .dhead .btn{padding:2px 8px;font-size:12.5px}
 .details h2{font-size:16px;font-weight:650;margin:2px 0 8px;overflow-wrap:anywhere}
@@ -193,8 +232,12 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .selbar .btn.ghost{background:transparent;color:var(--panel);border-color:transparent}
 kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;color:var(--muted)}
 .keys{font-size:12.5px;color:var(--muted);margin-top:8px}
-@media (max-width:1100px){.hist-main.open{grid-template-columns:minmax(0,1fr) 300px}}
-@media (max-width:900px){.hist-main.open{grid-template-columns:minmax(0,1fr)} .details{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:62vh;z-index:6;box-shadow:0 -6px 24px rgb(0 0 0 / .2)} .fpanel{grid-template-columns:1fr 1fr}}
+@media (max-width:1400px){.hist-main{grid-template-columns:var(--side,208px) minmax(0,1fr) 330px} .hist-main.noside{grid-template-columns:minmax(0,1fr) 330px}}
+/* Narrower: details only while a commit is open */
+@media (max-width:1180px){.hist-main,.hist-main.noside{grid-template-columns:var(--side,200px) minmax(0,1fr)} .hist-main.noside{grid-template-columns:minmax(0,1fr)}
+  .hist-main.open{grid-template-columns:minmax(0,1fr) 320px} .hist-main.open .refside{display:none} .hrow{grid-template-columns:var(--gw) minmax(0,1fr) 140px 112px}}
+@media (max-width:900px){.hist-main,.hist-main.open{grid-template-columns:minmax(0,1fr)} .refside{display:none} .hrow{grid-template-columns:var(--gw) minmax(0,1fr) 104px} .hrow .who{display:none}
+  .details{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:62vh;z-index:6;box-shadow:0 -6px 24px rgb(0 0 0 / .2)} .fpanel{grid-template-columns:1fr 1fr}}
 
 /* first-run setup */
 .wiz{max-width:640px}
@@ -238,6 +281,35 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .cfiles li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:3px 0;border-bottom:1px solid var(--rule)}
 .cfiles .fn{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .add{color:var(--ok)} .del{color:var(--bad)}
+.btn.icon{padding:5px 8px;display:inline-grid;place-items:center}
+.btn.icon[aria-expanded=true]{background:var(--hover)}
+.rmenu h4{margin:6px 10px 2px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.rmenu hr{border:0;border-top:1px solid var(--rule);margin:4px 0}
+.rmenu [role^=menuitem]{display:flex;gap:8px;align-items:center}
+.rmenu .mk{width:14px;flex:none;color:var(--focus);font-weight:700}
+.rmenu .sub{font-size:11.5px;color:var(--muted);margin-left:auto;padding-left:12px}
+/* changed files: a tree by folder, or a flat list; a file's diff below */
+.fhead{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:0 0 6px}
+.fhead .btn{padding:1px 8px;font-size:12px;margin-left:auto}
+.ftree{max-height:300px;overflow:auto;font-size:12.5px;border:1px solid var(--rule);border-radius:4px;padding:3px 0}
+.frow{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;width:100%;padding:2px 8px;cursor:pointer;white-space:nowrap}
+.frow:hover{background:var(--hover)}
+.frow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.frow.on{background:var(--hover);box-shadow:inset 2px 0 0 var(--focus)}
+.frow .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.frow .cnt{color:var(--muted);font-size:11.5px}
+.frow.dir .fn{font-family:inherit;font-weight:600}
+.frow svg{flex:none;color:var(--muted)}
+.diffbox{margin:10px 0 0;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.diffbox .dh{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12.5px;background:var(--hover)}
+.diffbox .dh .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,Consolas,monospace}
+.diffbox pre{margin:0;max-height:420px;overflow:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:4px 0}
+.diffbox pre span{display:block;padding:0 8px;white-space:pre}
+/* plain colors first: older web views have no color-mix() */
+.diffbox .da{color:var(--ok);background:rgb(76 194 126 / .12);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.diffbox .dd{color:var(--bad);background:rgb(255 107 118 / .12);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.diffbox .dmeta{color:var(--muted)}
+.diffbox .dhunk{color:var(--muted);background:var(--hover)}
 .more-row{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0}
 .checks-sum{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
 .checks-sum .dot{margin-top:0}
@@ -245,7 +317,7 @@ details.checks-more>summary{cursor:pointer;color:var(--muted);font-size:13px;pad
 .set-row{display:flex;flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--ink)}
 .set-row input[type=number]{width:5.5em;padding:5px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 h3{font-size:16px;margin:28px 0 10px}
-@media (max-width:820px){body{grid-template-columns:176px 1fr} aside{padding:16px 10px} main{padding:20px} form.card{grid-template-columns:1fr} .hrow{grid-template-columns:var(--gw) 90px minmax(0,1fr) 70px}.hrow .em{display:none}}
+@media (max-width:820px){body{grid-template-columns:176px 1fr} aside{padding:16px 10px} main{padding:20px} form.card{grid-template-columns:1fr} }
 @media (max-width:600px){body{grid-template-columns:1fr} aside{position:static;height:auto;gap:10px} nav{flex-direction:row;flex-wrap:wrap} .lanes,.side-foot{display:none}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 dialog{border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);color:var(--ink);padding:18px 20px;max-width:440px;width:calc(100% - 32px)}
@@ -266,7 +338,6 @@ dialog .row-actions{justify-content:flex-end}
   <nav aria-label="Pages">
     <button data-tab="accounts" aria-current="page">Accounts</button>
     <button data-tab="repos">Repos</button>
-    <button data-tab="github">GitHub</button>
     <button data-tab="history">History</button>
     <button data-tab="rules">Rules</button>
     <button data-tab="settings">Settings</button>
@@ -305,6 +376,22 @@ dialog .row-actions{justify-content:flex-end}
       <div class="full row-actions"><button class="btn primary" type="submit" id="acctSave">Save account</button><button class="btn" type="button" id="acctCancel">Cancel</button></div>
     </form>
     <div class="accounts" id="accounts"></div>
+      <section class="gh-sec" id="ghSection" hidden aria-labelledby="ghTitle">
+      <h2 id="ghTitle">Repos on GitHub</h2>
+      <p class="lead">Every repo your signed-in accounts can see on GitHub, private ones and your organizations' included, and where each is cloned. Accounts signed in to GitHub (in their More menu above) show here.</p>
+      <div class="gh-bar">
+        <input id="ghText" type="search" placeholder="Search names and descriptions" aria-label="Search repos" autocomplete="off" spellcheck="false">
+        <select id="ghAccount" aria-label="Account"></select>
+        <select id="ghOwner" aria-label="Owner"></select>
+        <select id="ghLang" aria-label="Language"></select>
+        <select id="ghVis" aria-label="Visibility"><option value="">Public and private</option><option value="public">Public</option><option value="private">Private</option></select>
+        <select id="ghCloned" aria-label="Clone status"><option value="">Cloned or not</option><option value="no">Not cloned</option><option value="yes">Cloned</option></select>
+        <label class="hint"><input type="checkbox" id="ghArchived"> Archived</label>
+        <button class="btn" id="ghRefresh">Refresh</button>
+      </div>
+      <div class="hint" id="ghMeta" aria-live="polite"></div>
+      <div id="ghList"></div>
+    </section>
   </section>
 
   <section id="tab-repos" hidden>
@@ -331,27 +418,11 @@ dialog .row-actions{justify-content:flex-end}
     <div id="repos"></div>
   </section>
 
-  <section id="tab-github" hidden>
-    <h1 tabindex="-1">GitHub</h1>
-    <p class="lead">Every repo your signed-in accounts can see on GitHub, private ones and your organizations' included, and where each is cloned. Sign an account in from its menu on the Accounts page.</p>
-    <div class="gh-bar">
-      <input id="ghText" type="search" placeholder="Search names and descriptions" aria-label="Search repos" autocomplete="off" spellcheck="false">
-      <select id="ghAccount" aria-label="Account"></select>
-      <select id="ghOwner" aria-label="Owner"></select>
-      <select id="ghLang" aria-label="Language"></select>
-      <select id="ghVis" aria-label="Visibility"><option value="">Public and private</option><option value="public">Public</option><option value="private">Private</option></select>
-      <select id="ghCloned" aria-label="Clone status"><option value="">Cloned or not</option><option value="no">Not cloned</option><option value="yes">Cloned</option></select>
-      <label class="hint"><input type="checkbox" id="ghArchived"> Archived</label>
-      <button class="btn" id="ghRefresh">Refresh</button>
-    </div>
-    <div class="hint" id="ghMeta" aria-live="polite"></div>
-    <div id="ghList"></div>
-  </section>
 
   <section id="tab-history" hidden>
-    <h1 tabindex="-1">History</h1>
-    <p class="lead">Every commit with the account that made it. Click a commit to see its message, the files it changed and what you can do with it.</p>
+    <h1 tabindex="-1" class="sr-only">History</h1>
     <div class="toolbar">
+      <button class="btn ghost" id="sideBtn" aria-controls="refSide" aria-expanded="true" title="Show or hide the branches (t)" aria-label="Branches panel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.4"/></svg></button>
       <select id="histRepo" aria-label="Repo"></select>
       <div class="pop-wrap">
         <button class="btn branch-btn" id="branchBtn" aria-haspopup="listbox" aria-expanded="false" title="Switch branch (b)">
@@ -389,12 +460,15 @@ dialog .row-actions{justify-content:flex-end}
         <button type="button" data-range="30 days ago" aria-pressed="false">30 days</button>
       </div>
       <button type="button" class="btn" id="moreFilters" aria-expanded="false" aria-controls="filterPanel">Filters<span id="filterCount"></span></button>
+      <button type="button" class="btn icon" id="optsBtn" aria-haspopup="menu" aria-expanded="false" title="Sort and options" aria-label="Sort and options"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v11M1.5 10.5L4 13l2.5-2.5M9 4h6M9 8h4.5M9 12h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="btn icon" id="viewBtn" aria-haspopup="menu" aria-expanded="false" title="View: what the rows show and highlight" aria-label="View options"><svg width="17" height="16" viewBox="0 0 18 16" aria-hidden="true"><path d="M1 8s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
     </form>
     <form class="fpanel" id="filterPanel" hidden aria-label="More filters">
       <label>Author<input name="author" placeholder="Name or email" autocomplete="off"></label>
       <label>Account<select name="account"><option value="">Any account</option></select></label>
       <label>From<input type="date" name="since"></label>
       <label>To<input type="date" name="until"></label>
+      <label>Path<input name="path" placeholder="A file or folder, e.g. src/app" autocomplete="off" spellcheck="false"></label>
       <div class="checks2">
         <label><input type="checkbox" name="flagged"> Only wrong-account commits</label>
         <label><input type="checkbox" name="local"> Only not pushed</label>
@@ -405,10 +479,14 @@ dialog .row-actions{justify-content:flex-end}
     <div id="histAlert"></div>
     <div class="hmeta" id="histMeta"></div>
     <div class="hist-main" id="histMain">
+      <nav class="refside" id="refSide" aria-label="Branches and tags">
+        <input id="refFind" type="search" placeholder="Branch or tag" aria-label="Find a branch or tag" autocomplete="off" spellcheck="false">
+        <div id="refTree"></div>
+      </nav>
       <div>
         <div id="history"></div>
         <div class="selbar" id="selbar" hidden aria-live="polite"></div>
-        <p class="keys" id="histKeys"><kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>Enter</kbd> select · Ctrl/⌘-click select several · <kbd>Esc</kbd> clear · <kbd>b</kbd> branch · <kbd>r</kbd> reload</p>
+        <p class="keys" id="histKeys"><kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>Enter</kbd> select · Ctrl/⌘-click select several · <kbd>Esc</kbd> clear · <kbd>b</kbd> branch · <kbd>t</kbd> branches panel · <kbd>r</kbd> reload · in the branches: click shows its commits, double-click switches, right-click for more</p>
       </div>
       <div class="details" id="details" hidden role="region" aria-label="Commit details"></div>
     </div>
@@ -528,9 +606,9 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.da
 function show(tab){
   document.querySelectorAll('nav button').forEach(b => b.dataset.tab === tab ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
+  document.querySelector('main').classList.toggle('wide', tab === 'history');
   if (tab === 'repos') loadRepos();
   if (tab === 'history') fillRepoSelect();
-  if (tab === 'github') loadGithub('none');
   if (tab === 'settings') loadChecks();
   // Clicked in the sidebar: move focus to the new page, so keyboard and
   // screen reader users continue there.
@@ -544,7 +622,15 @@ async function refresh(){
   const c = S.config;
   $('#lanes').innerHTML = c.accounts.length ? '<h2>Accounts</h2>' + c.accounts.map(a =>
     `<div class="lane"><i style="background:${colorOf(a.id)}"></i><div>${esc(a.id)}${a.id === c.default ? ' <span class="hint">default</span>' : ''}<small>${esc(a.email)}</small></div></div>`).join('') : '';
-  renderAccounts(); renderRules(); renderSettings();
+  renderAccounts(); renderRules(); renderSettings(); syncGithub();
+}
+// The GitHub repos sit under the accounts, and only once an account is
+// signed in: everything else in GitSwitch works without it.
+function syncGithub(){
+  const on = (S.hosting || []).some(h => h.signedIn);
+  $('#ghSection').hidden = !on;
+  if (!on){ GH = null; return; }
+  if (!GH) loadGithub('none');
 }
 
 // ---- first-run setup ----
@@ -1008,7 +1094,16 @@ $('#ghList').addEventListener('click', async e => {
 // ---- history ----
 let H = null, R = null;          // the shown history, and {head, branches} of its repo
 const picked = new Set();        // selected commit hashes
-const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false};
+const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:''};
+// View preferences are this computer's: kept in the page's storage, and
+// the page works the same without it.
+const store = {get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }};
+// How the log lists commits (sent to git) and how it shows them.
+const OPTS = Object.assign({order:'topo', firstParent:false, noMerges:false}, store.get('gs.histOpts', {}));
+const VIEW = Object.assign({compact:true, tagNames:true, exact:false, refsLeft:false, colAuthor:true, colAccount:true, colDate:true,
+  hiMine:true, hiMerges:true, hiHead:false}, store.get('gs.histView', {}));
+const FV = Object.assign({tree:true}, store.get('gs.filesView', {}));
 const histVisible = () => !$('#tab-history').hidden;
 
 // renderRepoOptions fills the History repo menu: recently opened first,
@@ -1050,7 +1145,8 @@ function markOpened(gd){
 $('#histReload').onclick = () => loadHistory();
 
 // The search box takes plain words (the commit message) and, for people
-// who like typing, author:, account:, since: and until: tokens. since:7d
+// who like typing, author:, account:, since:, until:, path: and branch:
+// tokens. since:7d
 // means 7 days ago (h, d, w, m, y). Tokens turn into filter chips.
 const units = {h:'hours', d:'days', w:'weeks', m:'months', y:'years'};
 const rel = v => { const m = /^(\d+)([hdwmy])$/i.exec(v); return m ? `${m[1]} ${units[m[2].toLowerCase()]} ago` : v; };
@@ -1058,8 +1154,9 @@ function applySearch(q){
   const rest = [];
   for (const m of q.matchAll(/(\w+):(?:"([^"]*)"|(\S+))|"([^"]*)"|(\S+)/g)){
     const key = (m[1] || '').toLowerCase(), val = (m[2] ?? m[3] ?? '').trim();
-    if (['author','account','since','until'].includes(key) && val){
-      F[key] = key === 'since' || key === 'until' ? rel(val) : val;
+    if (['author','account','since','until','path','branch'].includes(key) && val){
+      if (key === 'branch') F.ref = val;
+      else F[key] = key === 'since' || key === 'until' ? rel(val) : val;
       if (key === 'since') F.range = '';
     } else rest.push(m[4] ?? m[0]);
   }
@@ -1084,23 +1181,25 @@ $('#rangeSeg').addEventListener('click', e => {
 $('#moreFilters').onclick = () => toggleFilters();
 function toggleFilters(open = $('#filterPanel').hidden){
   const p = $('#filterPanel');
-  if (open){ p.author.value = F.author; p.account.value = F.account; p.since.value = /^\d{4}-\d\d-\d\d$/.test(F.since) ? F.since : '';
+  if (open){ p.author.value = F.author; p.account.value = F.account; p.path.value = F.path; p.since.value = /^\d{4}-\d\d-\d\d$/.test(F.since) ? F.since : '';
     p.until.value = /^\d{4}-\d\d-\d\d$/.test(F.until) ? F.until : ''; p.flagged.checked = F.flagged; p.local.checked = F.local; }
   p.hidden = !open; $('#moreFilters').setAttribute('aria-expanded', String(open));
   if (open) p.author.focus();
 }
 $('#filterPanel').onsubmit = e => {
   e.preventDefault(); const p = e.target;
-  Object.assign(F, {author:p.author.value.trim(), account:p.account.value, flagged:p.flagged.checked, local:p.local.checked});
+  Object.assign(F, {author:p.author.value.trim(), account:p.account.value, path:p.path.value.trim(), flagged:p.flagged.checked, local:p.local.checked});
   if (p.since.value || p.until.value){ F.since = p.since.value; F.until = p.until.value; F.range = ''; }
   else if (/^\d{4}-/.test(F.since + F.until)){ F.since = ''; F.until = ''; }
   toggleFilters(false); loadHistory();
 };
 $('#filterReset').onclick = () => { const p = $('#filterPanel'); p.reset(); p.account.value = ''; };
-function clearFilters(){ Object.assign(F, {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false}); $('#histSearch').value = ''; loadHistory(); }
+function clearFilters(){ Object.assign(F, {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:''}); $('#histSearch').value = ''; loadHistory(); }
 
 function renderChips(){
   const chips = [];
+  if (F.ref) chips.push(['ref', refLabel(F.ref)]);
+  if (F.path) chips.push(['path', 'Path: ' + F.path]);
   if (F.text) chips.push(['text', `Message: “${F.text}”`]);
   if (F.author) chips.push(['author', 'Author: ' + F.author]);
   if (F.account) chips.push(['account', 'Account: ' + F.account]);
@@ -1110,7 +1209,7 @@ function renderChips(){
   if (F.local) chips.push(['local', 'Not pushed only']);
   $('#chips').innerHTML = chips.map(([k, t]) => `<span class="fchip">${esc(t)}<button type="button" data-chip="${k}" aria-label="Remove filter: ${esc(t)}">✕</button></span>`).join('')
     + (chips.length > 1 ? '<button type="button" class="btn ghost" data-chip="*">Clear all</button>' : '');
-  const n = [F.author, F.account, F.since, F.until, F.flagged, F.local].filter(Boolean).length;
+  const n = [F.author, F.account, F.since, F.until, F.flagged, F.local, F.path].filter(Boolean).length;
   $('#filterCount').innerHTML = n ? `<span class="count">${n}</span>` : '';
   document.querySelectorAll('#rangeSeg button').forEach(b => b.setAttribute('aria-pressed', String(!F.since && !F.until && b.dataset.range === F.range)));
   $('#histSearch').value = F.text;
@@ -1129,9 +1228,18 @@ function query(gd){
   if (F.account) q.set('account', F.account);
   if (F.since || F.range) q.set('since', F.since || F.range);
   if (F.until) q.set('until', F.until);
+  if (F.ref) q.set('ref', F.ref);
+  if (F.path) q.set('path', F.path);
+  if (OPTS.order === 'date') q.set('order', 'date');
+  if (OPTS.firstParent) q.set('firstParent', '1');
+  if (OPTS.noMerges) q.set('noMerges', '1');
   return q;
 }
-const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range);
+// A branch alone keeps the graph (its history is whole); the rest hide
+// commits, so the graph's lines would not connect.
+const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range || F.path || OPTS.noMerges);
+// refLabel names a ref filter for its chip: refs/heads/x is "Branch: x".
+const refLabel = r => r.startsWith('refs/tags/') ? 'Tag: ' + r.slice(10) : r.startsWith('refs/remotes/') ? 'Branch: ' + r.slice(13) : 'Branch: ' + r.replace(/^refs\/heads\//, '');
 
 // How many commits to read. "Load more" raises it; another repo or filter
 // starts again from one page (the graph needs every commit above the last).
@@ -1140,7 +1248,7 @@ let histN = HIST_PAGE, histKey = '';
 async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
   markOpened(gd);
-  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until].join('|');
+  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, OPTS.order, OPTS.firstParent, OPTS.noMerges].join('|');
   histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
   histKey = key;
   if (!H) $('#history').innerHTML = '<p class="hint">Reading history…</p>';
@@ -1149,7 +1257,7 @@ async function loadHistory(more){
   $('#history').dataset.loaded = '1';
   H = h; R = r;
   if (H) for (const x of [...picked]) if (!H.commits.some(c => c.hash === x)) picked.delete(x);
-  renderToolbar(); renderHistory();
+  renderToolbar(); renderHistory(); renderRefTree();
 }
 
 // ---- toolbar: branch, sync, update ----
@@ -1316,6 +1424,12 @@ $('#branchList').addEventListener('keydown', e => {
 $('#branchList').addEventListener('click', async e => {
   const b = e.target.closest('[data-branch]')?.dataset.branch; if (!b) return;
   toggleBranches(false);
+  switchTo(b);
+});
+// switchTo switches branch, asking first what to do with uncommitted
+// changes (or doing what the switch setting says). b is a local branch or
+// a remote one (origin/x), which becomes a local branch that tracks it.
+async function switchTo(b){
   if (b === R?.head.branch) return;
   const gd = $('#histRepo').value, from = R?.head.branch, c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
   let mode = '';
@@ -1339,7 +1453,7 @@ $('#branchList').addEventListener('click', async e => {
     + (n && st.mode !== 'ask' ? ` (your ${st.repo ? 'choice for this repo' : 'setting'})` : ''), false, null, undoable(gd));
   picked.clear(); await loadHistory();
   if (r.waiting?.length) offerParked(gd, r.waiting[0]);
-});
+}
 // offerParked follows a switch to a branch with parked changes.
 async function offerParked(gd, p){
   if (!await ask(`You parked changes on ${p.branch} ${ago(p.time)}: ${fileList(p.files)}. Restore them now?`, {ok:'Restore', cancel:'Not now'})) return;
@@ -1394,6 +1508,54 @@ document.addEventListener('click', e => {
 // ---- the commit list ----
 const ago = t => { const s = Date.now()/1000 - t; const u = [[31536000,'year'],[2592000,'month'],[604800,'week'],[86400,'day'],[3600,'hour'],[60,'minute']];
   for (const [n, w] of u) if (s >= n){ const v = Math.floor(s/n); return `${v} ${w}${v > 1 ? 's' : ''} ago`; } return 'just now'; };
+// Lane colors for the graph: soft, greyed hues that read on light and
+// dark, so the saturated dots (the account's color) stand out from them.
+const LANES = ['#7f93b8', '#a08cc0', '#c09a6e', '#b8879a', '#8fa37a', '#7aa7c0'];
+const laneColor = i => LANES[i % LANES.length];
+// when is a date the way a log reads best: "5 min ago", "Today 10:45",
+// "Yesterday 22:20", "Mon 09:12", then the date.
+function when(t){
+  const d = new Date(t * 1000), now = new Date(), s = (now - d) / 1000;
+  if (VIEW.exact) return d.toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+  if (s < 0) return d.toLocaleDateString([], {month:'short', day:'numeric'});
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + ' min ago';
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const hm = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), days = Math.round((day(now) - day(d)) / 86400000);
+  if (days === 0) return 'Today ' + hm;
+  if (days === 1) return 'Yesterday ' + hm;
+  if (days < 7) return d.toLocaleDateString([], {weekday:'short'}) + ' ' + hm;
+  return d.toLocaleDateString([], {year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric', month:'short', day:'numeric'});
+}
+const ICON = {
+  branch: '<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v3c0 3-6 2-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="3" r="1.8" fill="currentColor"/></svg>',
+  remote: '<svg width="12" height="11" viewBox="0 0 18 16" aria-hidden="true"><path d="M5 13h8.5a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 4.3 7.2 3 3 0 0 0 5 13z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  tag: '<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h6l6 6-6 6-6-6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="5.5" cy="5.5" r="1.3" fill="currentColor"/></svg>',
+};
+// pills shows a commit's branches and tags at the end of its row. A local
+// branch and the remote branch it matches are one pill ("main · origin");
+// past two, the rest go in a "+n" pill.
+function pills(c){
+  const ls = c.labels || [];
+  if (!ls.length) return '';
+  const remotes = ls.filter(l => l.kind === 'remote'), joined = new Set(), out = [];
+  for (const l of ls){
+    if (l.kind === 'remote') continue;
+    let also = '';
+    if (VIEW.compact && (l.kind === 'head' || l.kind === 'local')){
+      const r = remotes.find(r => r.name.slice(r.name.indexOf('/') + 1) === l.name);
+      if (r){ joined.add(r.name); also = r.name.slice(0, r.name.indexOf('/')); }
+    }
+    out.push({...l, also});
+  }
+  for (const r of remotes) if (!joined.has(r.name)) out.push(r);
+  const icon = k => k === 'tag' ? ICON.tag : k === 'remote' ? ICON.remote : k === 'detached' ? '' : ICON.branch;
+  const what = p => p.kind === 'head' ? 'current branch' : p.kind === 'tag' ? 'tag' : p.kind === 'remote' ? 'remote branch' : p.kind === 'detached' ? 'checked out, no branch' : 'branch';
+  const name = p => p.kind === 'tag' && !VIEW.tagNames ? '' : esc(p.name);
+  const pill = p => `<span class="pill ${p.kind}" title="${esc(p.name + (p.also ? ' and ' + p.also + '/' + p.name : '') + ' (' + what(p) + ')')}">${icon(p.kind)}${name(p)}${p.also ? `<span class="also">· ${esc(p.also)}</span>` : ''}</span>`;
+  const max = VIEW.compact ? 2 : out.length, rest = out.slice(max);
+  return `<span class="pills">${out.slice(0, max).map(pill).join('')}${rest.length ? `<span class="pill" title="${esc(rest.map(p => p.name).join(', '))}">+${rest.length}</span>` : ''}</span>`;
+}
 function renderHistory(){
   const box = $('#history');
   if (!H){ box.innerHTML = '<div class="empty">Could not read this repo’s history.</div>'; $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = ''; return renderDetails(); }
@@ -1450,30 +1612,38 @@ function renderHistory(){
     $('#emptyClear')?.addEventListener('click', clearFilters);
     return renderDetails();
   }
-  const graph = !filtered, L = 18, W = graph ? Math.max(2, H.lanes) * L + 14 : 30, RH = 32;
+  const graph = !filtered, L = 16, W = graph ? Math.max(2, H.lanes) * L + 12 : 26, RH = 28;
   const x = c => 12 + (graph ? c : 0) * L;
   const idx = new Map(H.commits.map((c, i) => [c.hash, i]));
-  box.innerHTML = `<div class="history" style="--gw:${W}px" role="listbox" aria-multiselectable="true" aria-label="Commits">` + shown.map(c => {
+  // Columns and highlights follow the View menu.
+  const who = VIEW.colAuthor || VIEW.colAccount;
+  const cols = (w, d) => `var(--gw) minmax(0,1fr)${who ? ' ' + w : ''}${VIEW.colDate ? ' ' + d : ''}`;
+  const hi = ['hiMine', 'hiMerges', 'hiHead'].filter(k => VIEW[k]).map(k => 'hi-' + k.slice(2).toLowerCase()).join(' ');
+  box.innerHTML = `<div class="history ${hi}" style="--gw:${W}px;--cols:${cols('minmax(120px,190px)', '132px')};--cols-m:${cols('140px', '112px')};--cols-s:var(--gw) minmax(0,1fr)${VIEW.colDate ? ' 104px' : ''}" role="listbox" aria-multiselectable="true" aria-label="Commits">` + shown.map(c => {
     const i = idx.get(c.hash), col = c.account ? colorOf(c.account) : 'var(--muted)';
+    // Each lane keeps its own color, as in an IDE's log; the dot is the
+    // account's color, which is what GitSwitch is about.
     let lines = '';
     if (graph){
       for (const [f, t] of c.edges || []){
-        const x1 = x(f), x2 = x(t);
-        lines += x1 === x2 ? `<line x1="${x1}" y1="${RH/2}" x2="${x2}" y2="${RH + 1}" />`
-          : `<path d="M${x1} ${RH/2} C${x1} ${RH*0.85} ${x2} ${RH*0.75} ${x2} ${RH + 1}" fill="none"/>`;
+        const x1 = x(f), x2 = x(t), lc = laneColor(Math.max(f, t));
+        lines += x1 === x2 ? `<line x1="${x1}" y1="${RH/2}" x2="${x2}" y2="${RH + 1}" stroke="${lc}"/>`
+          : `<path d="M${x1} ${RH/2} C${x1} ${RH*0.85} ${x2} ${RH*0.75} ${x2} ${RH + 1}" stroke="${lc}"/>`;
       }
       if (i > 0) for (const t of new Set((H.commits[i-1].edges || []).map(e => e[1])))
-        lines += `<line x1="${x(t)}" y1="-1" x2="${x(t)}" y2="${RH/2}" />`;
+        lines += `<line x1="${x(t)}" y1="-1" x2="${x(t)}" y2="${RH/2}" stroke="${laneColor(t)}"/>`;
     }
-    const svg = `<svg width="${W}" height="${RH}" aria-hidden="true"><g stroke="var(--muted)" stroke-opacity=".55" stroke-width="2" fill="none">${lines}</g>
-      <circle cx="${x(c.col)}" cy="${RH/2}" r="5.5" fill="${c.flagged ? 'var(--bad)' : col}" ${c.unpushed ? 'stroke="var(--panel)" stroke-width="2"' : ''}/>
-      ${c.unpushed ? `<circle cx="${x(c.col)}" cy="${RH/2}" r="8" fill="none" stroke="${c.flagged ? 'var(--bad)' : col}" stroke-width="1.2" stroke-dasharray="2 2"/>` : ''}</svg>`;
-    const chip = `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}${c.flagged ? '<span class="sr-only"> (wrong account for this repo)</span>' : ''}</span>`;
-    const refs = c.refs ? `<span class="refs">${esc(c.refs)}</span>` : '';
+    const svg = `<svg width="${W}" height="${RH}" aria-hidden="true"><g stroke-opacity=".8" stroke-width="1.8" fill="none">${lines}</g>
+      <circle cx="${x(c.col)}" cy="${RH/2}" r="${c.merge ? 3.5 : 5}" fill="${c.flagged ? 'var(--bad)' : col}" ${c.unpushed ? 'stroke="var(--panel)" stroke-width="2"' : ''}/>
+      ${c.unpushed ? `<circle cx="${x(c.col)}" cy="${RH/2}" r="7.5" fill="none" stroke="${c.flagged ? 'var(--bad)' : col}" stroke-width="1.2" stroke-dasharray="2 2"/>` : ''}</svg>`;
+    // The account comes first: a known account as a chip, then the name.
+    const chip = VIEW.colAccount && (c.account || c.flagged) ? `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}${c.flagged ? '<span class="sr-only"> (wrong account for this repo)</span>' : ''}</span>` : '';
     const sel = picked.has(c.hash);
-    return `<div class="hrow${c.flagged ? ' flag' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}${chip}
-      <div class="subj">${refs}${esc(c.subject)}</div><div class="em">${esc(c.email)}</div>
-      <div class="when">${c.unpushed ? 'not pushed' : ago(c.time)}</div></div>`;
+    const subj = VIEW.refsLeft ? `${pills(c)}<span class="stext">${esc(c.subject)}</span>` : `<span class="stext">${esc(c.subject)}</span>${pills(c)}`;
+    return `<div class="hrow${c.flagged ? ' flag' : ''}${c.merge ? ' merge' : ''}${c.onHead ? ' onhead' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}
+      <div class="subj">${subj}</div>
+      ${who ? `<div class="who" title="${esc(c.email)}">${chip}${VIEW.colAuthor ? `<span class="aname ${c.account ? 'mine' : 'other'}">${esc(c.author)}</span>` : ''}</div>` : ''}
+      ${VIEW.colDate ? `<div class="when" title="${esc(new Date(c.time * 1000).toLocaleString())}${c.unpushed ? ' · not pushed: only on this computer' : ''}">${c.unpushed ? '<span class="up" aria-label="not pushed">↑</span>' : ''}${when(c.time)}</div>` : ''}</div>`;
   }).join('') + '</div>' + (H.more ? `<div class="more-row"><span class="hint">Showing the latest ${H.commits.length} commits.</span> <button class="btn" id="moreBtn">Load ${HIST_PAGE} more</button></div>` : '');
   $('#moreBtn')?.addEventListener('click', e => { e.target.disabled = true; e.target.textContent = 'Loading…'; loadHistory(true); });
   renderDetails();
@@ -1491,6 +1661,176 @@ $('#history').addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('hrow')){ e.preventDefault(); pick(e.target.dataset.hash, e.key === ' ' || e.metaKey || e.ctrlKey); }
 });
 
+// ---- Sort and options, and View: menus that stay open while you tick ----
+// openMenu shows sections of check and radio items under a button. Each
+// change applies at once; Esc or a click elsewhere closes it.
+function openMenu(btn, build, change){
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'rmenu'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', btn.getAttribute('aria-label') || '');
+  const draw = () => {
+    m.innerHTML = build().map((sec, i) => (i ? '<hr>' : '') + (sec.title ? `<h4>${esc(sec.title)}</h4>` : '') + sec.items.map(it =>
+      `<button role="${it.radio ? 'menuitemradio' : 'menuitemcheckbox'}" aria-checked="${!!it.on}" data-k="${esc(it.key)}"${it.value !== undefined ? ` data-v="${esc(it.value)}"` : ''}${it.hint ? ` title="${esc(it.hint)}"` : ''}><span class="mk">${it.on ? (it.radio ? '•' : '✓') : ''}</span>${esc(it.label)}${it.sub ? `<span class="sub">${esc(it.sub)}</span>` : ''}</button>`).join('')).join('');
+  };
+  draw();
+  document.body.append(m);
+  const r = btn.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (r.bottom + 6) + 'px';
+  btn.setAttribute('aria-expanded', 'true');
+  m.onclick = ev => {
+    ev.stopPropagation();
+    const b = ev.target.closest('[data-k]'); if (!b) return;
+    const k = b.dataset.k;
+    change(k, b.dataset.v);
+    const at = [...m.querySelectorAll('[data-k]')].indexOf(b);
+    draw(); m.querySelectorAll('[data-k]')[at]?.focus();
+  };
+  m.onkeydown = ev => {
+    const bs = [...m.querySelectorAll('[data-k]')], i = bs.indexOf(document.activeElement);
+    if (ev.key === 'Escape'){ ev.stopPropagation(); closeMenu(); btn.focus(); }
+    if (ev.key === 'ArrowDown'){ ev.preventDefault(); bs[(i + 1) % bs.length].focus(); }
+    if (ev.key === 'ArrowUp'){ ev.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); }
+  };
+  m.querySelector('[data-k]')?.focus();
+}
+$('#optsBtn').onclick = e => {
+  e.stopPropagation();
+  if ($('#optsBtn').getAttribute('aria-expanded') === 'true') return closeMenu();
+  openMenu($('#optsBtn'), () => [
+    {title:'Sort', items:[
+      {key:'order', value:'date', radio:true, on:OPTS.order === 'date', label:'By commit date', hint:'Newest first; a commit still comes before the ones it was built on'},
+      {key:'order', value:'topo', radio:true, on:OPTS.order !== 'date', label:'Topologically', hint:'Keeps each branch’s commits together'}]},
+    {title:'Options', items:[
+      {key:'firstParent', on:OPTS.firstParent, label:'First parent', hint:'Follow only the first parent of merges: a branch’s own story, without what merges brought in. Clearest with one branch selected in the branches panel'},
+      {key:'noMerges', on:OPTS.noMerges, label:'No merges', hint:'Leave merge commits out (the graph is hidden while they are)'}]},
+  ], (k, v) => {
+    if (k === 'order') OPTS.order = v; else OPTS[k] = !OPTS[k];
+    store.set('gs.histOpts', OPTS); H = null; loadHistory();
+  });
+};
+$('#viewBtn').onclick = e => {
+  e.stopPropagation();
+  if ($('#viewBtn').getAttribute('aria-expanded') === 'true') return closeMenu();
+  openMenu($('#viewBtn'), () => [
+    {title:'Show', items:[
+      {key:'compact', on:VIEW.compact, label:'Compact references', hint:'A branch and its remote branch as one label, at most two labels a row'},
+      {key:'tagNames', on:VIEW.tagNames, label:'Tag names'},
+      {key:'exact', on:VIEW.exact, label:'Exact dates', hint:'Date and time instead of “Today 10:45”'},
+      {key:'refsLeft', on:VIEW.refsLeft, label:'References on the left'}]},
+    {title:'Columns', items:[
+      {key:'colAccount', on:VIEW.colAccount, label:'Account'},
+      {key:'colAuthor', on:VIEW.colAuthor, label:'Author'},
+      {key:'colDate', on:VIEW.colDate, label:'Date'}]},
+    {title:'Highlight', items:[
+      {key:'hiMine', on:VIEW.hiMine, label:'My commits', hint:'Made with one of your accounts: the others are greyed'},
+      {key:'hiMerges', on:VIEW.hiMerges, label:'Merge commits', hint:'Greyed, so your work stands out'},
+      {key:'hiHead', on:VIEW.hiHead, label:'Current branch', sub:R?.head.branch || '', hint:'Commits not on what is checked out are greyed'}]},
+  ], k => { VIEW[k] = !VIEW[k]; store.set('gs.histView', VIEW); if (H) renderHistory(); });
+};
+
+// ---- branches panel ----
+// Every branch and tag, as a tree: folders for the parts of a name before
+// a slash (feature/login sits in feature). Click shows only its commits,
+// double-click switches to it, right-click offers more. Which folders are
+// shut and whether the panel shows are remembered on this computer.
+const shut = new Set(store.get('gs.refShut', ['tags']));
+function toggleSide(on = $('#histMain').classList.contains('noside')){
+  $('#histMain').classList.toggle('noside', !on); $('#sideBtn').setAttribute('aria-expanded', String(on)); store.set('gs.refSide', on);
+}
+toggleSide(store.get('gs.refSide', true));
+$('#sideBtn').onclick = () => toggleSide();
+$('#refFind').oninput = () => renderRefTree();
+function renderRefTree(){
+  if (!R) { $('#refTree').innerHTML = ''; return; }
+  const q = $('#refFind').value.trim().toLowerCase(), h = R.head;
+  const parked = n => (R.parked || []).filter(p => p.branch === n).length;
+  const row = (ref, name, label, kind, depth, extra = {}) => {
+    const on = F.ref === ref, cur = kind === 'local' && name === h.branch;
+    const badge = cur && (h.ahead || h.behind) ? `${h.ahead ? '↑' + h.ahead : ''}${h.behind ? ' ↓' + h.behind : ''}` : parked(name) ? parked(name) + ' parked' : extra.gone ? 'gone' : '';
+    return `<button class="rt-row${on ? ' on' : ''}${cur ? ' cur' : ''}${extra.gone ? ' gone' : ''}" style="padding-left:${6 + depth * 14}px" data-ref="${esc(ref)}" data-name="${esc(name)}" data-kind="${kind}"
+      title="${esc(name + (cur ? ' (checked out)' : '') + (extra.upstream ? ' → ' + extra.upstream : '') + (extra.gone ? ' (its remote branch is gone)' : ''))}" aria-pressed="${on}">${kind === 'tag' ? ICON.tag : ICON.branch}<span class="nm">${esc(label)}</span>${badge ? `<span class="rt-badge">${esc(badge)}</span>` : ''}</button>`;
+  };
+  const caret = open => `<svg class="rt-caret${open ? '' : ' shut'}" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  // tree turns names into folders and leaves, folders first.
+  const tree = (items, key, depth) => {
+    const dirs = new Map(), leaves = [];
+    for (const it of items){
+      const i = it.rest.indexOf('/');
+      if (i < 0 || q) leaves.push(it);
+      else { const d = it.rest.slice(0, i); if (!dirs.has(d)) dirs.set(d, []); dirs.get(d).push({...it, rest: it.rest.slice(i + 1)}); }
+    }
+    let out = '';
+    for (const [d, sub] of [...dirs].sort((a, b) => a[0].localeCompare(b[0]))){
+      const k = key + '/' + d, open = !shut.has(k);
+      out += `<button class="rt-row" style="padding-left:${6 + depth * 14}px" data-fold="${esc(k)}" aria-expanded="${open}">${caret(open)}<span class="nm">${esc(d)}</span></button>` + (open ? tree(sub, k, depth + 1) : '');
+    }
+    return out + leaves.map(it => row(it.ref, it.name, q ? it.name : it.rest, it.kind, depth, it)).join('');
+  };
+  const section = (key, title, items) => {
+    if (!items.length) return '';
+    const open = q || !shut.has(key);
+    return `<button class="rt-row rt-sec" data-fold="${esc(key)}" aria-expanded="${!!open}">${caret(open)}${esc(title)} <span class="rt-badge">${items.length}</span></button>` + (open ? tree(items, key, 1) : '');
+  };
+  const has = n => !q || n.toLowerCase().includes(q);
+  const local = R.branches.filter(b => !b.remote && has(b.name)).map(b => ({ref:'refs/heads/' + b.name, name:b.name, rest:b.name, kind:'local', upstream:b.upstream, gone:b.gone}));
+  const remotes = new Map();
+  for (const b of R.branches.filter(b => b.remote && !b.name.endsWith('/HEAD') && has(b.name))){
+    const r = b.name.slice(0, b.name.indexOf('/'));
+    if (!remotes.has(r)) remotes.set(r, []);
+    remotes.get(r).push({ref:'refs/remotes/' + b.name, name:b.name, rest:b.name.slice(r.length + 1), kind:'remote'});
+  }
+  const tags = (R.tags || []).filter(has).map(t => ({ref:'refs/tags/' + t, name:t, rest:t, kind:'tag'}));
+  const head = `<button class="rt-row${!F.ref ? ' on' : ''}" data-ref="" aria-pressed="${!F.ref}" title="Every branch, tag and remote branch">${ICON.branch}<span class="nm">All branches</span></button>`
+    + `<button class="rt-row${F.ref === 'HEAD' ? ' on' : ''}" data-ref="HEAD" aria-pressed="${F.ref === 'HEAD'}" title="Only the history of what is checked out">${ICON.branch}<span class="nm">HEAD${h.branch ? ' · ' + esc(h.branch) : ' (no branch)'}</span></button>`;
+  $('#refTree').innerHTML = (q ? '' : head) + section('local', 'Local', local)
+    + [...remotes].map(([r, items]) => section('remote/' + r, 'Remote · ' + r, items)).join('') + section('tags', 'Tags', tags)
+    || '<p class="hint" style="margin:6px">No branch or tag matches.</p>';
+}
+$('#refTree').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.fold !== undefined){ const k = b.dataset.fold; shut.has(k) ? shut.delete(k) : shut.add(k); store.set('gs.refShut', [...shut]); return renderRefTree(); }
+  if (b.dataset.ref === undefined || F.ref === b.dataset.ref) return;
+  F.ref = b.dataset.ref; picked.clear(); H = null; loadHistory();
+});
+$('#refTree').addEventListener('dblclick', e => {
+  const b = e.target.closest('[data-kind]'); if (!b || b.dataset.kind === 'tag') return;
+  switchTo(b.dataset.name);
+});
+$('#refTree').addEventListener('contextmenu', e => {
+  const b = e.target.closest('[data-kind]'); if (!b) return;
+  e.preventDefault();
+  const {name, kind, ref} = b.dataset, cur = kind === 'local' && name === R?.head.branch;
+  const items = [['show', 'Show only its commits'], ...(kind !== 'tag' && !cur ? [['switch', 'Switch to ' + name]] : []), ['new', `New branch from ${name}…`], ['copy', 'Copy name']];
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'rmenu'; m.setAttribute('role', 'menu');
+  m.innerHTML = items.map(([k, t]) => `<button role="menuitem" data-m="${k}">${esc(t)}</button>`).join('');
+  document.body.append(m);
+  m.style.left = Math.min(e.clientX, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
+  m.querySelector('button').focus();
+  m.onclick = async ev => {
+    const k = ev.target.closest('[data-m]')?.dataset.m; if (!k) return;
+    closeMenu();
+    if (k === 'show'){ F.ref = ref; picked.clear(); H = null; loadHistory(); }
+    else if (k === 'switch') switchTo(name);
+    else if (k === 'new') newBranch(ref, 'from ' + name);
+    else if (k === 'copy'){ try { await navigator.clipboard.writeText(name); toast('Copied ' + name); } catch { act(() => api('POST','/api/copy',{text:name}), 'Copied ' + name); } }
+  };
+  m.onkeydown = ev => {
+    const bs = [...m.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
+    if (ev.key === 'Escape'){ ev.stopPropagation(); closeMenu(); b.focus(); }
+    if (ev.key === 'ArrowDown'){ ev.preventDefault(); bs[(i + 1) % bs.length].focus(); }
+    if (ev.key === 'ArrowUp'){ ev.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); }
+  };
+});
+function closeMenu(){
+  document.querySelectorAll('.rmenu').forEach(m => m.remove());
+  document.querySelectorAll('[aria-haspopup=menu][aria-expanded=true]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('.rmenu')) closeMenu(); });
+addEventListener('resize', () => { if (histVisible() && H) renderDetails(); });
+
 // ---- details panel and selection bar ----
 function actionRow(id, label, why, opts = {}){
   return `<div class="action"><button class="btn${opts.danger ? ' danger' : ''}" data-ca="${id}"${opts.disabled ? ` disabled title="${esc(opts.disabled)}"` : ''}>${label}</button><span class="why">${why}</span></div>`;
@@ -1501,7 +1841,12 @@ function renderDetails(){
   sb.hidden = cs.length < 2;
   if (cs.length >= 2) sb.innerHTML = `<strong>${cs.length} commits selected</strong><button class="btn" data-ca="pick">Cherry-pick ${cs.length} onto ${branch}</button><button class="btn ghost" data-ca="clear">Clear</button>`;
   $('#histMain').classList.toggle('open', cs.length === 1);
-  if (cs.length !== 1){ d.hidden = true; return; }
+  if (cs.length !== 1){
+    // Wide windows keep the panel, saying what it is for.
+    d.hidden = !matchMedia('(min-width:1181px)').matches || !H;
+    d.innerHTML = `<div class="dempty">${cs.length > 1 ? `${cs.length} commits selected` : 'Select a commit to see its message, the files it changed and what you can do with it.'}</div>`;
+    return;
+  }
   const c = cs[0], pushed = !c.unpushed, col = c.account ? colorOf(c.account) : 'var(--muted)';
   const pushedWhy = 'Already pushed: rewriting it would break other people’s copies. Use Revert instead.';
   d.innerHTML = `<div class="dhead"><code>${esc(c.short)}</code><button class="btn ghost" data-ca="copy">Copy hash</button>
@@ -1552,9 +1897,59 @@ async function showDetail(gd, hash){
   const body = reflow(d.message.split('\n').slice(1).join('\n').trim());
   const n = d.files.length + d.more;
   box.innerHTML = (body ? `<pre class="cmsg">${esc(body)}</pre>` : '')
-    + `<details class="cfiles"${n <= 12 ? ' open' : ''}><summary>${n} file${n === 1 ? '' : 's'} changed <span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span></summary>
-      <ul>${d.files.map(f => `<li title="${esc(f.path)}"><span class="fn">${esc(f.path)}</span>${f.binary ? '<span class="hint">binary</span>' : `<span class="add">+${f.added}</span><span class="del">−${f.deleted}</span>`}</li>`).join('')}
-      ${d.more ? `<li class="hint">and ${d.more} more</li>` : ''}</ul></details>`;
+    + `<div class="fhead"><strong>${n} file${n === 1 ? '' : 's'} changed</strong> <span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span>
+      <button class="btn ghost" data-fv="tree" title="${FV.tree ? 'Show the files as a flat list' : 'Group the files by folder'}">${FV.tree ? 'Flat list' : 'By folder'}</button></div>
+      <div class="ftree" role="tree" aria-label="Changed files">${fileRows(d, key)}${d.more ? `<div class="hint" style="padding:2px 8px">and ${d.more} more</div>` : ''}</div>
+      <div id="diffbox"></div>`;
+  box.querySelector('[data-fv]').onclick = () => { FV.tree = !FV.tree; store.set('gs.filesView', FV); showDetail(gd, hash); };
+  box.querySelector('.ftree').onclick = e => {
+    const r = e.target.closest('.frow'); if (!r) return;
+    if (r.dataset.dir !== undefined){ const k = key + '|' + r.dataset.dir; shutDirs.has(k) ? shutDirs.delete(k) : shutDirs.add(k); return showDetail(gd, hash); }
+    box.querySelectorAll('.frow.on').forEach(x => x.classList.remove('on')); r.classList.add('on');
+    showDiff(gd, hash, r.dataset.path);
+  };
+}
+// fileRows lists a commit's changed files: by folder (one-child folder
+// chains joined, as "features/account") or flat. Folders say how many
+// files they hold and fold on a click.
+const shutDirs = new Set();
+const FILE_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5l3.5 3.5v9.5h-8.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+const DIR_ICON = '<svg width="13" height="12" viewBox="0 0 17 15" aria-hidden="true"><path d="M1.5 2.5h5l1.5 2h7.5v8.5h-14z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+function fileRows(d, key){
+  const stat = f => f.binary ? '<span class="cnt">binary</span>' : `<span class="add">+${f.added}</span><span class="del">−${f.deleted}</span>`;
+  const file = (f, label, depth) => `<button class="frow" role="treeitem" data-path="${esc(f.path)}" style="padding-left:${8 + depth * 14}px" title="${esc(f.path)}">${FILE_ICON}<span class="fn">${esc(label)}</span>${stat(f)}</button>`;
+  if (!FV.tree) return d.files.map(f => file(f, f.path, 0)).join('');
+  const root = {dirs:new Map(), files:[]};
+  for (const f of d.files){
+    const parts = f.path.split('/'); let n = root;
+    for (const p of parts.slice(0, -1)){ if (!n.dirs.has(p)) n.dirs.set(p, {dirs:new Map(), files:[]}); n = n.dirs.get(p); }
+    n.files.push({...f, name: parts[parts.length - 1]});
+  }
+  const count = n => n.files.length + [...n.dirs.values()].reduce((a, x) => a + count(x), 0);
+  const walk = (n, path, depth) => [...n.dirs].sort((a, b) => a[0].localeCompare(b[0])).map(([name, sub]) => {
+    let label = name, full = path + name, x = sub;
+    while (x.dirs.size === 1 && !x.files.length){ const [nm, y] = [...x.dirs][0]; label += '/' + nm; full += '/' + nm; x = y; }
+    const open = !shutDirs.has(key + '|' + full), c = count(x);
+    return `<button class="frow dir" role="treeitem" aria-expanded="${open}" data-dir="${esc(full)}" style="padding-left:${8 + depth * 14}px"><svg class="rt-caret${open ? '' : ' shut'}" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>${DIR_ICON}<span class="fn">${esc(label)}</span><span class="cnt">${c} file${c === 1 ? '' : 's'}</span></button>`
+      + (open ? walk(x, full + '/', depth + 1) : '');
+  }).join('') + n.files.sort((a, b) => a.name.localeCompare(b.name)).map(f => file(f, f.name, depth)).join('');
+  return walk(root, '', 0);
+}
+// showDiff shows one file's diff under the files, added and removed lines
+// colored. GitSwitch is not a diff tool: this is a quick look.
+async function showDiff(gd, hash, path){
+  const box = $('#diffbox'); if (!box) return;
+  box.innerHTML = '<p class="hint">Reading the diff…</p>';
+  let d;
+  try { d = await api('GET', `/api/commit/diff?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`); }
+  catch (e) { box.innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+  if ($('#diffbox') !== box) return;
+  const lines = d.text.split('\n').filter((l, i, a) => !(l.startsWith('diff --git') || l.startsWith('index ') || l.startsWith('--- ') || l.startsWith('+++ ') || (i === a.length - 1 && l === '')));
+  const cls = l => l.startsWith('@@') ? 'dhunk' : l.startsWith('+') ? 'da' : l.startsWith('-') ? 'dd'
+    : /^(new|deleted) file mode|^(old|new) mode|^similarity|^rename |^Binary files/.test(l) ? 'dmeta' : '';
+  box.innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>
+    <pre>${lines.length ? lines.map(l => `<span class="${cls(l)}">${esc(l) || ' '}</span>`).join('') : '<span class="hint">No text changes (a binary file, or only its mode changed).</span>'}${d.truncated ? '<span class="hint">… cut here: the diff is long. See the rest in your editor.</span>' : ''}</pre></div>`;
+  box.querySelector('button').onclick = () => { box.innerHTML = ''; $('.frow.on')?.classList.remove('on'); };
 }
 for (const el of ['#details', '#selbar']) $(el).addEventListener('click', e => { const a = e.target.closest('[data-ca]')?.dataset.ca; if (a) commitAction(a); });
 async function commitAction(a){
@@ -1601,6 +1996,7 @@ document.addEventListener('keydown', e => {
     if (next){ next.focus(); picked.clear(); pick(next.dataset.hash, true); next.scrollIntoView({block:'nearest'}); }
   }
   else if (e.key === 'b'){ e.preventDefault(); toggleBranches(true); }
+  else if (e.key === 't'){ e.preventDefault(); toggleSide(); }
   else if (e.key === 'U'){ e.preventDefault(); undoLast($('#histRepo').value); }
   else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
   else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }

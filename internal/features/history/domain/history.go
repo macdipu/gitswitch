@@ -23,7 +23,10 @@ type Commit struct {
 	Email    string   `json:"email"`
 	Author   string   `json:"author"`
 	Time     int64    `json:"time"`
-	Refs     string   `json:"refs"`
+	Refs     string   `json:"refs"` // the branches and tags here, as git log shows them
+	Labels   []Label  `json:"labels"`
+	Merge    bool     `json:"merge"`  // more than one parent
+	OnHead   bool     `json:"onHead"` // part of what is checked out
 	Subject  string   `json:"subject"`
 	Col      int      `json:"col"`
 	Edges    [][2]int `json:"edges"` // [fromCol in this row, toCol in next row]
@@ -279,10 +282,102 @@ type Filter struct {
 	Since   string `json:"since"`   // e.g. 2024-05-01 or "2 weeks ago"
 	Until   string `json:"until"`   // e.g. 2024-06-30
 	Account string `json:"account"` // gitswitch account that made the commit
+	// Ref shows only the commits of one branch or tag ("" for every one).
+	// That still draws the graph: a branch's history is whole.
+	Ref string `json:"ref"`
+	// Path shows only the commits that changed a file or folder.
+	Path string `json:"path"`
+	// How to list: Order "date" puts commits by date (still children
+	// before parents), else topologically. FirstParent follows only the
+	// first parent of merges: a branch's own story. NoMerges leaves merge
+	// commits out.
+	Order       string `json:"order"`
+	FirstParent bool   `json:"firstParent"`
+	NoMerges    bool   `json:"noMerges"`
 }
 
 // Active reports whether the filter narrows anything.
 func (f Filter) Active() bool { return f != Filter{} }
+
+// Narrows reports whether the filter hides commits of the history it
+// shows, so graph lines would not connect: everything but the branch and
+// how to list (first-parent history is whole too).
+func (f Filter) Narrows() bool {
+	f.Ref, f.Order, f.FirstParent = "", "", false
+	return f.Active()
+}
+
+// Diff is one file's changes in one commit.
+type Diff struct {
+	Path      string `json:"path"`
+	Text      string `json:"text"`      // a unified diff
+	Truncated bool   `json:"truncated"` // cut at MaxDiffBytes
+}
+
+// MaxDiffBytes is how much of a file's diff is shown.
+const MaxDiffBytes = 256 << 10
+
+// CheckRef refuses a branch or tag name git would read as an option.
+func CheckRef(ref string) error {
+	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n") {
+		return fmt.Errorf("%q is not a branch or tag name", ref)
+	}
+	return nil
+}
+
+// Label is a branch or tag on a commit.
+type Label struct {
+	Name string `json:"name"` // main, origin/main, v1.2.0
+	Kind string `json:"kind"` // head (checked out), local, remote, tag, detached (HEAD with no branch)
+}
+
+// ParseLabels reads git log's %D with --decorate=full, e.g.
+// "HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1".
+// refs/remotes/origin/HEAD is left out: it only names the default branch.
+func ParseLabels(d string) []Label {
+	var out []Label
+	for _, part := range strings.Split(d, ", ") {
+		part = strings.TrimSpace(part)
+		kind := ""
+		if rest, ok := strings.CutPrefix(part, "HEAD -> "); ok {
+			part, kind = rest, "head"
+		}
+		switch {
+		case part == "":
+		case part == "HEAD":
+			out = append(out, Label{Name: "HEAD", Kind: "detached"})
+		case strings.HasPrefix(part, "tag: refs/tags/"):
+			out = append(out, Label{Name: strings.TrimPrefix(part, "tag: refs/tags/"), Kind: "tag"})
+		case strings.HasPrefix(part, "refs/heads/"):
+			if kind == "" {
+				kind = "local"
+			}
+			out = append(out, Label{Name: strings.TrimPrefix(part, "refs/heads/"), Kind: kind})
+		case strings.HasPrefix(part, "refs/remotes/"):
+			if n := strings.TrimPrefix(part, "refs/remotes/"); !strings.HasSuffix(n, "/HEAD") {
+				out = append(out, Label{Name: n, Kind: "remote"})
+			}
+		}
+	}
+	return out
+}
+
+// RefsText writes labels the way git log shows them by default, e.g.
+// "HEAD -> main, origin/main, tag: v1".
+func RefsText(ls []Label) string {
+	var parts []string
+	for _, l := range ls {
+		switch l.Kind {
+		case "head":
+			parts = append(parts, "HEAD -> "+l.Name)
+		case "tag":
+			parts = append(parts, "tag: "+l.Name)
+		default:
+			parts = append(parts, l.Name)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
 
 // Keep applies the account part of the filter, which git cannot know.
 func (f Filter) Keep(cs []Commit) []Commit {
@@ -594,6 +689,11 @@ func ParseNumstat(d *Detail, out string) {
 type Log interface {
 	// Show reads a commit's full message and changed files.
 	Show(gitDir, rev string) (Detail, error)
+	// FileDiff is one file's diff in a commit (against its first parent).
+	FileDiff(gitDir, rev, path string) (Diff, error)
+	// OnHead is the set of commits of HEAD's history made at or after
+	// since (Unix seconds).
+	OnHead(gitDir string, since int64) map[string]bool
 	// Commits loads the latest commits of all branches in topological
 	// order; none for a repo without commits.
 	Commits(gitDir string, limit int, f Filter) ([]Commit, error)
