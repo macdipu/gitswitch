@@ -17,22 +17,26 @@ import (
 
 // Commit is one commit with its place in the graph.
 type Commit struct {
-	Hash     string   `json:"hash"`
-	Short    string   `json:"short"`
-	Parents  []string `json:"-"`
-	Email    string   `json:"email"`
-	Author   string   `json:"author"`
-	Time     int64    `json:"time"`
-	Refs     string   `json:"refs"` // the branches and tags here, as git log shows them
-	Labels   []Label  `json:"labels"`
-	Merge    bool     `json:"merge"`  // more than one parent
-	OnHead   bool     `json:"onHead"` // part of what is checked out
-	Subject  string   `json:"subject"`
-	Col      int      `json:"col"`
-	Edges    [][2]int `json:"edges"` // [fromCol in this row, toCol in next row]
-	Account  string   `json:"account"`
-	Flagged  bool     `json:"flagged"`
-	Unpushed bool     `json:"unpushed"`
+	Hash    string   `json:"hash"`
+	Short   string   `json:"short"`
+	Parents []string `json:"-"`
+	Email   string   `json:"email"`
+	Author  string   `json:"author"`
+	Time    int64    `json:"time"`
+	Refs    string   `json:"refs"` // the branches and tags here, as git log shows them
+	Labels  []Label  `json:"labels"`
+	Merge   bool     `json:"merge"`  // more than one parent
+	OnHead  bool     `json:"onHead"` // part of what is checked out
+	// NotPicked: on the branch shown, not on HEAD, and no commit with the
+	// same changes is on HEAD either (not cherry-picked). Only read when
+	// Filter.Cherry asks for it.
+	NotPicked bool     `json:"notPicked"`
+	Subject   string   `json:"subject"`
+	Col       int      `json:"col"`
+	Edges     [][2]int `json:"edges"` // [fromCol in this row, toCol in next row]
+	Account   string   `json:"account"`
+	Flagged   bool     `json:"flagged"`
+	Unpushed  bool     `json:"unpushed"`
 }
 
 // History is the latest commits of a repo.
@@ -294,6 +298,8 @@ type Filter struct {
 	Order       string `json:"order"`
 	FirstParent bool   `json:"firstParent"`
 	NoMerges    bool   `json:"noMerges"`
+	// Cherry marks, with a Ref, the commits not cherry-picked onto HEAD.
+	Cherry bool `json:"cherry"`
 }
 
 // Active reports whether the filter narrows anything.
@@ -303,7 +309,7 @@ func (f Filter) Active() bool { return f != Filter{} }
 // shows, so graph lines would not connect: everything but the branch and
 // how to list (first-parent history is whole too).
 func (f Filter) Narrows() bool {
-	f.Ref, f.Order, f.FirstParent = "", "", false
+	f.Ref, f.Order, f.FirstParent, f.Cherry = "", "", false, false
 	return f.Active()
 }
 
@@ -694,6 +700,9 @@ type Log interface {
 	// OnHead is the set of commits of HEAD's history made at or after
 	// since (Unix seconds).
 	OnHead(gitDir string, since int64) map[string]bool
+	// NotPicked is the set of ref's commits that are not on HEAD and have
+	// no commit with the same changes on HEAD.
+	NotPicked(gitDir, ref string) map[string]bool
 	// Commits loads the latest commits of all branches in topological
 	// order; none for a repo without commits.
 	Commits(gitDir string, limit int, f Filter) ([]Commit, error)

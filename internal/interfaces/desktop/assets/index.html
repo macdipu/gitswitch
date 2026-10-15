@@ -193,7 +193,11 @@ main.wide{max-width:none}
 .subj{display:flex;align-items:center;gap:8px;min-width:0;padding-right:10px}
 .stext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hi-merges .merge .stext{color:var(--muted)}
-.hi-head .hrow:not(.onhead) .subj{opacity:.55}
+.hi-head .hrow:not(.onhead):not(.fold) .subj{opacity:.55}
+.hi-cherry .hrow.notpicked .stext{font-weight:650}
+.hi-cherry .hrow.notpicked .stext::before{content:'●';color:var(--a3);font-size:9px;margin-right:6px;vertical-align:2px}
+.hrow.fold .stext{color:var(--muted);font-style:italic}
+.hrow.fold:hover .stext{color:var(--ink)}
 .hrow{grid-template-columns:var(--cols) !important}
 @media (max-width:1180px){.hrow{grid-template-columns:var(--cols-m) !important}}
 @media (max-width:900px){.hrow{grid-template-columns:var(--cols-s) !important}}
@@ -1100,9 +1104,9 @@ const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged
 const store = {get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }};
 // How the log lists commits (sent to git) and how it shows them.
-const OPTS = Object.assign({order:'topo', firstParent:false, noMerges:false}, store.get('gs.histOpts', {}));
+const OPTS = Object.assign({order:'topo', firstParent:false, noMerges:false, collapse:false}, store.get('gs.histOpts', {}));
 const VIEW = Object.assign({compact:true, tagNames:true, exact:false, refsLeft:false, colAuthor:true, colAccount:true, colDate:true,
-  hiMine:true, hiMerges:true, hiHead:false}, store.get('gs.histView', {}));
+  hiMine:true, hiMerges:true, hiHead:false, hiCherry:false}, store.get('gs.histView', {}));
 const FV = Object.assign({tree:true}, store.get('gs.filesView', {}));
 const histVisible = () => !$('#tab-history').hidden;
 
@@ -1129,7 +1133,7 @@ async function fillRepoSelect(){
   if (!ok.length){ if (gone){ $('#history').innerHTML = ''; $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = ''; renderToolbar(); renderDetails(); } return; }
   if (gone || !$('#history').dataset.loaded) loadHistory();
 }
-$('#histRepo').onchange = () => { picked.clear(); H = null; loadHistory(); };
+$('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; loadHistory(); };
 // markOpened records the repo shown as the newest recent one, in the
 // settings and in the menu. It never holds up the history.
 function markOpened(gd){
@@ -1233,6 +1237,7 @@ function query(gd){
   if (OPTS.order === 'date') q.set('order', 'date');
   if (OPTS.firstParent) q.set('firstParent', '1');
   if (OPTS.noMerges) q.set('noMerges', '1');
+  if (VIEW.hiCherry && F.ref && F.ref !== 'HEAD') q.set('cherry', '1');
   return q;
 }
 // A branch alone keeps the graph (its history is whole); the rest hide
@@ -1248,7 +1253,7 @@ let histN = HIST_PAGE, histKey = '';
 async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
   markOpened(gd);
-  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, OPTS.order, OPTS.firstParent, OPTS.noMerges].join('|');
+  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, OPTS.order, OPTS.firstParent, OPTS.noMerges, VIEW.hiCherry].join('|');
   histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
   histKey = key;
   if (!H) $('#history').innerHTML = '<p class="hint">Reading history…</p>';
@@ -1618,8 +1623,41 @@ function renderHistory(){
   // Columns and highlights follow the View menu.
   const who = VIEW.colAuthor || VIEW.colAccount;
   const cols = (w, d) => `var(--gw) minmax(0,1fr)${who ? ' ' + w : ''}${VIEW.colDate ? ' ' + d : ''}`;
-  const hi = ['hiMine', 'hiMerges', 'hiHead'].filter(k => VIEW[k]).map(k => 'hi-' + k.slice(2).toLowerCase()).join(' ');
-  box.innerHTML = `<div class="history ${hi}" style="--gw:${W}px;--cols:${cols('minmax(120px,190px)', '132px')};--cols-m:${cols('140px', '112px')};--cols-s:var(--gw) minmax(0,1fr)${VIEW.colDate ? ' 104px' : ''}" role="listbox" aria-multiselectable="true" aria-label="Commits">` + shown.map(c => {
+  const hi = ['hiMine', 'hiMerges', 'hiHead', 'hiCherry'].filter(k => VIEW[k]).map(k => 'hi-' + k.slice(2).toLowerCase()).join(' ');
+  // Collapse linear branches: a run of plain commits that only continue
+  // one lane (no labels, merges, warnings or selection) folds into one
+  // row; its first and last commits stay. Click the fold to open it.
+  const plain = i => {
+    const c = H.commits[i], prev = H.commits[i - 1];
+    if (!c || !prev || c.merge || c.flagged || (c.labels || []).length || picked.has(c.hash)) return false;
+    const lanes = (c.edges || []).map(e => e[0]).sort().join(), into = [...new Set((prev.edges || []).map(e => e[1]))].sort().join();
+    return (c.edges || []).every(([f, t]) => f === t) && lanes === into;
+  };
+  const items = [];
+  for (let k = 0; k < shown.length; k++){
+    const c = shown[k], i = idx.get(c.hash);
+    if (graph && OPTS.collapse && plain(i)){
+      let j = k;
+      while (j + 1 < shown.length && plain(idx.get(shown[j + 1].hash)) && shown[j + 1].col === c.col) j++;
+      const key = c.hash;
+      if (j - k + 1 >= 4){
+        if (openFolds.has(key)) for (let m = k; m <= j; m++) items.push({c:shown[m]}); // opened: the whole run
+        else items.push({c}, {fold:{key, n:j - k - 1, row:shown[k + 1]}}, {c:shown[j]});
+        k = j;
+        continue;
+      }
+    }
+    items.push({c});
+  }
+  // A fold's row: the lanes go straight through, the folded one dashed.
+  const foldRow = f => {
+    const r = f.row, lines = (r.edges || []).map(([a]) => `<line x1="${x(a)}" y1="-1" x2="${x(a)}" y2="${RH + 1}" stroke="${laneColor(a)}"${a === r.col ? ' stroke-dasharray="3 3"' : ''}/>`).join('');
+    return `<div class="hrow fold" role="option" aria-selected="false" tabindex="0" data-fold="${esc(f.key)}" title="Show the ${f.n} folded commits">
+      <svg width="${W}" height="${RH}" aria-hidden="true"><g stroke-opacity=".8" stroke-width="1.8" fill="none">${lines}</g></svg>
+      <div class="subj"><span class="stext">⋯ ${f.n} more commit${f.n === 1 ? '' : 's'} on this line · show</span></div></div>`;
+  };
+  box.innerHTML = `<div class="history ${hi}" style="--gw:${W}px;--cols:${cols('minmax(120px,190px)', '132px')};--cols-m:${cols('140px', '112px')};--cols-s:var(--gw) minmax(0,1fr)${VIEW.colDate ? ' 104px' : ''}" role="listbox" aria-multiselectable="true" aria-label="Commits">` + items.map(it => it.fold ? foldRow(it.fold) : it.c).map(c => {
+    if (typeof c === 'string') return c;
     const i = idx.get(c.hash), col = c.account ? colorOf(c.account) : 'var(--muted)';
     // Each lane keeps its own color, as in an IDE's log; the dot is the
     // account's color, which is what GitSwitch is about.
@@ -1640,7 +1678,7 @@ function renderHistory(){
     const chip = VIEW.colAccount && (c.account || c.flagged) ? `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}${c.flagged ? '<span class="sr-only"> (wrong account for this repo)</span>' : ''}</span>` : '';
     const sel = picked.has(c.hash);
     const subj = VIEW.refsLeft ? `${pills(c)}<span class="stext">${esc(c.subject)}</span>` : `<span class="stext">${esc(c.subject)}</span>${pills(c)}`;
-    return `<div class="hrow${c.flagged ? ' flag' : ''}${c.merge ? ' merge' : ''}${c.onHead ? ' onhead' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}
+    return `<div class="hrow${c.flagged ? ' flag' : ''}${c.merge ? ' merge' : ''}${c.onHead ? ' onhead' : ''}${c.notPicked ? ' notpicked' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}
       <div class="subj">${subj}</div>
       ${who ? `<div class="who" title="${esc(c.email)}">${chip}${VIEW.colAuthor ? `<span class="aname ${c.account ? 'mine' : 'other'}">${esc(c.author)}</span>` : ''}</div>` : ''}
       ${VIEW.colDate ? `<div class="when" title="${esc(new Date(c.time * 1000).toLocaleString())}${c.unpushed ? ' · not pushed: only on this computer' : ''}">${c.unpushed ? '<span class="up" aria-label="not pushed">↑</span>' : ''}${when(c.time)}</div>` : ''}</div>`;
@@ -1656,8 +1694,15 @@ function pick(hash, multi){
   document.querySelectorAll('.hrow').forEach(r => { const s = picked.has(r.dataset.hash); r.classList.toggle('sel', s); r.setAttribute('aria-selected', String(s)); });
   renderDetails();
 }
-$('#history').addEventListener('click', e => { const r = e.target.closest('.hrow'); if (r) pick(r.dataset.hash, e.metaKey || e.ctrlKey || e.shiftKey); });
+// openFolds remembers the folds opened in this repo's log.
+const openFolds = new Set();
+$('#history').addEventListener('click', e => {
+  const r = e.target.closest('.hrow'); if (!r) return;
+  if (r.dataset.fold){ openFolds.add(r.dataset.fold); return renderHistory(); }
+  pick(r.dataset.hash, e.metaKey || e.ctrlKey || e.shiftKey);
+});
 $('#history').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.fold){ e.preventDefault(); openFolds.add(e.target.dataset.fold); return renderHistory(); }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('hrow')){ e.preventDefault(); pick(e.target.dataset.hash, e.key === ' ' || e.metaKey || e.ctrlKey); }
 });
 
@@ -1704,9 +1749,13 @@ $('#optsBtn').onclick = e => {
     {title:'Options', items:[
       {key:'firstParent', on:OPTS.firstParent, label:'First parent', hint:'Follow only the first parent of merges: a branch’s own story, without what merges brought in. Clearest with one branch selected in the branches panel'},
       {key:'noMerges', on:OPTS.noMerges, label:'No merges', hint:'Leave merge commits out (the graph is hidden while they are)'}]},
+    {title:'Branch actions', items:[
+      {key:'collapse', on:OPTS.collapse, label:'Collapse linear branches', hint:'Fold long runs of plain commits on one line into a row you can open'}]},
   ], (k, v) => {
     if (k === 'order') OPTS.order = v; else OPTS[k] = !OPTS[k];
-    store.set('gs.histOpts', OPTS); H = null; loadHistory();
+    store.set('gs.histOpts', OPTS);
+    if (k === 'collapse'){ openFolds.clear(); return renderHistory(); } // nothing to read again
+    H = null; loadHistory();
   });
 };
 $('#viewBtn').onclick = e => {
@@ -1725,8 +1774,13 @@ $('#viewBtn').onclick = e => {
     {title:'Highlight', items:[
       {key:'hiMine', on:VIEW.hiMine, label:'My commits', hint:'Made with one of your accounts: the others are greyed'},
       {key:'hiMerges', on:VIEW.hiMerges, label:'Merge commits', hint:'Greyed, so your work stands out'},
-      {key:'hiHead', on:VIEW.hiHead, label:'Current branch', sub:R?.head.branch || '', hint:'Commits not on what is checked out are greyed'}]},
-  ], k => { VIEW[k] = !VIEW[k]; store.set('gs.histView', VIEW); if (H) renderHistory(); });
+      {key:'hiHead', on:VIEW.hiHead, label:'Current branch', sub:R?.head.branch || '', hint:'Commits not on what is checked out are greyed'},
+      {key:'hiCherry', on:VIEW.hiCherry, label:'Not cherry-picked commits', sub:F.ref && F.ref !== 'HEAD' ? '' : 'pick a branch', hint:`With one branch shown (click it in the branches panel): its commits whose changes are not on ${R?.head.branch || 'the current branch'} yet, marked with a dot`}]},
+  ], k => {
+    VIEW[k] = !VIEW[k]; store.set('gs.histView', VIEW);
+    if (k === 'hiCherry' && F.ref && F.ref !== 'HEAD'){ H = null; return loadHistory(); } // read from git
+    if (H) renderHistory();
+  });
 };
 
 // ---- branches panel ----
@@ -1988,7 +2042,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (typing || e.metaKey || e.ctrlKey) return;
-  const rows = [...document.querySelectorAll('.hrow')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
+  const rows = [...document.querySelectorAll('.hrow:not(.fold)')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
   if (e.key === '/'){ e.preventDefault(); $('#histSearch').focus(); }
   else if (e.key === 'j' || e.key === 'k'){
     e.preventDefault();

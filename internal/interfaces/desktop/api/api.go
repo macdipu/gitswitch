@@ -225,7 +225,7 @@ func (s *server) routes() map[string]handler {
 			return a.History.Build(gd, n, history.Filter{Author: strings.TrimSpace(q.Get("author")), Text: strings.TrimSpace(q.Get("text")),
 				Since: strings.TrimSpace(q.Get("since")), Until: strings.TrimSpace(q.Get("until")), Account: strings.TrimSpace(q.Get("account")),
 				Ref: strings.TrimSpace(q.Get("ref")), Path: strings.TrimSpace(q.Get("path")),
-				Order: q.Get("order"), FirstParent: q.Get("firstParent") == "1", NoMerges: q.Get("noMerges") == "1"})
+				Order: q.Get("order"), FirstParent: q.Get("firstParent") == "1", NoMerges: q.Get("noMerges") == "1", Cherry: q.Get("cherry") == "1"})
 		},
 		"GET /api/commit/show": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))

@@ -111,7 +111,8 @@ func (f *fakeLog) Show(_, rev string) (history.Detail, error) {
 func (f *fakeLog) FileDiff(_, rev, path string) (history.Diff, error) {
 	return history.Diff{Path: path, Text: "diff of " + path + " in " + rev}, nil
 }
-func (f *fakeLog) OnHead(string, int64) map[string]bool { return map[string]bool{} }
+func (f *fakeLog) OnHead(string, int64) map[string]bool     { return map[string]bool{} }
+func (f *fakeLog) NotPicked(string, string) map[string]bool { return map[string]bool{} }
 func (f *fakeLog) Unpushed(string) map[string]bool {
 	set := map[string]bool{}
 	for _, h := range f.local {

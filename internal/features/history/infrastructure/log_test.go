@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
@@ -50,5 +51,54 @@ func TestCommitsFirstParent(t *testing.T) {
 	cs, _ = l.Commits(gd, 50, history.Filter{Ref: "main"})
 	if len(cs) != 4 || len(cs[0].Parents) != 2 {
 		t.Fatalf("full history keeps both parents: %+v", cs)
+	}
+}
+
+// A branch's commits are marked when no copy of them is on HEAD.
+func TestNotPicked(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+filepath.Join(dir, "gc"), "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=A", "GIT_AUTHOR_EMAIL=a@x", "GIT_COMMITTER_NAME=A", "GIT_COMMITTER_EMAIL=a@x")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(name string) { must(t, os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644)) }
+	run("init", "-q", "-b", "main")
+	write("a")
+	run("add", "a")
+	run("commit", "-q", "-m", "one")
+	run("switch", "-q", "-c", "side")
+	write("b")
+	run("add", "b")
+	run("commit", "-q", "-m", "side b")
+	picked := run("rev-parse", "HEAD")
+	write("c")
+	run("add", "c")
+	run("commit", "-q", "-m", "side c")
+	open := run("rev-parse", "HEAD")
+	run("switch", "-q", "main")
+	run("cherry-pick", picked)
+
+	l := &Log{Git: &gitinfra.Runner{}}
+	got := l.NotPicked(filepath.Join(dir, ".git"), "side")
+	if len(got) != 1 || !got[open] || got[picked] {
+		t.Fatalf("NotPicked = %v, want only %s", got, open)
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

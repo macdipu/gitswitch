@@ -85,8 +85,13 @@ func (s *Service) build(c *account.Config, gitDir string, limit int, f history.F
 		}
 		// A day early: commit dates can be a little out of order.
 		on := s.Log.OnHead(gitDir, oldest-86400)
+		var picked map[string]bool
+		if f.Cherry && f.Ref != "" && f.Ref != "HEAD" {
+			picked = s.Log.NotPicked(gitDir, f.Ref)
+		}
 		for i := range h.Commits {
 			h.Commits[i].OnHead = on[h.Commits[i].Hash]
+			h.Commits[i].NotPicked = picked[h.Commits[i].Hash]
 		}
 	}
 	if f.Narrows() {

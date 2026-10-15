@@ -274,6 +274,21 @@ func (l *Log) FileDiff(gitDir, rev, path string) (history.Diff, error) {
 	return d, nil
 }
 
+func (l *Log) NotPicked(gitDir, ref string) map[string]bool {
+	set := map[string]bool{}
+	// "+": no equivalent on HEAD; "=": cherry-picked already.
+	out, err := l.Git.Run("--git-dir="+gitDir, "rev-list", "--cherry-mark", "--right-only", "--no-merges", "--end-of-options", "HEAD..."+ref)
+	if err != nil {
+		return set
+	}
+	for _, line := range strings.Fields(out) {
+		if h, ok := strings.CutPrefix(line, "+"); ok {
+			set[h] = true
+		}
+	}
+	return set
+}
+
 func (l *Log) OnHead(gitDir string, since int64) map[string]bool {
 	set := map[string]bool{}
 	out, err := l.Git.Run("--git-dir="+gitDir, "rev-list", "--since="+strconv.FormatInt(since, 10), "HEAD", "--")
