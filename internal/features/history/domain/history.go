@@ -650,6 +650,51 @@ type FileChange struct {
 	Added   int    `json:"added"`
 	Deleted int    `json:"deleted"`
 	Binary  bool   `json:"binary,omitempty"`
+	// Module is the folder of the project or module the file belongs to:
+	// the nearest one holding a project file (go.mod, package.json, ...).
+	// "" is the repo's top folder.
+	Module string `json:"module"`
+}
+
+// moduleFiles mark a folder as a project or module.
+var moduleFiles = map[string]bool{
+	"go.mod": true, "package.json": true, "pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
+	"Cargo.toml": true, "pyproject.toml": true, "setup.py": true, "composer.json": true, "Gemfile": true,
+	"pubspec.yaml": true, "Package.swift": true, "mix.exs": true, "deno.json": true, "CMakeLists.txt": true,
+}
+
+// IsModuleFile reports whether a file name marks its folder as a module.
+func IsModuleFile(name string) bool {
+	return moduleFiles[name] || strings.HasSuffix(name, ".csproj") || strings.HasSuffix(name, ".fsproj")
+}
+
+// Ancestors lists the folders above the files, "" (the top) first.
+func Ancestors(files []FileChange) []string {
+	seen := map[string]bool{"": true}
+	out := []string{""}
+	for _, f := range files {
+		for i := 0; i < len(f.Path); i++ {
+			if f.Path[i] == '/' && !seen[f.Path[:i]] {
+				seen[f.Path[:i]] = true
+				out = append(out, f.Path[:i])
+			}
+		}
+	}
+	return out
+}
+
+// AssignModules sets each file's Module to the deepest of roots (module
+// folders, "" for the top) that holds it.
+func AssignModules(files []FileChange, roots []string) {
+	for i := range files {
+		best := ""
+		for _, r := range roots {
+			if r != "" && strings.HasPrefix(files[i].Path, r+"/") && len(r) > len(best) {
+				best = r
+			}
+		}
+		files[i].Module = best
+	}
 }
 
 // MaxDetailFiles is how many changed files a commit's details list.

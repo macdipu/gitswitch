@@ -102,3 +102,43 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// Show tells each changed file's module: the nearest folder of the commit
+// with a project file.
+func TestShowModules(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+filepath.Join(dir, "gc"), "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=A", "GIT_AUTHOR_EMAIL=a@x", "GIT_COMMITTER_NAME=A", "GIT_COMMITTER_EMAIL=a@x")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	for _, p := range []string{"go.mod", "README.md", "web/package.json", "web/src/app.ts", "tools/gen/main.go"} {
+		must(t, os.MkdirAll(filepath.Join(dir, filepath.Dir(p)), 0o755))
+		must(t, os.WriteFile(filepath.Join(dir, p), []byte(p), 0o644))
+	}
+	run("init", "-q", "-b", "main")
+	run("add", "-A")
+	run("commit", "-q", "-m", "all")
+	d, err := (&Log{Git: &gitinfra.Runner{}}).Show(filepath.Join(dir, ".git"), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range d.Files {
+		got[f.Path] = f.Module
+	}
+	want := map[string]string{"go.mod": "", "README.md": "", "web/package.json": "web", "web/src/app.ts": "web", "tools/gen/main.go": ""}
+	for p, m := range want {
+		if got[p] != m {
+			t.Errorf("%s: module %q, want %q", p, got[p], m)
+		}
+	}
+}

@@ -258,7 +258,37 @@ func (l *Log) Show(gitDir, rev string) (history.Detail, error) {
 	}
 	d := history.Detail{Hash: strings.TrimSpace(hash), Message: strings.TrimSpace(msg)}
 	history.ParseNumstat(&d, stat)
+	history.AssignModules(d.Files, l.moduleRoots(gitDir, d.Hash, history.Ancestors(d.Files)))
 	return d, nil
+}
+
+// moduleRoots lists which of dirs (folders of the commit, "" for the top)
+// hold a project file, reading each folder's entries in two git calls.
+func (l *Log) moduleRoots(gitDir, rev string, dirs []string) []string {
+	args := []string{"--git-dir=" + gitDir, "ls-tree", "--full-tree", "--name-only", "--end-of-options", rev, "--"}
+	var roots []string
+	add := func(out string) {
+		for _, p := range strings.Split(out, "\n") {
+			if i := strings.LastIndexByte(p, '/'); history.IsModuleFile(p[i+1:]) && p != "" {
+				roots = append(roots, p[:max(i, 0)])
+			}
+		}
+	}
+	if out, err := l.Git.Run(args[:len(args)-1]...); err == nil { // the top folder
+		add(out)
+	}
+	var sub []string
+	for _, d := range dirs {
+		if d != "" {
+			sub = append(sub, d+"/")
+		}
+	}
+	if len(sub) > 0 {
+		if out, err := l.Git.Run(append(args, sub...)...); err == nil {
+			add(out)
+		}
+	}
+	return roots
 }
 
 func (l *Log) FileDiff(gitDir, rev, path string) (history.Diff, error) {

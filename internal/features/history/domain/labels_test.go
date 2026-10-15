@@ -35,3 +35,23 @@ func TestRefFilter(t *testing.T) {
 		t.Error("ordinary names pass")
 	}
 }
+
+func TestModules(t *testing.T) {
+	files := []FileChange{{Path: "README.md"}, {Path: "app/web/src/main.ts"}, {Path: "app/web/package.json"}, {Path: "svc/api/x.go"}}
+	if got := Ancestors(files); !reflect.DeepEqual(got, []string{"", "app", "app/web", "app/web/src", "svc", "svc/api"}) {
+		t.Errorf("Ancestors = %q", got)
+	}
+	AssignModules(files, []string{"", "app/web", "svc"})
+	var got []string
+	for _, f := range files {
+		got = append(got, f.Module)
+	}
+	if !reflect.DeepEqual(got, []string{"", "app/web", "app/web", "svc"}) {
+		t.Errorf("modules = %q", got)
+	}
+	for name, want := range map[string]bool{"go.mod": true, "build.gradle.kts": true, "Api.csproj": true, "main.go": false, "": false} {
+		if IsModuleFile(name) != want {
+			t.Errorf("IsModuleFile(%q) = %v", name, !want)
+		}
+	}
+}
