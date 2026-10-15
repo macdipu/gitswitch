@@ -50,9 +50,10 @@ terminal programs alone. Clean up by closing the terminal and `rm -rf /tmp/gs-sa
 ### Docker: Linux desktop (Webtop)
 
 `sandbox/compose.yaml` runs an Ubuntu desktop at http://localhost:3000
-(https on port 3001). Both ports are published on every network interface,
-so other machines on your network can reach the desktop too: stop it when
-you are done. The desktop user's home is `sandbox/config/`, which git
+(https on port 3001), reachable only from this computer. If a port is taken,
+pick others: `SANDBOX_HTTP_PORT=3100 SANDBOX_HTTPS_PORT=3101` before
+`docker compose`. `SANDBOX_BIND=0.0.0.0` lets other machines on your network
+reach it too; the desktop has no password, so stop it when you are done. The desktop user's home is `sandbox/config/`, which git
 ignores because it holds SSH private keys. `sandbox/workspace/` is shared
 with the desktop at `/workspace`. You build on the host and copy the result
 into the container. Run these from the repo root.

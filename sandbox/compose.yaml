@@ -1,6 +1,9 @@
 # Linux desktop in the browser for testing gitswitch's desktop features
 # (browser app, popups, clipboard, applications menu). See CONTRIBUTING.md.
 #   docker compose -f sandbox/compose.yaml up -d    then open http://localhost:3000
+# Only this computer can reach it. Other ports, if 3000 or 3001 are taken:
+#   SANDBOX_HTTP_PORT=3100 SANDBOX_HTTPS_PORT=3101 docker compose -f sandbox/compose.yaml up -d
+# Other machines too (it has no password): SANDBOX_BIND=0.0.0.0
 services:
   desktop:
     image: lscr.io/linuxserver/webtop:ubuntu-xfce
@@ -10,8 +13,8 @@ services:
       - PGID=1000
       - TZ=Asia/Dhaka
     ports:
-      - "3000:3000"
-      - "3001:3001"
+      - "${SANDBOX_BIND:-127.0.0.1}:${SANDBOX_HTTP_PORT:-3000}:3000"
+      - "${SANDBOX_BIND:-127.0.0.1}:${SANDBOX_HTTPS_PORT:-3001}:3001"
     shm_size: "1gb"
     volumes:
       - ./config:/config
