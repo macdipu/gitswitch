@@ -7,10 +7,12 @@ people don't build the same thing.
 Status: **done**, **partly** (some of it exists), **planned** (not started),
 **later**.
 
-**Latest release (v1.4): [Everyday branch work](#everyday-branch-work-v14)**:
-switch branches with uncommitted changes (Smart switch or Park), undo the
-last action, start a branch, commit and push it, compare it with its
-remote and delete merged branches, always as the right account.
+**Latest release (v1.5)**: a [History screen](#history-screen) like an
+IDE's git log, a tidier [repo list](#repository-management) (recent repos,
+groups, sorting, clones), optional GitHub sign-in with a browser of every
+account's repos and HTTPS remotes that use the right account, and update
+with rebase. Before it, v1.4 brought [everyday branch
+work](#everyday-branch-work-v14).
 
 ## Repository management
 
