@@ -27,7 +27,8 @@ const (
 	// Commit: a commit GitSwitch made.
 	Commit Action = "commit"
 	// Prune: merged branches were deleted (Record.Deleted).
-	Prune Action = "prune"
+	Prune  Action = "prune"
+	Update Action = "update" // pulled with rebase: the branch is rewritten
 )
 
 // Deleted is a branch an action deleted: enough to bring it back.
@@ -58,6 +59,9 @@ type Record struct {
 	Time     int64  `json:"time"`     // when, in Unix seconds
 	// Deleted lists the branches a prune deleted.
 	Deleted []Deleted `json:"deleted"`
+	// Base is, for an update, the upstream commit the branch was rebased
+	// onto: commits after it on the branch are the rebased local ones.
+	Base string `json:"base"`
 }
 
 // New records an action from where the repo was before and after it. The
@@ -99,6 +103,8 @@ func (r Record) Effect() string {
 		return "Puts the rolled-back commits back on " + r.Branch + ". Your files are not changed."
 	case Commit:
 		return "Takes the commit off " + r.Branch + ". Its changes stay in your files, uncommitted."
+	case Update:
+		return "Puts " + r.Branch + " back as it was before the update: your commits as they were, without the new ones from the remote (they stay there)."
 	case Revert, CherryPick:
 		return "Removes the new commit(s) from " + r.Branch + ", as if they had never been made."
 	default:
@@ -197,4 +203,6 @@ type Recorder interface {
 	Done(gitDir string, before Mark, a Action, label string)
 	// Pruned remembers branches that were deleted.
 	Pruned(gitDir string, before Mark, branches []Deleted, label string)
+	// Updated remembers a pull with rebase onto base.
+	Updated(gitDir string, before Mark, base, label string)
 }

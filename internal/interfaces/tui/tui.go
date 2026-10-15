@@ -1989,7 +1989,11 @@ func (t *tui) undoLast() {
 
 // update pulls the current branch. It leaves the TUI while git runs, so
 // git's progress and any account question show in the terminal.
-func (t *tui) update() {
+func (t *tui) update() { t.updateWith("") }
+
+// updateWith updates with a mode for this once ("" for the setting). When
+// both sides have new commits, it offers to rebase this once.
+func (t *tui) updateWith(mode string) {
 	if t.histDir == "" {
 		return
 	}
@@ -1998,14 +2002,23 @@ func (t *tui) update() {
 	var err error
 	t.suspend(func() {
 		fmt.Println("Updating from the remote ...")
-		h, err = t.app.Refs.Update(gd, func(l string) { fmt.Print("\r\x1b[K  " + l) })
+		h, err = t.app.Refs.UpdateWith(gd, mode, func(l string) { fmt.Print("\r\x1b[K  " + l) })
 		fmt.Println()
 		if err != nil {
 			fmt.Println("gitswitch:", err)
 		}
 	})
 	t.loadHistory()
-	t.say(err, "Updated: "+h.Describe())
+	if err != nil && mode == "" && strings.Contains(err.Error(), "update --rebase") {
+		t.confirm = &confirmBox{"This branch and its remote both have new commits. r = put your not-pushed commits on top of the new ones (rebase; nothing changes if they clash, U undoes it until you push) · Esc = leave it",
+			map[string]func() error{"r": func() error { t.updateWith("rebase"); return nil }}}
+		return
+	}
+	msg := "Updated: " + h.Describe()
+	if mode == "rebase" {
+		msg += " · your commits are on top (U undoes it)"
+	}
+	t.say(err, msg)
 }
 
 // push pushes the current branch after asking, says which account pushed,
@@ -2193,6 +2206,9 @@ func (t *tui) keySettings(k string) {
 				t.say(err, "Saved.")
 				return nil
 			}}
+	case i == 4:
+		next := map[refs.PullMode]string{refs.FFOnly: "rebase", refs.Rebase: "ff-only"}[t.app.Refs.PullSetting("").Global]
+		t.say(t.app.Refs.SetPullSetting("", next), "Saved.")
 	case i == 2:
 		next := map[refs.SwitchMode]string{refs.Ask: "smart", refs.Smart: "park", refs.Park: "ask"}[t.app.Refs.SwitchSetting("").Global]
 		t.say(t.app.Refs.SetSwitchSetting("", next), "Saved.")
@@ -2529,7 +2545,7 @@ func (t *tui) drawRules() ([]string, int) {
 
 // settingRows is how many settings come before the health checks on the
 // Settings page.
-const settingRows = 4
+const settingRows = 5
 
 func (t *tui) drawSettings() ([]string, int) {
 	s := t.sel[tabSettings]
@@ -2540,6 +2556,8 @@ func (t *tui) drawSettings() ([]string, int) {
 		fmt.Sprintf("%sSwitching branch with uncommitted changes, in every repo: %s%s %s(Enter: ask → smart switch → park; a repo's own choice comes first)%s", mark(s == 2), cBold,
 			map[refs.SwitchMode]string{refs.Ask: "ask each time", refs.Smart: "take them along (smart switch)", refs.Park: "park them on their branch"}[t.app.Refs.SwitchSetting("").Global], cReset+cDim, cReset),
 		fmt.Sprintf("%sNew branch names start with: %s%s", mark(s == 3), map[bool]string{true: cDim + "nothing (Enter to set, e.g. feature/)", false: cBold + t.app.Refs.BranchPrefix()}[t.app.Refs.BranchPrefix() == ""], cReset),
+		fmt.Sprintf("%sWhen update finds new commits on both sides, in every repo: %s%s %s(Enter switches; a repo's own choice comes first)%s", mark(s == 4), cBold,
+			map[refs.PullMode]string{refs.FFOnly: "stop and explain (fast-forward only)", refs.Rebase: "put my commits on top (rebase)"}[t.app.Refs.PullSetting("").Global], cReset+cDim, cReset),
 	}
 	for i, c := range t.checks {
 		st := cGreen + "ok " + cReset

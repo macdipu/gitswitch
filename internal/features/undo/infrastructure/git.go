@@ -33,7 +33,7 @@ func (g *Git) Save(gitDir string, r undo.Record) error {
 	for _, kv := range [][2]string{
 		{"action", string(r.Action)}, {"label", r.Label}, {"worktree", r.Worktree}, {"branch", r.Branch},
 		{"to", r.To}, {"before", r.Before}, {"after", r.After}, {"time", strconv.FormatInt(r.Time, 10)},
-		{"deleted", joinDeleted(r.Deleted)},
+		{"deleted", joinDeleted(r.Deleted)}, {"base", r.Base},
 	} {
 		if err := g.Git.RepoSet(gitDir, section+"."+kv[0], kv[1]); err != nil {
 			return err
@@ -69,6 +69,8 @@ func (g *Git) Load(gitDir string) (undo.Record, error) {
 			r.Time, _ = strconv.ParseInt(v, 10, 64)
 		case "deleted":
 			r.Deleted = splitDeleted(v)
+		case "base":
+			r.Base = v
 		}
 	}
 	if r.Action == "" || r.Before == "" || r.After == "" {

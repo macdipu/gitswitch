@@ -37,6 +37,35 @@ type fakeRefs struct {
 	merged     []string // MergedInto
 	deleteErr  map[string]error
 	lines      map[string][]refs.Line // Commits: "from..to"
+	pullModes  map[string]string      // gitDir ("" for every repo) -> saved pull mode
+	rebaseErr  error
+	merges     int
+}
+
+func (f *fakeRefs) PullRebase(_ string, progress func(string)) error {
+	f.ran = append(f.ran, "pull --rebase")
+	if f.rebaseErr != nil {
+		return f.rebaseErr
+	}
+	f.head.Hash, f.head.Behind = "rebased", 0
+	return nil
+}
+func (f *fakeRefs) PullModes(gitDir string) (string, string) {
+	return f.pullModes[""], map[bool]string{true: f.pullModes[gitDir]}[gitDir != ""]
+}
+func (f *fakeRefs) SavePullMode(gitDir, v string) error {
+	if f.pullModes == nil {
+		f.pullModes = map[string]string{}
+	}
+	f.pullModes[gitDir] = v
+	return nil
+}
+func (f *fakeRefs) Merges(string, string, string) int { return f.merges }
+func (f *fakeRefs) Resolve(_, rev string) string {
+	if rev == "@{upstream}" {
+		return "upstream-tip"
+	}
+	return ""
 }
 
 func (f *fakeRefs) Head(string) (refs.Head, error)         { return f.head, nil }
@@ -256,6 +285,9 @@ type fakeRecorder struct{ done []string }
 func (f *fakeRecorder) Before(string) undo.Mark { return undo.Mark{Branch: "main"} }
 func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) {
 	f.done = append(f.done, string(a)+" "+m.Branch+": "+label)
+}
+func (f *fakeRecorder) Updated(_ string, m undo.Mark, base, label string) {
+	f.done = append(f.done, "update "+m.Branch+" onto "+base+": "+label)
 }
 func (f *fakeRecorder) Pruned(_ string, m undo.Mark, ds []undo.Deleted, label string) {
 	var names []string
@@ -695,5 +727,64 @@ func TestCompare(t *testing.T) {
 		if _, err := s.Compare("/r/.git"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Compare with %+v = %v, want %q", h, err, want)
 		}
+	}
+}
+
+func TestUpdateWithRebase(t *testing.T) {
+	s, r := newService()
+	rec := &fakeRecorder{}
+	s.Undo = rec
+	diverged := errors.New("fatal: Not possible to fast-forward, aborting.")
+	r.head = refs.Head{Branch: "main", Hash: "abc", Upstream: "origin/main", Ahead: 1, Behind: 1}
+
+	r.pullErr = diverged
+	if _, err := s.Update("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), "gitswitch update --rebase") {
+		t.Fatalf("ff-only explains the rebase choice: %v", err)
+	}
+	if h, err := s.UpdateWith("/r/.git", "rebase", func(string) {}); err != nil || h.Hash != "rebased" {
+		t.Fatalf("rebase once: %+v %v", h, err)
+	}
+	if len(rec.done) != 1 || rec.done[0] != "update main onto upstream-tip: Updated main from origin/main, putting your commits on top" {
+		t.Errorf("recorded for undo: %v", rec.done)
+	}
+
+	// Saved for this repo: Update rebases without being asked.
+	if err := s.SetPullSetting("/r/.git", "rebase"); err != nil || s.PullSetting("/r/.git").Mode != refs.Rebase || s.PullSetting("").Mode != refs.FFOnly {
+		t.Fatalf("setting: %v %+v", err, s.PullSetting("/r/.git"))
+	}
+	r.head.Hash, r.ran = "abc", nil
+	if _, err := s.Update("/r/.git", func(string) {}); err != nil || strings.Join(r.ran, ",") != "pull,pull --rebase" {
+		t.Fatalf("a fast-forward first, then the rebase: %v %v", err, r.ran)
+	}
+
+	// No new commits on the server: the fast-forward pull is enough, even
+	// with uncommitted changes.
+	r.pullErr, r.ran = nil, nil
+	r.head.Changes = refs.Changes{Changed: 2}
+	if _, err := s.Update("/r/.git", func(string) {}); err != nil || strings.Join(r.ran, ",") != "pull" {
+		t.Fatalf("nothing to rebase: %v %v", err, r.ran)
+	}
+
+	refusals := []struct {
+		name string
+		set  func()
+		want string
+	}{
+		{"uncommitted changes", func() { r.head.Changes = refs.Changes{Staged: 1} }, "commit or park them first"},
+		{"merge commits", func() { r.merges = 1 }, "merge commit"},
+		{"clash", func() { r.rebaseErr = errors.New("error: could not apply 1a2b3c4... Fix") }, "nothing changed"},
+	}
+	for _, c := range refusals {
+		r.head.Changes, r.merges, r.rebaseErr, r.pullErr, r.ran = refs.Changes{}, 0, nil, diverged, nil
+		c.set()
+		if _, err := s.Update("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", c.name, err, c.want)
+		}
+	}
+	if err := s.SetPullSetting("", "merge"); err == nil {
+		t.Error("an unknown mode must be refused")
+	}
+	if err := s.SetPullSetting("/r/.git", ""); err != nil || s.PullSetting("/r/.git").Repo != "" {
+		t.Errorf("follow every repo's again: %v", err)
 	}
 }

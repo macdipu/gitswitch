@@ -47,6 +47,7 @@ func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) 
 	f.done = append(f.done, string(a)+" "+m.Head+": "+label)
 }
 func (f *fakeRecorder) Pruned(string, undo.Mark, []undo.Deleted, string) {}
+func (f *fakeRecorder) Updated(string, undo.Mark, string, string)        {}
 
 func newService() (*Service, *fakeGit, *fakeRepos, *fakeRecorder) {
 	g := &fakeGit{head: refs.Head{Branch: "main", Hash: "abc", Changes: refs.Changes{Staged: 1, Changed: 2, New: 1}}}

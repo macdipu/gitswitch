@@ -189,6 +189,46 @@ func NewSwitchSetting(global, repo string) SwitchSetting {
 	return s
 }
 
+// PullMode is how Update brings a branch up to date.
+type PullMode string
+
+const (
+	FFOnly PullMode = "ff-only" // only when the branch has no commits of its own (the default)
+	Rebase PullMode = "rebase"  // also put your not-pushed commits on top of the new ones
+)
+
+// ParsePullMode reads a saved or typed mode; "" for an unknown one.
+func ParsePullMode(s string) PullMode {
+	switch PullMode(strings.ToLower(strings.TrimSpace(s))) {
+	case FFOnly, "ff", "fast-forward":
+		return FFOnly
+	case Rebase:
+		return Rebase
+	}
+	return ""
+}
+
+// PullSetting is the update mode in effect for a repo, and where it
+// comes from (gitswitch.pull, in the repo's config before the global one).
+type PullSetting struct {
+	Mode   PullMode `json:"mode"`
+	Repo   PullMode `json:"repo"`   // saved for this repo; "" follows Global
+	Global PullMode `json:"global"` // for every repo
+}
+
+// NewPullSetting reads the saved values; an unknown one counts as unset.
+func NewPullSetting(global, repo string) PullSetting {
+	s := PullSetting{Global: ParsePullMode(global), Repo: ParsePullMode(repo)}
+	if s.Global == "" {
+		s.Global = FFOnly
+	}
+	s.Mode = s.Global
+	if s.Repo != "" {
+		s.Mode = s.Repo
+	}
+	return s
+}
+
 // Describe is e.g. "park (this repo)" or "ask (every repo)".
 func (s SwitchSetting) Describe() string {
 	if s.Repo != "" {
@@ -431,6 +471,17 @@ type Refs interface {
 	// Pull fast-forwards the current branch from its upstream, through the
 	// repo's account. Each progress line goes to progress.
 	Pull(worktree string, progress func(string)) error
+	// PullRebase fetches the upstream and puts the branch's own commits on
+	// top of it. When that fails it aborts the rebase, so nothing changes.
+	PullRebase(worktree string, progress func(string)) error
+	// PullModes reads gitswitch.pull globally and for the repo ("" each
+	// when unset); SavePullMode saves it like SaveSwitchMode.
+	PullModes(gitDir string) (global, repo string)
+	SavePullMode(gitDir, value string) error
+	// Merges counts the merge commits in from..to.
+	Merges(gitDir, from, to string) int
+	// Resolve returns the commit a revision names, or "".
+	Resolve(gitDir, rev string) string
 	// PushTarget reads where a branch pushes from its config: the remote
 	// and the remote branch (refs/heads/x); "" when it has none.
 	PushTarget(gitDir, branch string) (remote, merge string)

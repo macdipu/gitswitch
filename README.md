@@ -265,6 +265,7 @@ gitswitch switch main --park         # leave them on this branch until you come 
 gitswitch parked                     # parked changes, newest first; parked restore|show|drop [<n>]
 gitswitch resolve --done             # after a smart switch with clashing files: they are fixed
 gitswitch update                     # pull, fast-forward only; never a surprise merge commit
+gitswitch update --rebase            # when both sides have new commits, put yours on top
 gitswitch push --open                # push with the repo's account, then open the pull request page
 gitswitch push -y                    # push even commits made as another account (asked in a terminal)
 gitswitch revert 1a2b3c4             # a new commit that undoes one (safe after pushing)
@@ -293,6 +294,8 @@ gitswitch undo                       # undo the last commit, switch, move, prune
 **Delete merged branches.** `gitswitch branch prune` lists the local branches whose commits are all on the remote's default branch (for example `origin/main`; without one, a local `main` or `master`), asks, and deletes them; `-y` skips the question. Their commits are safe on that branch. It never deletes the current branch, `main`, `master`, the default branch or a branch checked out in another working folder. A branch whose remote branch was deleted but whose commits aren't on the default branch, as after a squash merge, is kept and named, so you can check it and delete it yourself. It uses what this clone knows, so update first to see branches merged since. The desktop app has "Delete merged branches…" in the branch menu, and the terminal app uses `D`. Undo brings the branches back, each tracking its remote branch as before.
 
 **Park.** Parking leaves your uncommitted changes on their branch, new files included, and switches clean. When you come back to that branch, GitSwitch offers them back: restore them, look first, or not now. Parked changes are ordinary stashes named `gitswitch park: <branch>`, so `git stash list`, IntelliJ and VS Code show them too. `gitswitch parked` lists them, newest first, with the branch, when and which files; `gitswitch parked restore`, `show` and `drop` take the number from that list, or else the newest parked on the current branch. Restoring puts staged files back staged, and needs no uncommitted changes, so that a clash can't leave a half-restored mix: if the changes clash with the branch, nothing changes and they stay parked. Parking twice keeps both. Parked changes are never deleted automatically, and those of a renamed or deleted branch are still listed. The desktop app lists them above the commits and badges the branches that have some; the terminal app uses `P`, and the status line says how many are parked on the current branch.
+
+**Update with rebase.** `update` is fast-forward only: when your branch and its remote both have new commits, it stops and explains. To put your not-pushed commits on top of the new ones instead, run `gitswitch update --rebase` once, or make it the default with `gitswitch set pull rebase` (`--repo` for one repo; `gitswitch set pull ff-only` to go back). The desktop app offers it when Update stops, and has the choice in Settings; the terminal app asks with `r` and has it on its Settings page. GitSwitch fast-forwards first and rebases only when both sides have new commits. It refuses, before anything changes, with uncommitted changes to tracked files or merge commits of your own (a rebase would flatten them), and when your commits clash with the new ones it aborts the rebase, so nothing changes. Undo puts your commits back as they were, until you push them.
 
 **Undo.** The last change GitSwitch made in a repo can be undone once: `gitswitch undo` says what it will do and asks (`-y` to skip, `--show` to only look, `--show --json` for scripts). The desktop app offers **Undo** in the message after each change and in the History toolbar, and the terminal app uses `U`. Undo puts the branch back exactly as it was. After a rollback only the branch moves, so files you edited since are kept. It refuses, and changes nothing, when undoing would lose work: new commits or a pull since, commits that are already pushed (revert them instead), or uncommitted changes in files it would change. GitSwitch keeps what it would go back to in `refs/gitswitch/undo` and the repo's `[gitswitch "undo"]` config, so `git gc` doesn't delete a dropped commit while it can still be undone.
 
@@ -389,9 +392,9 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups`, `set repo-sort` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
 | History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `commit`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo`, `browse` |
-| Branches | `branch`, `switch`, `update` |
+| Branches | `branch`, `switch`, `update [--rebase]` |
 | Diagnostics | `doctor [--fix]` |
-| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>`, `set switch-changes ask\|smart\|park [--repo]`, `set branch-prefix <prefix>` |
+| Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>`, `set switch-changes ask\|smart\|park [--repo]`, `set branch-prefix <prefix>`, `set pull ff-only\|rebase [--repo]` |
 | Shell | `completions bash\|zsh\|fish\|powershell` |
 
 ### Shell completions
@@ -422,7 +425,7 @@ All settings live in git config, so the terminal, the desktop app and git always
 | Scope | File | Keys |
 | --- | --- | --- |
 | Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default` (only if you set one), `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.recent`, `gitswitch.group`, `gitswitch.repoGroups`, `gitswitch.repoSort`, `gitswitch.editor` |
-| Per repo | `.git/config` | `gitswitch.account` (an account, or `ask` for ask every time) |
+| Per repo | `.git/config` | `gitswitch.account` (an account, or `ask` for ask every time), `gitswitch.switchChanges` and `gitswitch.pull` (this repo's own choice) |
 
 **Security:** GitSwitch never stores passphrases. A GitHub token, if you sign in, is kept only in your OS keychain, never in git config. Keys made without a terminal (for example in the desktop app) are created inside GitSwitch, so the passphrase never appears on a command line. The desktop app serves its page inside the process: it opens no network port.
 

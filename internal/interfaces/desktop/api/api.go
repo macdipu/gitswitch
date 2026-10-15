@@ -362,7 +362,7 @@ func (s *server) routes() map[string]handler {
 			return nil, errors.New(`action must be "restore" or "drop"`)
 		}),
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
-			return a.Refs.Update(gd, func(string) {})
+			return a.Refs.UpdateWith(gd, str(b, "mode"), func(string) {})
 		}),
 		// all commits every change, new files too; otherwise what is staged.
 		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
@@ -430,6 +430,7 @@ func (s *server) state(r *http.Request) (any, error) {
 		"installed": s.app.Setup.Installed(),
 		// what switching does with uncommitted changes in every repo
 		"switchChanges": s.app.Refs.SwitchSetting("").Global,
+		"pull":          s.app.Refs.PullSetting("").Global, // how Update works in every repo
 		"branchPrefix":  s.app.Refs.BranchPrefix(),
 		"home":          filesystem.HomeDir(),
 		"hosting":       s.app.Hosting.Status(), // signed in to GitHub, from the keychain
@@ -503,6 +504,11 @@ func (s *server) settings(r *http.Request) (any, error) {
 	}
 	if v, ok := b["promptTimeout"].(float64); ok && v >= 5 {
 		if err := s.app.Accounts.SetSetting("promptTimeout", fmt.Sprint(int(v))); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["pull"].(string); ok && v != "" {
+		if err := s.app.Refs.SetPullSetting("", v); err != nil {
 			return nil, err
 		}
 	}

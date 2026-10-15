@@ -25,12 +25,15 @@
 //	                             uncommitted changes (kept by the refs feature)
 //	gitswitch.branchPrefix       optional: put in front of new branch names, e.g. feature/
 //	                             (kept by the refs feature)
+//	gitswitch.pull               ff-only | rebase: how update brings a branch up to date
+//	                             (kept by the refs feature)
 //	gitswitch-account.<id>.host|name|email|key|user
 //
 // Per repo (.git/config):
 //
 //	gitswitch.account            the account saved for that repo
 //	gitswitch.switchChanges      this repo's own choice, before the global one
+//	gitswitch.pull               ff-only | rebase: this repo's own choice (kept by the refs feature)
 package domain
 
 import (

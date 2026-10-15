@@ -2368,3 +2368,56 @@ func TestGitHubBrowser(t *testing.T) {
 		t.Fatalf("a failed refresh says so and keeps the list: %v\n%s", err, out)
 	}
 }
+
+// Update with rebase: only when both sides have new commits, never with
+// uncommitted changes or your own merges, nothing changed on a clash, and
+// undone exactly.
+func TestUpdateWithRebase(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	e.clone("git@github.com:acme-corp/api.git", "other")
+	api, other := filepath.Join(e.root, "api"), filepath.Join(e.root, "other")
+	e.commitFile(other, "theirs.txt", "theirs\n", "their work")
+	e.gitIn(other, "push", "-q")
+	mine := e.commitFile(api, "mine.txt", "mine\n", "my work")
+
+	e.gsErr(api, "gitswitch update --rebase", "update")
+	if e.gitIn(api, "rev-parse", "HEAD") != mine {
+		t.Fatal("a refused update must change nothing")
+	}
+
+	// Uncommitted changes to tracked files: refused before anything runs.
+	must(t, os.WriteFile(filepath.Join(api, "mine.txt"), []byte("edited\n"), 0o644))
+	e.gsErr(api, "commit or park them first", "update", "--rebase")
+	e.gitIn(api, "checkout", "--", "mine.txt")
+
+	e.gsIn(api, "update", "--rebase")
+	log := e.gitIn(api, "log", "--format=%s")
+	if !strings.HasPrefix(log, "my work\ntheir work") {
+		t.Fatalf("my commit must be on top of theirs:\n%s", log)
+	}
+	if n := e.gitIn(api, "rev-list", "--count", "--merges", "HEAD"); n != "0" {
+		t.Fatalf("no merge commit: %s", n)
+	}
+	e.gsIn(api, "undo", "-y")
+	if got := e.gitIn(api, "rev-parse", "HEAD"); got != mine {
+		t.Fatalf("undo puts my commit back as it was: %s, want %s", got, mine)
+	}
+
+	// A clash: the rebase is aborted and nothing changes.
+	e.commitFile(other, "same.txt", "theirs\n", "their line")
+	e.gitIn(other, "push", "-q")
+	clash := e.commitFile(api, "same.txt", "mine\n", "my line")
+	e.gs("set", "pull", "rebase")
+	e.gsErr(api, "nothing changed", "update")
+	if got := e.gitIn(api, "rev-parse", "HEAD"); got != clash {
+		t.Fatalf("a clash must change nothing: HEAD %s, want %s", got, clash)
+	}
+	if out := e.gitIn(api, "status", "--porcelain"); out != "" {
+		t.Fatalf("no half-done rebase or changed files:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(api, ".git", "rebase-merge")); err == nil {
+		t.Fatal("the rebase must be aborted")
+	}
+}

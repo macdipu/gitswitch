@@ -240,6 +240,33 @@ func (g *Git) Pull(wt string, progress func(string)) error {
 	return g.Git.Stream(wt, progress, "pull", "--ff-only", "--progress")
 }
 
+func (g *Git) PullRebase(wt string, progress func(string)) error {
+	// --rebase=true: your merge commits are refused before this, never
+	// flattened; --no-autostash: uncommitted changes are refused before
+	// this too, never stashed behind your back.
+	err := g.Git.Stream(wt, progress, "-c", "rebase.autoStash=false", "pull", "--rebase=true", "--no-autostash", "--progress")
+	if err != nil && gitinfra.InProgress(g.Git.GitDirFor(wt)) == "rebase" { // not when the fetch failed
+		if _, aerr := g.Git.Run("-C", wt, "rebase", "--abort"); aerr != nil {
+			return fmt.Errorf("%v\n\nthe rebase could not be undone either (%v); finish or abort it in a terminal: git rebase --abort", err, aerr)
+		}
+	}
+	return err
+}
+
+func (g *Git) Merges(gitDir, from, to string) int {
+	out, _ := g.Git.Run("--git-dir="+gitDir, "rev-list", "--count", "--merges", from+".."+to, "--")
+	n, _ := strconv.Atoi(out)
+	return n
+}
+
+func (g *Git) Resolve(gitDir, rev string) string {
+	out, err := g.Git.Run("--git-dir="+gitDir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
 func (g *Git) PushTarget(gitDir, branch string) (string, string) {
 	return g.Git.RepoGet(gitDir, "branch."+branch+".remote"), g.Git.RepoGet(gitDir, "branch."+branch+".merge")
 }
@@ -420,17 +447,33 @@ func (g *Git) SwitchModes(gitDir string) (global, repo string) {
 	return global, repo
 }
 
-func (g *Git) SaveSwitchMode(gitDir, value string) error {
+func (g *Git) SaveSwitchMode(gitDir, value string) error { return g.save(switchKey, gitDir, value) }
+
+// pullKey holds how Update brings a branch up to date: ff-only or rebase.
+const pullKey = "gitswitch.pull"
+
+func (g *Git) PullModes(gitDir string) (global, repo string) {
+	global = g.Git.GlobalGet(pullKey)
+	if gitDir != "" {
+		repo = g.Git.RepoGet(gitDir, pullKey)
+	}
+	return global, repo
+}
+
+func (g *Git) SavePullMode(gitDir, value string) error { return g.save(pullKey, gitDir, value) }
+
+// save sets key for every repo (gitDir "") or one; value "" removes it.
+func (g *Git) save(key, gitDir, value string) error {
 	var err error
 	switch {
 	case gitDir == "" && value == "":
-		_, err = g.Git.Global("--unset", switchKey)
+		_, err = g.Git.Global("--unset", key)
 	case gitDir == "":
-		_, err = g.Git.Global(switchKey, value)
+		_, err = g.Git.Global(key, value)
 	case value == "":
-		err = g.Git.RepoUnset(gitDir, switchKey)
+		err = g.Git.RepoUnset(gitDir, key)
 	default:
-		return g.Git.RepoSet(gitDir, switchKey, value)
+		return g.Git.RepoSet(gitDir, key, value)
 	}
 	if value == "" && gitinfra.ExitCode(err) == 5 { // was not set
 		return nil

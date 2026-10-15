@@ -93,7 +93,8 @@ History and branches
                                     (<n> from the list; else the newest parked on this branch)
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
-  gitswitch update                  pull the current branch, fast-forward only, with the repo's account
+  gitswitch update [--rebase]       pull the current branch with the repo's account: fast-forward only,
+                                    or with --rebase put your not-pushed commits on top of the new ones
   gitswitch push [--open] [-y]      push the current branch with the repo's account, never forced
                                     (-u the first time); --open opens the pull request page. Commits
                                     made as another account are offered a fix first (-y: push anyway)
@@ -113,6 +114,7 @@ Settings
   gitswitch set editor <command>    editor for repo open --editor (e.g. code)
   gitswitch set repo-groups <how>   group the repo list: none, account, owner, folder or group
   gitswitch set repo-sort <how>     sort it: folder, name, recent or account (pinned first)
+  gitswitch set pull <how> [--repo] how update works: ff-only (the default) or rebase
   gitswitch set branch-prefix <prefix>   put e.g. feature/ in front of new branch names ("" for none)
   gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
                                     uncommitted changes, in every repo or this one (default: ask;
@@ -280,7 +282,7 @@ func (x *CLI) dispatch(args []string) error {
 	case "switch":
 		return x.cmdSwitch(rest)
 	case "update", "pull":
-		return x.cmdUpdate()
+		return x.cmdUpdate(rest)
 	case "push":
 		return x.cmdPush(rest)
 	case "revert":

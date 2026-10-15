@@ -436,6 +436,9 @@ dialog .row-actions{justify-content:flex-end}
       <label class="full set-row">When you switch branch with uncommitted changes <select name="switchChanges">
         <option value="ask">ask each time</option><option value="smart">take them along (smart switch)</option><option value="park">park them on their branch (git stash)</option></select></label>
       <p class="hint full" style="margin:0">A repo can have its own choice: tick “Remember my choice for this repo” when GitSwitch asks, or run <span class="mono">gitswitch set switch-changes park --repo</span>.</p>
+      <label class="full set-row">When Update finds new commits on both sides <select name="pull">
+        <option value="ff-only">stop and explain (fast-forward only)</option><option value="rebase">put my not-pushed commits on top (rebase)</option></select></label>
+      <p class="hint full" style="margin:0">A rebase never runs with uncommitted changes or your own merge commits, stops with nothing changed if your commits clash, and can be undone until you push. One repo: <span class="mono">gitswitch set pull rebase --repo</span>.</p>
       <p class="hint full" style="margin:0">Changes are saved right away.</p>
     </form>
     <h3>Health check</h3>
@@ -1208,7 +1211,16 @@ $('#undoBtn').onclick = () => undoLast($('#histRepo').value);
 $('#updateBtn').onclick = async e => {
   const gd = $('#histRepo').value, b = e.currentTarget;
   b.disabled = true; b.textContent = 'Updating…';
-  const r = await act(() => api('POST','/api/repo/update',{gitDir:gd}));
+  let r;
+  try { r = await api('POST','/api/repo/update',{gitDir:gd}); }
+  catch (err) {
+    // Both sides have new commits: offer to rebase this once.
+    if (/update --rebase/.test(err.message) && await ask('Both this branch and its remote have new commits.\nPut your not-pushed commits on top of the new ones (rebase)? Nothing changes if they clash, and you can undo it until you push.', {ok:'Rebase my commits'})){
+      b.textContent = 'Rebasing…';
+      r = await act(() => api('POST','/api/repo/update',{gitDir:gd, mode:'rebase'}));
+      if (r){ toast('Updated: your commits are on top of ' + r.upstream, false, null, undoable(gd)); loadHistory(); return; }
+    } else if (!/update --rebase/.test(err.message)) toast(err.message, true, err.hint);
+  }
   if (r) toast('Up to date with ' + r.upstream);
   loadHistory();
 };
@@ -1612,7 +1624,7 @@ $('#rules').addEventListener('click', async e => { const i = e.target.dataset.ru
 
 // ---- settings ----
 function renderSettings(){
-  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix;
+  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix; f.pull.value = S.pull;
   $('#afterWait').textContent = !S.config.default ? 'then stop: there is no default account to fall back on' : 'then use the default account';
 }
 // The health checks start several programs, so they run only while Settings is shown.
@@ -1633,7 +1645,7 @@ async function loadChecks(){
 async function saveSettings(){
   const f = $('#setForm'), t = +f.promptTimeout.value;
   if (!f.promptTimeout.checkValidity() || !t){ f.promptTimeout.reportValidity(); return; }
-  await act(() => Promise.all([api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t, branchPrefix:f.branchPrefix.value.trim()}),
+  await act(() => Promise.all([api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t, branchPrefix:f.branchPrefix.value.trim(), pull:f.pull.value}),
     f.switchChanges.value !== S.switchChanges && api('POST','/api/switch-setting',{mode:f.switchChanges.value})]), 'Settings saved');
   refresh(); if (R) loadHistory(); // the branch menu says what switching does
 }

@@ -681,12 +681,23 @@ func (x *CLI) checkAccount(gd string, yes bool) error {
 	return errors.New("cancelled, nothing pushed")
 }
 
-func (x *CLI) cmdUpdate() error {
+func (x *CLI) cmdUpdate(args []string) error {
+	mode := ""
+	for _, a := range args {
+		switch a {
+		case "--rebase":
+			mode = "rebase"
+		case "--ff-only":
+			mode = "ff-only"
+		default:
+			return usageErr("gitswitch update [--rebase|--ff-only]")
+		}
+	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	h, err := x.app.Refs.Update(gd, func(l string) { x.say(" ", l) })
+	h, err := x.app.Refs.UpdateWith(gd, mode, func(l string) { x.say(" ", l) })
 	if err != nil {
 		return err
 	}

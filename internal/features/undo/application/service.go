@@ -45,6 +45,19 @@ func (s *Service) Done(gitDir string, before undo.Mark, a undo.Action, label str
 	}
 }
 
+// Updated remembers a pull with rebase onto the upstream commit base.
+func (s *Service) Updated(gitDir string, before undo.Mark, base, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r, ok := undo.New(undo.Update, label, before, s.Git.Mark(gitDir), now().Unix())
+	r.Base = base
+	if !ok || base == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Pruned remembers deleted branches, so they can be brought back.
 func (s *Service) Pruned(gitDir string, before undo.Mark, branches []undo.Deleted, label string) {
 	now := time.Now
@@ -93,6 +106,18 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 		return fmt.Errorf("%s has changed since the last action (%s): a pull, new commits or another git command. Putting the commits back now would lose that, so GitSwitch won't; merge %s into it instead", r.Branch, r.Label, r.To)
 	}
 	if !r.Rewinds() {
+		return nil
+	}
+	if r.Action == undo.Update {
+		// The commits from the remote stay there; only the rebased copies
+		// of your commits would go, and only while they are not pushed.
+		pushed, err := s.Git.Pushed(gitDir, r.Base, r.After)
+		if err != nil {
+			return err
+		}
+		if len(pushed) > 0 {
+			return fmt.Errorf("your rebased commits are pushed already (%s); undoing the update now would rewrite pushed history", short(pushed))
+		}
 		return nil
 	}
 	// Moving the branch back to Before removes the commits only After has.

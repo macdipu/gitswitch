@@ -685,6 +685,45 @@ func (s *Service) done(gitDir string, m undo.Mark, p switchPlan, label string) {
 // when both sides have new commits it stops and explains. Git's progress
 // lines go to progress. It returns the new head.
 func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error) {
+	return s.UpdateWith(gitDir, "", progress)
+}
+
+// PullSetting is how Update brings a repo's branches up to date.
+func (s *Service) PullSetting(gitDir string) refs.PullSetting {
+	return refs.NewPullSetting(s.Refs.PullModes(gitDir))
+}
+
+// SetPullSetting saves "ff-only" or "rebase" for every repo when gitDir is
+// "", else for that repo only, where "" follows every repo's again.
+func (s *Service) SetPullSetting(gitDir, mode string) error {
+	m := refs.ParsePullMode(mode)
+	if m == "" && (gitDir == "" || mode != "") {
+		return fmt.Errorf("%q is not a choice: ff-only or rebase", mode)
+	}
+	where := "every repo"
+	if gitDir != "" {
+		where = "this repo"
+	}
+	if s.FS.Dry(fmt.Sprintf("updating branches does %q in %s", m, where)) {
+		return nil
+	}
+	return s.Refs.SavePullMode(gitDir, string(m))
+}
+
+// UpdateWith is Update with a mode for this once: "ff-only", "rebase", or
+// "" for the saved one (PullSetting). With rebase, when both the branch
+// and its upstream have new commits, the branch's own commits are put on
+// top of the upstream's. That is refused, before anything changes, with
+// uncommitted changes or merge commits of your own, and a rebase whose
+// commits clash is aborted, so nothing is ever half done. It can be
+// undone while the rebased commits are not pushed.
+func (s *Service) UpdateWith(gitDir, mode string, progress func(string)) (refs.Head, error) {
+	m := s.PullSetting(gitDir).Mode
+	if mode != "" {
+		if m = refs.ParsePullMode(mode); m == "" {
+			return refs.Head{}, fmt.Errorf("%q is not a choice: ff-only or rebase", mode)
+		}
+	}
 	h, err := s.ready(gitDir)
 	if err != nil {
 		return h, err
@@ -700,15 +739,48 @@ func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error
 		return h, fmt.Errorf("%s is not on a remote yet; push it first: git push -u origin %s", h.Branch, h.Branch)
 	}
 	wt := s.Locator.WorktreeOf(gitDir)
-	if s.FS.Dry(fmt.Sprintf("update %s from %s (git pull --ff-only)", h.Branch, h.Upstream)) {
+	// A fast-forward first, even with rebase: only when both sides have
+	// new commits is anything of yours rewritten.
+	how := "git pull --ff-only"
+	if m == refs.Rebase {
+		how += "; when both have new commits, git pull --rebase"
+	}
+	if s.FS.Dry(fmt.Sprintf("update %s from %s (%s)", h.Branch, h.Upstream, how)) {
 		return h, nil
 	}
 	if err := s.Refs.Pull(wt, progress); err != nil {
 		low := strings.ToLower(err.Error())
 		if strings.Contains(low, "not possible to fast-forward") || strings.Contains(low, "diverging branches") {
-			return h, fmt.Errorf("%v\n\n%s and %s both have new commits, so they cannot be updated without a merge. Roll back or drop your not-pushed commits, or merge them in a terminal: git pull --rebase", err, h.Branch, h.Upstream)
+			if m == refs.Rebase {
+				return s.updateByRebase(gitDir, wt, h, progress)
+			}
+			return h, fmt.Errorf("%v\n\n%s and %s both have new commits, so they cannot be updated without a merge. Put your commits on top of the new ones with: gitswitch update --rebase (to always do that: gitswitch set pull rebase). Or roll back or drop your not-pushed commits", err, h.Branch, h.Upstream)
 		}
 		return h, err
+	}
+	return s.Refs.Head(gitDir)
+}
+
+// updateByRebase puts the branch's own commits on top of its upstream's.
+func (s *Service) updateByRebase(gitDir, wt string, h refs.Head, progress func(string)) (refs.Head, error) {
+	if c := h.Changes; c.Staged+c.Changed+c.Conflicts > 0 {
+		return h, fmt.Errorf("%s has uncommitted changes (%s); commit or park them first, then update", h.Branch, c.Describe())
+	}
+	if n := s.Refs.Merges(gitDir, h.Upstream, "HEAD"); n > 0 {
+		return h, fmt.Errorf("your not-pushed commits on %s include %d merge commit(s), which a rebase would flatten; update in a terminal (git pull --rebase=merges) or merge instead", h.Branch, n)
+	}
+	m := s.before(gitDir)
+	if err := s.Refs.PullRebase(wt, progress); err != nil {
+		low := strings.ToLower(err.Error())
+		if strings.Contains(low, "conflict") || strings.Contains(low, "could not apply") {
+			return h, fmt.Errorf("%v\n\nyour commits on %s clash with the new ones on %s, so GitSwitch stopped and put everything back: nothing changed. Rebase in a terminal and fix the clashes (git pull --rebase), or merge instead", err, h.Branch, h.Upstream)
+		}
+		return h, err
+	}
+	if s.Undo != nil {
+		if base := s.Refs.Resolve(gitDir, "@{upstream}"); base != "" {
+			s.Undo.Updated(gitDir, m, base, fmt.Sprintf("Updated %s from %s, putting your commits on top", h.Branch, h.Upstream))
+		}
 	}
 	return s.Refs.Head(gitDir)
 }

@@ -512,8 +512,11 @@ func (x *CLI) cmdSet(args []string) error {
 	if len(args) > 0 && args[0] == "switch-changes" {
 		return x.setSwitchChanges(args[1:])
 	}
+	if len(args) > 0 && args[0] == "pull" {
+		return x.setPull(args[1:])
+	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo]")
 	}
 	if args[0] == "branch-prefix" {
 		if err := x.app.Refs.SetBranchPrefix(args[1]); err != nil || x.app.DryRun() {
@@ -541,6 +544,48 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.Repos.SetSortBy(args[1])
 	}
 	return fmt.Errorf("unknown setting %q", args[0])
+}
+
+// setPull saves how update brings a branch up to date, for every repo or
+// (--repo) this one, where "global" follows every repo's.
+func (x *CLI) setPull(args []string) error {
+	const usage = "gitswitch set pull ff-only|rebase [--repo] | pull global --repo"
+	var value string
+	repo := false
+	for _, a := range args {
+		switch {
+		case a == "--repo":
+			repo = true
+		case value == "" && !strings.HasPrefix(a, "-"):
+			value = a
+		default:
+			return usageErr(usage)
+		}
+	}
+	if value == "" || (value == "global" && !repo) {
+		return usageErr(usage)
+	}
+	gd := ""
+	if repo {
+		var err error
+		if gd, err = x.requireRepo(); err != nil {
+			return err
+		}
+		if value == "global" {
+			value = ""
+		}
+	}
+	if err := x.app.Refs.SetPullSetting(gd, value); err != nil || x.app.DryRun() {
+		return err
+	}
+	st := x.app.Refs.PullSetting(gd)
+	where := "every repo"
+	if st.Repo != "" {
+		where = "this repo"
+	}
+	x.sayf("Updating a branch in %s: %s.\n", where, map[refs.PullMode]string{refs.FFOnly: "fast-forward only (never rewrites your commits)",
+		refs.Rebase: "your not-pushed commits go on top of the new ones when both have new commits (git pull --rebase)"}[st.Mode])
+	return nil
 }
 
 // setSwitchChanges saves what switching does with uncommitted changes, for
