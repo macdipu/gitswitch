@@ -82,6 +82,12 @@ func (s *server) routes() map[string]handler {
 		"GET /api/state":           s.state,
 		"POST /api/account":        s.saveAccount,
 		"POST /api/account/remove": s.removeAccount,
+		"POST /api/signin": func(r *http.Request) (any, error) {
+			b := body(r)
+			return s.app.Hosting.SignIn(str(b, "id"), str(b, "token"))
+		},
+		"POST /api/signout":      func(r *http.Request) (any, error) { return nil, s.app.Hosting.SignOut(str(body(r), "id")) },
+		"POST /api/signin/check": func(r *http.Request) (any, error) { return s.app.Hosting.Check(str(body(r), "id")) },
 		"POST /api/account/rename": func(r *http.Request) (any, error) {
 			b := body(r)
 			n, err := a.Accounts.Rename(str(b, "id"), str(b, "newId"))
@@ -418,6 +424,7 @@ func (s *server) state(r *http.Request) (any, error) {
 		"switchChanges": s.app.Refs.SwitchSetting("").Global,
 		"branchPrefix":  s.app.Refs.BranchPrefix(),
 		"home":          filesystem.HomeDir(),
+		"hosting":       s.app.Hosting.Status(), // signed in to GitHub, from the keychain
 	}, nil
 }
 

@@ -80,6 +80,8 @@ details.more>summary::-webkit-details-marker{display:none}
 .detail{grid-column:2 / 4;background:var(--paper);border:1px solid var(--rule);border-radius:var(--radius);padding:12px;font-size:14px}
 .detail textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--panel);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
 .detail a{color:var(--focus);word-break:break-all}
+button.link{all:unset;cursor:pointer;color:var(--focus);text-decoration:underline}
+button.link:focus-visible{outline:2px solid var(--focus)}
 
 form.card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:18px;margin:0 0 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
 form.card .full{grid-column:1/-1}
@@ -475,7 +477,7 @@ function hintHTML(h, raw, buttons){
 function ask(msg, opts = {}){
   const d = $('#dlg'), inp = $('#dlgInput'), ok = $('#dlgOk'), alt = $('#dlgAlt'), hasInput = opts.input !== undefined, altFirst = opts.alt && opts.pick === 'alt';
   $('#dlgMsg').textContent = msg;
-  inp.hidden = !hasInput; inp.value = opts.input ?? '';
+  inp.hidden = !hasInput; inp.value = opts.input ?? ''; inp.type = opts.secret ? 'password' : 'text'; inp.autocomplete = 'off';
   ok.textContent = opts.ok || 'OK'; ok.className = 'btn ' + (opts.danger ? 'danger' : altFirst ? '' : 'primary');
   alt.hidden = !opts.alt; alt.textContent = opts.alt || ''; alt.className = 'btn' + (altFirst ? ' primary' : '');
   $('#dlgCancel').textContent = opts.cancel || 'Cancel';
@@ -676,7 +678,8 @@ function renderAccounts(){
         <div class="acct-name">${esc(a.id)}${a.id === c.default ? '<span class="tag">default</span>' : ''}</div>
         <div class="meta">${esc(a.name)} &lt;${esc(a.email)}&gt; on ${esc(a.host)}</div>
         <div class="meta">${a.keyOk ? `Key <code>${esc(a.key)}</code>` : `<span class="status-bad">No key file${a.key ? ' at ' + esc(a.key) : ''}</span>`}
-          ${a.user ? ` · <span class="status-ok">signed in as ${esc(a.user)}</span>` : ''}</div>
+          ${a.user ? ` · <span class="status-ok">key logs in as ${esc(a.user)}</span>` : ''}</div>
+        ${apiLine(a)}
       </div>
       <div class="row-actions">
         <button class="btn" data-act="test">Test</button>
@@ -686,12 +689,22 @@ function renderAccounts(){
             <button data-act="edit">Edit…</button>
             <button data-act="rename">Rename…</button>
             ${a.id !== c.default ? '<button data-act="default">Make default</button>' : '<button data-act="nodefault">Remove as default</button>'}
+            ${hostingOf(a.id)?.supported ? (hostingOf(a.id).signedIn ? '<button data-act="apicheck">Check GitHub token</button><button data-act="signout">Sign out of GitHub</button>' : '<button data-act="signin">Sign in to GitHub…</button>') : ''}
             <hr><button class="danger" data-act="remove">Remove…</button>
           </div>
         </details>
       </div>
       ${openDetail[a.id] ? `<div class="detail">${openDetail[a.id]}</div>` : ''}
     </div>`).join('');
+}
+// GitHub sign-in: a token per account in the keychain, for the GitHub API.
+const hostingOf = id => (S.hosting || []).find(h => h.account === id);
+function apiLine(a){
+  const h = hostingOf(a.id);
+  if (!h?.supported) return '';
+  if (h.error) return `<div class="meta"><span class="status-bad">GitHub token: ${esc(h.error)}</span></div>`;
+  return h.signedIn ? '<div class="meta"><span class="status-ok">Signed in to GitHub</span> (token in your keychain)</div>'
+    : '<div class="meta">Not signed in to GitHub · <button class="link" data-act="signin">Sign in…</button></div>';
 }
 $('#accounts').addEventListener('change', async e => {
   if (e.target.id !== 'defSel') return;
@@ -724,6 +737,21 @@ $('#accounts').addEventListener('click', async e => {
     try { await navigator.clipboard.writeText(ta.value); toast('Key copied'); } catch { await act(() => api('POST','/api/copy',{text:ta.value}), 'Key copied'); }
   } else if (b.dataset.act === 'close'){
     delete openDetail[id]; renderAccounts();
+  } else if (b.dataset.act === 'signin'){
+    const page = 'https://' + (a.host === 'ssh.github.com' ? 'github.com' : a.host) + '/settings/personal-access-tokens/new';
+    openDetail[id] = `To sign <strong>${esc(id)}</strong> in to GitHub, create a token while signed in to GitHub as ${a.user ? '<strong>' + esc(a.user) + '</strong>' : 'this account'}:
+      <a href="${esc(page)}" target="_blank" rel="noopener noreferrer">${esc(page)}</a>. A fine-grained token with “All repositories” and read access to Metadata and Contents is enough. GitSwitch keeps it in your keychain, never in git config.`;
+    renderAccounts();
+    const token = await ask(`Paste the token for ${id}:`, {input:'', secret:true, ok:'Sign in'});
+    if (token === null){ delete openDetail[id]; renderAccounts(); return; }
+    const r = await act(() => api('POST', '/api/signin', {id, token}));
+    if (r){ delete openDetail[id]; toast(`Signed in to GitHub as ${r.login}` + (r.expires ? ` · the token expires ${r.expires}` : '')); refresh(); }
+  } else if (b.dataset.act === 'apicheck'){
+    const r = await act(() => api('POST', '/api/signin/check', {id}));
+    if (r){ openDetail[id] = `<span class="status-ok">The token works: GitHub knows it as <strong>${esc(r.login)}</strong>${r.expires ? ', until ' + esc(r.expires) : ''}.</span>`; renderAccounts(); }
+  } else if (b.dataset.act === 'signout'){
+    if (!await ask(`Sign ${id} out of GitHub? Its token is removed from your keychain. To revoke it too, delete it on GitHub.`, {ok:'Sign out'})) return;
+    if (await act(() => api('POST', '/api/signout', {id})) !== undefined){ toast(id + ' is signed out of GitHub'); refresh(); }
   } else if (b.dataset.act === 'edit'){
     openForm(a);
   } else if (b.dataset.act === 'nodefault'){

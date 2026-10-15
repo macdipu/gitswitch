@@ -20,6 +20,7 @@ import (
 	"github.com/macdipu/gitswitch/internal/features/doctor"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
@@ -96,7 +97,8 @@ type tui struct {
 	cfg     *account.Config
 	app     *bootstrap.App
 	repos   []repo.Info
-	groups  []repoHeading // headings on the Repos page, by the repo they come before
+	apis    map[string]hosting.Status // GitHub sign-in by account id (lower case)
+	groups  []repoHeading             // headings on the Repos page, by the repo they come before
 	scanned bool
 	checks  []doctor.Check // the health checks; run only on the Settings page
 	hooked  bool           // git runs through gitswitch
@@ -202,6 +204,10 @@ func (t *tui) restore() {
 func (t *tui) reload() {
 	t.cfg = t.app.Accounts.Config()
 	t.hooked = t.app.Setup.Installed()
+	t.apis = map[string]hosting.Status{}
+	for _, st := range t.app.Hosting.Status() {
+		t.apis[strings.ToLower(st.Account)] = st
+	}
 	if t.tab == tabSettings {
 		t.checks = t.app.Doctor.Run(false)
 	}
@@ -658,6 +664,7 @@ Everywhere
 Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default (again: no default, always ask)
   p passphrase to agent   x remove (then y keeps the key files, Shift+D deletes them too)
+  g sign in to GitHub with a token (kept in your keychain)   G sign out of GitHub
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
@@ -854,6 +861,40 @@ func (t *tui) keyAccounts(k string) {
 			t.say(nil, id+" now uses "+found[i].Path)
 			return nil
 		}}
+	case "g":
+		if a == nil {
+			return
+		}
+		id, host := a.ID, a.Host
+		if _, err := hosting.APIBase(host); err != nil {
+			t.say(err, "")
+			return
+		}
+		t.form = &form{title: "Sign " + id + " in to GitHub: create a token at " + hosting.TokenPage(host) + " (read access to Metadata and Contents is enough)",
+			fields: []field{{label: "Token", secret: true, hint: "kept in your keychain, never in git config"}},
+			submit: func(v []string) error {
+				r, err := t.app.Hosting.SignIn(id, v[0])
+				if err != nil {
+					return err
+				}
+				t.reload()
+				t.say(nil, id+" is signed in to GitHub as "+r.Login+".")
+				return nil
+			}}
+	case "G":
+		if a == nil || !t.apis[strings.ToLower(a.ID)].SignedIn {
+			return
+		}
+		id := a.ID
+		t.confirm = &confirmBox{"Sign " + id + " out of GitHub? Its token is removed from your keychain (delete it on GitHub to revoke it). (y/n)",
+			map[string]func() error{"y": func() error {
+				if err := t.app.Hosting.SignOut(id); err != nil {
+					return err
+				}
+				t.reload()
+				t.say(nil, id+" is signed out of GitHub.")
+				return nil
+			}}}
 	case "t":
 		if a == nil {
 			return
@@ -2206,7 +2247,7 @@ func (t *tui) footer() string {
 	}
 	switch t.tab {
 	case tabAccounts:
-		return "a add · e edit · R rename · t test · k public key · K pick key · d default · x remove · ? help · q quit"
+		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g GitHub sign-in · x remove · ? help · q quit"
 	case tabRepos:
 		return "Enter account · h history · c clone · a add repo · f add folder · p pin · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
@@ -2255,7 +2296,15 @@ func (t *tui) drawAccounts() ([]string, int) {
 		}
 		user := ""
 		if a.User != "" {
-			user = cDim + "  signed in as " + a.User + cReset
+			user = cDim + "  logs in as " + a.User + cReset
+		}
+		switch st := t.apis[strings.ToLower(a.ID)]; {
+		case st.Error != "":
+			user += cRed + "  GitHub token: " + st.Error + cReset
+		case st.SignedIn:
+			user += cGreen + "  · signed in to GitHub" + cReset
+		case st.Supported:
+			user += cDim + "  · not signed in to GitHub (g)" + cReset
 		}
 		on := i == t.sel[tabAccounts]
 		l = append(l, fmt.Sprintf("%s%s█%s %s%-*s%s%s  %-*s %-*s %s%s", mark(on), t.color(a.ID), cReset, boldIf(on), wID, a.ID, cReset, def, wEmail, a.Email, wHost, a.Host, key, user))

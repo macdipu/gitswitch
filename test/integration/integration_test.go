@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2084,5 +2086,84 @@ func TestNoDefaultNeverGuesses(t *testing.T) {
 	e.gsIn(notes, "forget")
 	if got := e.cfg(notes, "gitswitch.account"); got != "" {
 		t.Errorf("forget left gitswitch.account=%q", got)
+	}
+}
+
+// Signing in to GitHub checks the token with the API, keeps it out of git
+// config, refuses another user's token, and follows the account when it is
+// renamed or removed. The API is a fake one: gitswitch only talks to it
+// under tests.
+func TestSignInToGitHub(t *testing.T) {
+	e := newEnv(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		login := map[string]string{"Bearer tok-work": "dipu-work", "Bearer tok-other": "someone"}[r.Header.Get("Authorization")]
+		if r.URL.Path != "/user" || login == "" {
+			w.WriteHeader(401)
+			return
+		}
+		fmt.Fprintf(w, `{"login":%q}`, login)
+	}))
+	defer api.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITHUB_API="+api.URL)
+	signin := func(token string, args ...string) (string, error) {
+		cmd := exec.Command(gsBin, append([]string{"signin"}, args...)...)
+		cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader(token+"\n")
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	type status struct {
+		Account  string
+		SignedIn bool
+		Login    string
+		Check    string
+	}
+	statuses := func() map[string]status {
+		t.Helper()
+		var rows []status
+		must(t, json.Unmarshal([]byte(e.gs("signin", "--check", "--json")), &rows))
+		m := map[string]status{}
+		for _, r := range rows {
+			m[r.Account] = r
+		}
+		return m
+	}
+
+	if st := statuses(); st["work"].SignedIn {
+		t.Fatalf("nobody is signed in yet: %+v", st)
+	}
+	if out, err := signin("tok-bad", "work"); err == nil || !strings.Contains(out, "refused the token") {
+		t.Fatalf("a bad token: %v\n%s", err, out)
+	}
+	if out, err := signin("tok-work", "work"); err != nil || !strings.Contains(out, "Signed in") {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	if st := statuses()["work"]; !st.SignedIn || st.Login != "dipu-work" || st.Check != "" {
+		t.Fatalf("work after signin: %+v", st)
+	}
+	if u := e.cfg(e.root, "gitswitch-account.work.user"); u != "dipu-work" {
+		t.Fatalf("the user must be learned from the token, got %q", u)
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.home, ".gitconfig")); strings.Contains(string(b), "tok-work") {
+		t.Fatal("the token must never be written to git config")
+	}
+	if out, err := signin("tok-other", "work"); err == nil || !strings.Contains(out, "logs in as dipu-work") {
+		t.Fatalf("another user's token: %v\n%s", err, out)
+	}
+
+	e.gs("account", "rename", "work", "job")
+	if st := statuses(); !st["job"].SignedIn || st["job"].Login != "dipu-work" {
+		t.Fatalf("the token must follow the rename: %+v", st)
+	}
+	e.gs("signout", "job")
+	if st := statuses(); st["job"].SignedIn {
+		t.Fatalf("after signout: %+v", st)
+	}
+	if out, err := signin("tok-work", "job"); err != nil {
+		t.Fatalf("signin again: %v\n%s", err, out)
+	}
+	e.gs("account", "remove", "job", "-y")
+	e.gs("account", "add", "job", "--email", "job@example.com", "--key", e.key("work"))
+	if st := statuses(); st["job"].SignedIn {
+		t.Fatal("removing an account must remove its token")
 	}
 }

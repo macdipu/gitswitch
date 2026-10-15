@@ -50,6 +50,10 @@ internal/
       domain/                 Committed, commit message and file count; port Git
       application/            commit the staged files or every change, as the repo's account
       infrastructure/         Git: add --all, commit (Head through the refs infrastructure)
+    hosting/
+      domain/                 the API address for a host (GitHub and GitHub Enterprise), token checks, the token's user must be the account's; ports Secrets, API, Accounts
+      application/            sign in with a token, sign out, which accounts are signed in, check a token
+      infrastructure/         the OS keychain (security on macOS, Credential Manager on Windows, secret-tool elsewhere; a file under tests), Tokens (follows an account's rename and removal), GitHub (GET /user)
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history, refs and workspace use cases (Before, Done, Pruned); Last, Undo
@@ -80,7 +84,7 @@ naturally: `account.Account`, `accountapp.Service`, `accountinfra.Store`,
 `remote.Parse`, `gitinfra.Runner`, `resolve.Decide`, `repo.Info`,
 `repoapp`, `repoinfra`, `history.Commit`, `historyapp`, `historyinfra`,
 `refs.Head`, `refsapp`, `refsinfra`, `ssh.Invocation`, `sshapp`, `sshinfra`,
-`undo.Record`, `undoapp`, `undoinfra`.
+`undo.Record`, `undoapp`, `undoinfra`, `hosting.Status`, `hostingapp`, `hostinginfra`.
 
 ## Layers and what each may import
 

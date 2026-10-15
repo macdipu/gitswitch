@@ -1,0 +1,122 @@
+// Package domain describes signing an account in to its host's API with a
+// token, and declares what the hosting use cases need from the outside
+// world (ports). Only GitHub (github.com and GitHub Enterprise) for now.
+// Import it as hosting.
+package domain
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"unicode"
+
+	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
+)
+
+// ErrNoToken means an account has no token saved: it is not signed in.
+var ErrNoToken = errors.New("not signed in")
+
+// APIBase is the REST API address for a host: api.github.com for
+// github.com, and <host>/api/v3 for a GitHub Enterprise server. GitLab and
+// Bitbucket are not supported yet.
+func APIBase(host string) (string, error) {
+	h := remote.CanonicalHost(host)
+	switch {
+	case h == "":
+		return "", errors.New("the account has no host")
+	case h == "github.com":
+		return "https://api.github.com", nil
+	case h == "gitlab.com" || h == "bitbucket.org":
+		return "", fmt.Errorf("GitSwitch can sign in to GitHub only for now, not %s", h)
+	}
+	return "https://" + h + "/api/v3", nil
+}
+
+// TokenPage is where to create a token for a host.
+func TokenPage(host string) string {
+	h := remote.CanonicalHost(host)
+	if h == "" {
+		h = "github.com"
+	}
+	return "https://" + h + "/settings/personal-access-tokens/new"
+}
+
+// CheckToken cleans a pasted token. It may not hold spaces, quotes or
+// control characters, which no GitHub token has, so it is never mangled
+// on its way to the keychain.
+func CheckToken(t string) (string, error) {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return "", errors.New("paste the token")
+	}
+	if len(t) > 255 {
+		return "", errors.New("that is too long for a token; paste only the token")
+	}
+	for _, r := range t {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '"' || r == '\'' || r == '\\' || r > unicode.MaxASCII {
+			return "", errors.New("that does not look like a token: paste only the token, without spaces or quotes")
+		}
+	}
+	return t, nil
+}
+
+// SameUser checks that a token belongs to the account. User is the host
+// username learned by testing the ssh login ("" when not tested yet).
+func SameUser(a *account.Account, login string) error {
+	if a.User == "" || strings.EqualFold(a.User, login) {
+		return nil
+	}
+	return fmt.Errorf("this token belongs to %s, but %s logs in as %s; create the token while signed in to %s as %s",
+		login, a.ID, a.User, remote.CanonicalHost(a.Host), a.User)
+}
+
+// User is who a token signs in as.
+type User struct {
+	Login string `json:"login"`
+	Name  string `json:"name"`
+}
+
+// Grant is what the host says about a token.
+type Grant struct {
+	Scopes  []string `json:"scopes"`  // classic tokens only; fine-grained tokens have none
+	Expires string   `json:"expires"` // "" when it never expires or the host does not say
+}
+
+// SignedIn is an account signed in to its host's API.
+type SignedIn struct {
+	Account string `json:"account"`
+	Host    string `json:"host"`
+	User
+	Grant
+}
+
+// Status is whether an account is signed in, read without the network.
+type Status struct {
+	Account   string `json:"account"`
+	Host      string `json:"host"`
+	Supported bool   `json:"supported"` // the host has an API GitSwitch can use
+	SignedIn  bool   `json:"signedIn"`
+	Error     string `json:"error"` // the keychain could not be read
+}
+
+// Secrets keeps one token per account in the OS keychain.
+type Secrets interface {
+	// Get returns ErrNoToken when the account has none.
+	Get(accountID string) (string, error)
+	Set(accountID, token string) error
+	// Delete removes the token; a missing one is not an error.
+	Delete(accountID string) error
+}
+
+// API talks to a host's REST API.
+type API interface {
+	// Whoami returns who the token signs in as.
+	Whoami(base, token string) (User, Grant, error)
+}
+
+// Accounts reads the accounts and records a learned username.
+type Accounts interface {
+	Load() *account.Config
+	SetUser(id, user string) error
+}

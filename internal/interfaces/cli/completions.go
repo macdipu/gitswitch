@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test signin signout default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -27,7 +27,7 @@ _gitswitch() {
       elif [ "${COMP_WORDS[2]}" = switch-changes ]; then COMPREPLY=( $(compgen -W "ask smart park global --repo" -- "$cur") )
       else COMPREPLY=( $(compgen -W "on off" -- "$cur") ); fi ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
-    use|default|test) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
+    use|default|test|signin|signout) COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --once" -- "$cur") ) ;;
     log) COMPREPLY=( $(compgen -W "--flagged -n --author --grep --since --until --account" -- "$cur") ) ;;
     branch) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "new prune compare --json" -- "$cur") )
       elif [ "$prev" = --from ]; then COMPREPLY=( $(compgen -W "$(gitswitch __branches 2>/dev/null)" -- "$cur") )
@@ -62,7 +62,7 @@ _gitswitch() {
       elif [[ ${words[3]} == switch-changes ]]; then compadd ask smart park global --repo
       else compadd on off; fi ;;
     completions) compadd bash zsh fish powershell ;;
-    use|default|test) compadd -a accts -- --once ;;
+    use|default|test|signin|signout) compadd -a accts -- --once ;;
     log) compadd -- --flagged -n --author --grep --since --until --account ;;
     branch) if (( CURRENT == 3 )); then compadd -- new prune compare --json
       elif [[ ${words[CURRENT-1]} == --from ]]; then compadd -- ${(f)"$(gitswitch __branches 2>/dev/null)"}
@@ -87,7 +87,7 @@ complete -c gitswitch -n __fish_use_subcommand -a "`+commandList+`"
 complete -c gitswitch -n "__fish_seen_subcommand_from account" -a "add edit list remove rename (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick agent (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
-complete -c gitswitch -n "__fish_seen_subcommand_from use default test" -a "(gitswitch __accounts)"
+complete -c gitswitch -n "__fish_seen_subcommand_from use default test signin signout" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin recent group ungroup (__fish_complete_directories)"
 complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor branch-prefix repo-groups switch-changes on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune compare --json --from --move --no-prefix -y"

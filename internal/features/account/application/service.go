@@ -17,7 +17,8 @@ type Service struct {
 	Store        account.Store
 	RepoAccounts account.RepoAccounts
 	Keys         ssh.KeyTool
-	Repos        repo.Reader // repos to update after a rename
+	Repos        repo.Reader    // repos to update after a rename
+	Tokens       account.Tokens // nil: no tokens to look after
 }
 
 // Config returns the current settings, read fresh.
@@ -85,6 +86,11 @@ func (s *Service) Remove(id string, deleteKeys bool) ([]string, error) {
 	if err := s.Store.Remove(copyOf.ID); err != nil {
 		return nil, err
 	}
+	if s.Tokens != nil {
+		if err := s.Tokens.Delete(copyOf.ID); err != nil {
+			return nil, fmt.Errorf("removed %s, but its token is still in the keychain: %v", copyOf.ID, err)
+		}
+	}
 	if deleteKeys {
 		return s.Store.DeleteKeyFiles(&copyOf), nil
 	}
@@ -101,6 +107,11 @@ func (s *Service) Rename(oldID, newID string) (int, error) {
 	oldID = acc.ID
 	if err := s.Store.Rename(oldID, newID); err != nil {
 		return 0, err
+	}
+	if s.Tokens != nil {
+		if err := s.Tokens.Move(oldID, newID); err != nil {
+			return 0, fmt.Errorf("renamed to %s, but its token stayed under %s: sign in again (gitswitch signin %s): %v", newID, oldID, newID, err)
+		}
 	}
 	n := 0
 	for _, r := range s.Repos.List(s.Config()) {

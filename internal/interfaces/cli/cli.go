@@ -37,6 +37,9 @@ Accounts
   gitswitch key show <id> [--open]
   gitswitch key agent <id>          load the key into the OS agent / Keychain once
   gitswitch test [<id>]             check each key logs in, and as whom
+  gitswitch signin <id>             sign in to GitHub with a token, kept in your keychain
+  gitswitch signin [--check]        which accounts are signed in (--check asks GitHub)
+  gitswitch signout <id>            remove the account's token from your keychain
   gitswitch default <id>            optional: account used when nobody answers (or Enter)
   gitswitch default --none          remove the default: repos with nothing saved always ask
 
@@ -210,6 +213,10 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdKey(rest)
 	case "test":
 		return x.cmdTest(rest)
+	case "signin", "login":
+		return x.cmdSignin(rest)
+	case "signout", "logout":
+		return x.cmdSignout(rest)
 	case "default":
 		if len(rest) != 1 {
 			return usageErr("gitswitch default <id> | --none")
@@ -390,7 +397,7 @@ func choose(q, def string, keys ...string) (key string, bang bool) {
 
 // splitArgs separates flags (with their values) from positional args.
 func splitArgs(args []string) (pos, flags []string) {
-	boolFlags := map[string]bool{"--default": true, "--once": true, "--copy": true, "--open": true, "--delete-keys": true, "--json": true}
+	boolFlags := map[string]bool{"--default": true, "--once": true, "--copy": true, "--open": true, "--delete-keys": true, "--json": true, "--check": true}
 	for i := 0; i < len(args); i++ {
 		if strings.HasPrefix(args[i], "--") {
 			flags = append(flags, args[i])

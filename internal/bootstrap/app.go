@@ -14,6 +14,8 @@ import (
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
 	historyapp "github.com/macdipu/gitswitch/internal/features/history/application"
 	historyinfra "github.com/macdipu/gitswitch/internal/features/history/infrastructure"
+	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
+	hostinginfra "github.com/macdipu/gitswitch/internal/features/hosting/infrastructure"
 	refsapp "github.com/macdipu/gitswitch/internal/features/refs/application"
 	refsinfra "github.com/macdipu/gitswitch/internal/features/refs/infrastructure"
 	repoapp "github.com/macdipu/gitswitch/internal/features/repository/application"
@@ -44,6 +46,7 @@ type App struct {
 	Refs      *refsapp.Service
 	Undo      *undoapp.Service
 	Workspace *workspaceapp.Service
+	Hosting   *hostingapp.Service
 	Setup     *setup.Installer
 	Doctor    *doctor.Doctor
 
@@ -67,8 +70,9 @@ func New(dryRun bool, out io.Writer) *App {
 	installer := &setup.Installer{Git: git, FS: fs, Store: store, Version: Version}
 	undoGit := &undoinfra.Git{Git: git}
 	undos := &undoapp.Service{Store: undoGit, Git: undoGit, FS: fs}
+	secrets := hostinginfra.NewSecrets()
 	return &App{
-		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader},
+		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader, Tokens: hostinginfra.Tokens{Secrets: secrets}},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
@@ -76,6 +80,7 @@ func New(dryRun bool, out io.Writer) *App {
 		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Undo:      undos,
 		Workspace: &workspaceapp.Service{Git: &workspaceinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Hosting:   &hostingapp.Service{Accounts: store, Secrets: secrets, API: &hostinginfra.GitHub{Version: Version}},
 		Setup:     installer,
 		Doctor:    &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
 		dryRun:    dryRun,

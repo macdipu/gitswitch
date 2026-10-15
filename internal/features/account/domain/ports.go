@@ -46,6 +46,13 @@ type RepoAccounts interface {
 	ApplyIdentity(gitDir string, a *Account)
 }
 
+// Tokens keeps each account's API token (the hosting feature's keychain),
+// so removing or renaming an account takes its token along.
+type Tokens interface {
+	Delete(id string) error
+	Move(oldID, newID string) error
+}
+
 // KeyChoice says how a new account gets its key.
 type KeyChoice struct {
 	New         bool   // create a new key

@@ -39,6 +39,7 @@ gitswitch: work saved for this repo
 - [IDE notes](#ide-notes)
 - [Commit history and branches](#commit-history-and-branches)
 - [Repo list](#repo-list)
+- [Sign in to GitHub](#sign-in-to-github)
 - [Health check](#health-check)
 - [Command reference](#command-reference)
 - [How it works](#how-it-works)
@@ -213,7 +214,7 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 
 | Page | Keys |
 | --- | --- |
-| Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `x` remove (then `y` keeps the key files, `D` deletes them too) |
+| Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `g` sign in to GitHub · `G` sign out of GitHub · `x` remove (then `y` keeps the key files, `D` deletes them too) |
 | Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `f` add projects folder · `a` add one repo · `p` pin · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
 | History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `M` move not-pushed commits to a new branch · `D` delete merged branches · `C` commit · `S` compare with the remote branch · `p` push · `i` commit as the repo's account · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo (recent ones first) · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
@@ -329,6 +330,21 @@ GitSwitch remembers the last 10 repos you opened: with `repo open`, or by showin
 
 Adding or removing a repo changes only GitSwitch's list. The repo's files, remotes, branches and git settings are never touched. In the desktop app, "Add an existing repo…" uses the system folder picker.
 
+## Sign in to GitHub
+
+GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional, and prepares the features that use the GitHub API, such as browsing every account's repos (planned). Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata and Contents is enough.
+
+```sh
+gitswitch signin work                    # asks for the token; it is not shown as you paste it
+gh auth token | gitswitch signin work    # or pipe it in
+gitswitch signin --check                 # which accounts are signed in, and whether each token still works
+gitswitch signout work                   # remove the token from your keychain
+```
+
+The desktop app has "Sign in to GitHub…" in each account's More menu, and the terminal app uses `g` (sign in) and `G` (sign out) on the Accounts page.
+
+GitSwitch checks the token with GitHub before keeping it, and refuses a token of another GitHub user than the one the account's key logs in as. The token is kept in your OS keychain (macOS Keychain, Windows Credential Manager, or the Secret Service through `secret-tool` on Linux), never in git config or a file, and never on a command line. Renaming an account takes its token along; removing an account removes it. Signing out only removes it from your computer: delete it on GitHub to revoke it. GitHub Enterprise servers work too; GitLab and Bitbucket are not supported yet.
+
 ## Health check
 
 `gitswitch doctor` finds anything that can make git skip GitSwitch or log in as the wrong account; `gitswitch doctor --fix` repairs what it can:
@@ -352,7 +368,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | --- | --- |
 | Setup | `install`, `setup`, `uninstall [--purge]` |
 | Apps | `tui`, `ui` |
-| Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test` |
+| Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test`, `signin <id>\|--check`, `signout <id>` |
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
@@ -392,7 +408,7 @@ All settings live in git config, so the terminal, the desktop app and git always
 | Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default` (only if you set one), `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.recent`, `gitswitch.group`, `gitswitch.repoGroups`, `gitswitch.editor` |
 | Per repo | `.git/config` | `gitswitch.account` (an account, or `ask` for ask every time) |
 
-**Security:** GitSwitch never stores passphrases or tokens. Keys made without a terminal (for example in the desktop app) are created inside GitSwitch, so the passphrase never appears on a command line. The desktop app serves its page inside the process: it opens no network port.
+**Security:** GitSwitch never stores passphrases. A GitHub token, if you sign in, is kept only in your OS keychain, never in git config. Keys made without a terminal (for example in the desktop app) are created inside GitSwitch, so the passphrase never appears on a command line. The desktop app serves its page inside the process: it opens no network port.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is organised.
 
