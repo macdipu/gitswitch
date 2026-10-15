@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -70,4 +71,73 @@ func (g *GitHub) Whoami(base, token string) (hosting.User, hosting.Grant, error)
 		}
 	}
 	return u, g2, nil
+}
+
+// maxPages caps how many pages of 100 repos are read for one account.
+const maxPages = 30
+
+// ghRepo is the part of GitHub's repo object GitSwitch reads.
+type ghRepo struct {
+	FullName      string                 `json:"full_name"`
+	Name          string                 `json:"name"`
+	Owner         struct{ Login string } `json:"owner"`
+	Description   string                 `json:"description"`
+	Private       bool                   `json:"private"`
+	Fork          bool                   `json:"fork"`
+	Archived      bool                   `json:"archived"`
+	Language      string                 `json:"language"`
+	DefaultBranch string                 `json:"default_branch"`
+	SSHURL        string                 `json:"ssh_url"`
+	CloneURL      string                 `json:"clone_url"`
+	HTMLURL       string                 `json:"html_url"`
+	PushedAt      string                 `json:"pushed_at"`
+}
+
+// Repos reads GET /user/repos page by page, following the Link header.
+func (g *GitHub) Repos(base, token string) ([]hosting.RemoteRepo, error) {
+	next := baseFor(base) + "/user/repos?per_page=100&sort=full_name&affiliation=owner%2Ccollaborator%2Corganization_member"
+	out := []hosting.RemoteRepo{}
+	for page := 0; next != "" && page < maxPages; page++ {
+		req, err := http.NewRequest("GET", next, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		req.Header.Set("User-Agent", "gitswitch/"+g.Version)
+		res, err := g.client().Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("could not reach %s: %v. Check your network connection", req.URL.Host, err)
+		}
+		var rs []ghRepo
+		err = json.NewDecoder(res.Body).Decode(&rs)
+		res.Body.Close()
+		switch {
+		case res.StatusCode == http.StatusUnauthorized:
+			return nil, errors.New("GitHub refused the token: it is wrong, expired or revoked. Sign in again")
+		case res.StatusCode != http.StatusOK:
+			return nil, fmt.Errorf("GitHub answered %s", res.Status)
+		case err != nil:
+			return nil, errors.New("GitHub's answer could not be read")
+		}
+		for _, r := range rs {
+			out = append(out, hosting.RemoteRepo{FullName: r.FullName, Owner: r.Owner.Login, Name: r.Name, Description: r.Description,
+				Private: r.Private, Fork: r.Fork, Archived: r.Archived, Language: r.Language, DefaultBranch: r.DefaultBranch,
+				SSHURL: r.SSHURL, HTTPSURL: r.CloneURL, WebURL: r.HTMLURL, PushedAt: r.PushedAt})
+		}
+		next = nextLink(res.Header.Get("Link"))
+	}
+	return out, nil
+}
+
+// nextRe finds rel="next" in a Link header. The URLs may hold commas
+// (affiliation=owner,collaborator), so the header is not split on them.
+var nextRe = regexp.MustCompile(`<([^>]+)>\s*;\s*rel="next"`)
+
+func nextLink(h string) string {
+	if m := nextRe.FindStringSubmatch(h); m != nil {
+		return m[1]
+	}
+	return ""
 }

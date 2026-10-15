@@ -72,3 +72,54 @@ func TestFileSecretsAndTokens(t *testing.T) {
 		t.Errorf("deleted: %v", err)
 	}
 }
+
+func TestReposPages(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer good" {
+			w.WriteHeader(401)
+			return
+		}
+		if r.URL.Query().Get("page") == "" {
+			w.Header().Set("Link", `<`+srv.URL+`/user/repos?page=2>; rel="next", <`+srv.URL+`/user/repos?page=2>; rel="last"`)
+			_, _ = w.Write([]byte(`[{"full_name":"acme/api","name":"api","owner":{"login":"acme"},"private":true,"language":"Go","ssh_url":"git@github.com:acme/api.git"}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"full_name":"dipu/notes","name":"notes","owner":{"login":"dipu"}}]`))
+	}))
+	defer srv.Close()
+	g := &GitHub{Version: "test"}
+	rs, err := g.Repos(srv.URL, "good")
+	if err != nil || len(rs) != 2 || rs[0].Owner != "acme" || !rs[0].Private || rs[1].FullName != "dipu/notes" {
+		t.Fatalf("Repos = %+v, %v", rs, err)
+	}
+	if _, err := g.Repos(srv.URL, "bad"); err == nil || !strings.Contains(err.Error(), "Sign in again") {
+		t.Errorf("a refused token: %v", err)
+	}
+}
+
+func TestCache(t *testing.T) {
+	c := Cache{Dir: t.TempDir()}
+	if _, ok := c.Load("work"); ok {
+		t.Fatal("empty cache")
+	}
+	if err := c.Save("Work", hosting.RepoList{Repos: []hosting.RemoteRepo{{FullName: "a/b"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if l, ok := c.Load("work"); !ok || len(l.Repos) != 1 {
+		t.Fatalf("Load = %+v %v", l, ok)
+	}
+	if err := c.Delete("work"); err != nil || c.Delete("work") != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+}
+
+func TestNextLink(t *testing.T) {
+	h := `<https://api.github.com/user/repos?affiliation=owner,collaborator&page=2>; rel="next", <https://api.github.com/user/repos?page=9>; rel="last"`
+	if got := nextLink(h); got != "https://api.github.com/user/repos?affiliation=owner,collaborator&page=2" {
+		t.Errorf("nextLink = %q", got)
+	}
+	if nextLink(`<https://x/?page=1>; rel="prev"`) != "" || nextLink("") != "" {
+		t.Error("no next link")
+	}
+}

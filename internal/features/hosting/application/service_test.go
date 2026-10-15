@@ -5,9 +5,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
+	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 )
 
 type fakeAccounts struct{ c account.Config }
@@ -39,10 +41,21 @@ func (f *fakeSecrets) Get(id string) (string, error) {
 func (f *fakeSecrets) Set(id, t string) error { f.m[id] = t; return f.err }
 func (f *fakeSecrets) Delete(id string) error { delete(f.m, id); return f.err }
 
-// fakeAPI knows tokens by value: token -> login.
+// fakeAPI knows tokens by value: token -> login, and token -> repos.
 type fakeAPI struct {
 	users map[string]string
 	bases []string
+	repos map[string][]hosting.RemoteRepo
+	calls int
+	err   error // Repos fails with it
+}
+
+func (f *fakeAPI) Repos(base, token string) ([]hosting.RemoteRepo, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return append([]hosting.RemoteRepo{}, f.repos[token]...), nil
 }
 
 func (f *fakeAPI) Whoami(base, token string) (hosting.User, hosting.Grant, error) {
@@ -135,6 +148,9 @@ type fakeRepos struct {
 }
 
 func (f *fakeRepos) Current() string { return f.current }
+func (f *fakeRepos) List(*account.Config) []repo.Info {
+	return []repo.Info{{Path: "/src/api", Remote: "https://github.com/Acme/api"}}
+}
 func (f *fakeRepos) AccountFor(c *account.Config, gd string) *account.Account {
 	return c.Account(f.account[gd])
 }
@@ -194,5 +210,53 @@ func TestCredential(t *testing.T) {
 	repos.current = "/src/api/.git"
 	if _, _, ok := s.Credential(req); !ok {
 		t.Error("the same user in another case, on a port-443 host, must be answered")
+	}
+}
+
+type memCache map[string]hosting.RepoList
+
+func (m memCache) Load(id string) (hosting.RepoList, bool)  { l, ok := m[id]; return l, ok }
+func (m memCache) Save(id string, l hosting.RepoList) error { m[id] = l; return nil }
+func (m memCache) Delete(id string) error                   { delete(m, id); return nil }
+
+func TestBrowse(t *testing.T) {
+	s, _, sec, api := newService()
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	cache := memCache{}
+	s.Cache, s.Now, s.Repos = cache, func() time.Time { return now }, &fakeRepos{}
+	sec.m["work"], sec.m["home"] = "tok-work", "tok-home"
+	api.repos = map[string][]hosting.RemoteRepo{
+		"tok-work": {{FullName: "acme/api", Owner: "acme", SSHURL: "git@github.com:acme/api.git"}, {FullName: "acme/web", Owner: "acme"}},
+		"tok-home": {{FullName: "dipu/notes", Owner: "dipu"}, {FullName: "acme/api", Owner: "acme"}},
+	}
+
+	if b := s.Browse(FetchNone); len(b.Repos) != 0 || len(b.Accounts) != 2 || api.calls != 0 {
+		t.Fatalf("nothing cached and no fetch: %+v, %d calls", b, api.calls)
+	}
+	b := s.Browse(FetchStale)
+	if api.calls != 2 || len(b.Repos) != 3 || b.Repos[0].FullName != "acme/api" || b.Repos[0].Account != "work" {
+		t.Fatalf("fetched: %+v, %d calls", b.Repos, api.calls)
+	}
+	if c := b.Repos[0].Cloned; len(c) != 1 || c[0] != "/src/api" {
+		t.Errorf("acme/api is cloned at /src/api: %v", c)
+	}
+	if b.Repos[1].Cloned == nil || len(b.Repos[1].Cloned) != 0 {
+		t.Errorf("acme/web is not cloned: %v", b.Repos[1].Cloned)
+	}
+	s.Browse(FetchStale)
+	if api.calls != 2 {
+		t.Errorf("a fresh cache must not be read again: %d calls", api.calls)
+	}
+	now = now.Add(2 * time.Hour)
+	if b := s.Browse(FetchNone); !b.Accounts[0].Stale || len(b.Repos) != 3 {
+		t.Errorf("old lists are shown, marked stale: %+v", b.Accounts)
+	}
+	api.err = errors.New("network down")
+	b = s.Browse(FetchAll)
+	if b.Accounts[0].Error != "network down" || len(b.Repos) != 3 {
+		t.Errorf("a failed read keeps the last list: %+v", b)
+	}
+	if err := s.SignOut("home"); err != nil || len(cache) != 1 {
+		t.Errorf("signing out forgets what the account saw: %v %v", err, cache)
 	}
 }

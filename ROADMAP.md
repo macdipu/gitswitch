@@ -41,23 +41,23 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 
 | # | Feature | Status | Notes |
 | --- | --- | --- | --- |
-| 1 | **Multi-account GitHub integration**: repos from every account and organization, private ones included | partly | Sign-in is done: the `hosting` feature keeps one token per account in the OS keychain, checked with `GET /user` and refused when it belongs to another user than the account's key. `gitswitch signin <id>\|--check`, `signout`; desktop account menu; terminal app `g` / `G`. Listing the repos comes with the browser (#2). |
-| 2 | **Remote repository browser**: name, owner, description, visibility, language, default branch | planned | |
-| 3 | **Search and filters** by account, organization, visibility, language, clone status | planned | |
-| 4 | **Clone repository** over SSH or HTTPS, with folder choice and progress | partly | Cloning, folder choice and progress are done (see #5); picking the repo from a list needs the browser (#2). |
+| 1 | **Multi-account GitHub integration**: repos from every account and organization, private ones included | done | The `hosting` feature keeps one token per account in the OS keychain, checked with `GET /user` and refused when it belongs to another user than the account's key. `gitswitch signin <id>\|--check`, `signout`; desktop account menu; terminal app `g` / `G`. The browser (#2) lists every repo each signed-in account sees (`GET /user/repos`: owned, collaborator and organization repos, private included). |
+| 2 | **Remote repository browser**: name, owner, description, visibility, language, default branch | done | `hostingapp.Browse`: every signed-in account's repos, merged (a repo two accounts see is listed once). `gitswitch github list [--json]`, the desktop GitHub page, terminal app `b` on the Repos page. Owner, description, visibility, language, fork and archived; the default branch is in `--json`. |
+| 3 | **Search and filters** by account, organization, visibility, language, clone status | done | `hosting.Filter`: words in the name or description, account, owner, visibility, language, cloned or not; archived repos hidden unless asked. CLI flags, desktop search box and menus, typing in the terminal app's list. |
+| 4 | **Clone repository** over SSH or HTTPS, with folder choice and progress | done | From the list: `gitswitch github clone <owner/name> [folder]`, "Clone…" on the desktop GitHub page (opens the clone form, prefilled), Enter in the terminal app. Over SSH as the account that sees the repo; HTTPS URLs work with `repo clone` (and the token, #23). |
 | 5 | **Clone via URL** | done | `gitswitch repo clone <url> [folder] [--account id]`, "Clone from URL…" in the desktop app, `c` in the terminal app. The account is saved in the new repo before the first fetch (`git clone -c gitswitch.account=<id>`). HTTPS uses git's own credentials for now (see #23). |
-| 13 | **Clone status detection**: which remote repos are already cloned, and where | planned | Match registry remotes against API results. |
-| 17 | **Refresh and sync metadata** | planned | Cache API results; never block the UI on the network. |
+| 13 | **Clone status detection**: which remote repos are already cloned, and where | done | `hosting.MarkCloned` matches the repo list's origins against the API results however the URL is written; each remote repo says where it is cloned, and the apps offer History instead of Clone. |
+| 17 | **Refresh and sync metadata** | done | Each account's list is cached in the cache folder (`remote-repos/<account>.json`, no tokens). Lists over an hour old are read again: in the background on the desktop page, before listing in the CLI (`--refresh` reads now). A failed read keeps the last list and says why. Signing out deletes the account's cache. |
 | 23 | **Secure authentication**: account-specific credentials, SSH and HTTPS, nothing exposed | done | Tokens are in the OS keychain (never in git config, files or command lines). For HTTPS, `gitswitch credential` is a git credential helper in its own `credential.https://<host>/` section, written while an account on the host is signed in: ahead of your helpers, answering only for repos whose account is signed in, so everything else reaches your helpers unchanged. Removed on the last sign-out and on uninstall; `uninstall --purge` also deletes the tokens. |
-| 18 | **Error handling**: auth failures, inaccessible repos, invalid folders, network issues, clone conflicts | partly | Clone explains bad URLs, non-empty folders, wrong-host accounts, access and network failures. API errors come with the browser. |
+| 18 | **Error handling**: auth failures, inaccessible repos, invalid folders, network issues, clone conflicts | done | Clone explains bad URLs, non-empty folders, wrong-host accounts, access and network failures. The API explains refused tokens (401), organization approval or rate limits (403), unreachable hosts and unreadable answers, per account, keeping the last list. |
 
 ### Front ends
 
 | # | Feature | Status | Notes |
 | --- | --- | --- | --- |
-| 19 | **GUI**: browsing, native folder picker, contextual actions, clone progress | partly | Folder picker, clone with progress, add, remove, pin and open are done. Browsing needs #2. |
-| 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | partly | Clone, add, pin, remove and open are done (Repos page: c, a, p, x, o). Browsing needs #2. |
-| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `--json`. |
+| 19 | **GUI**: browsing, native folder picker, contextual actions, clone progress | done | Folder picker, clone with progress, add, remove, pin and open, and the GitHub page (search, filters, clone, history of a cloned repo). |
+| 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | done | Clone, add, pin, remove and open (Repos page: c, a, p, x, o), and `b` to browse GitHub (type to filter; Enter clones a repo or opens a cloned one). |
+| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `gitswitch github list\|clone`, `--json`. |
 
 ## A full git client
 

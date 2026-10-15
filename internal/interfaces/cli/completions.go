@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test signin signout default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test signin signout github default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -107,7 +107,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   param($wordToComplete, $commandAst, $cursorPosition)
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
-    account = 'add edit list remove rename'; key = 'new show pick agent'; rule = 'add list remove'
+    account = 'add edit list remove rename'; github = 'list clone --refresh --json'; key = 'new show pick agent'; rule = 'add list remove'
     repo = 'list clone add remove show open pin unpin recent group ungroup'; set = 'gui-prompt prompt-timeout ssh-path editor branch-prefix repo-groups switch-changes'; completions = 'bash zsh fish powershell'
     parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune compare --json'; push = '--open -y'; commit = '-m --all'
   }

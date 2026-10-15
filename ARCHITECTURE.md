@@ -51,9 +51,9 @@ internal/
       application/            commit the staged files or every change, as the repo's account
       infrastructure/         Git: add --all, commit (Head through the refs infrastructure)
     hosting/
-      domain/                 the API address for a host (GitHub and GitHub Enterprise), token checks, the token's user must be the account's; git's credential helper protocol and the helper section per host; ports Secrets, API, Accounts, HelperConfig, Repos
-      application/            sign in with a token, sign out, which accounts are signed in, check a token; keep the credential helper section while an account on the host is signed in; answer git's HTTPS credential requests
-      infrastructure/         the OS keychain (security on macOS, Credential Manager on Windows, secret-tool elsewhere; a file under tests), Tokens (follows an account's rename and removal), GitHub (GET /user), HelperConfig (credential.https://<host>/ in the global config), HelperRepos (GIT_DIR or the current folder)
+      domain/                 the API address for a host (GitHub and GitHub Enterprise), token checks, the token's user must be the account's; git's credential helper protocol and the helper section per host; RemoteRepo, merging accounts' lists, filters, which are cloned; ports Secrets, API, Accounts, HelperConfig, Repos, Cache
+      application/            sign in with a token, sign out, which accounts are signed in, check a token; keep the credential helper section while an account on the host is signed in; answer git's HTTPS credential requests; Browse (cached, stale lists read again)
+      infrastructure/         the OS keychain (security on macOS, Credential Manager on Windows, secret-tool elsewhere; a file under tests), Tokens (follows an account's rename and removal), GitHub (GET /user, GET /user/repos page by page), Cache (JSON per account in the cache folder), HelperConfig (credential.https://<host>/ in the global config), HelperRepos (GIT_DIR or the current folder)
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history, refs and workspace use cases (Before, Done, Pruned); Last, Undo

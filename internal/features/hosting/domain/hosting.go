@@ -12,6 +12,7 @@ import (
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
+	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 )
 
 // ErrNoToken means an account has no token saved: it is not signed in.
@@ -116,6 +117,16 @@ type Secrets interface {
 type API interface {
 	// Whoami returns who the token signs in as.
 	Whoami(base, token string) (User, Grant, error)
+	// Repos lists every repo the token's user can see: their own, ones
+	// they collaborate on and their organizations', private ones included.
+	Repos(base, token string) ([]RemoteRepo, error)
+}
+
+// Cache keeps each account's last repo list on disk.
+type Cache interface {
+	Load(accountID string) (RepoList, bool)
+	Save(accountID string, l RepoList) error
+	Delete(accountID string) error
 }
 
 // HelperConfig keeps GitSwitch's credential helper section for each host
@@ -138,6 +149,8 @@ type Repos interface {
 	// AccountFor resolves the repo's account without asking; nil when
 	// rules and the default do not decide.
 	AccountFor(c *account.Config, gitDir string) *account.Account
+	// List is the local repo list, to see what is cloned already.
+	List(c *account.Config) []repo.Info
 }
 
 // Accounts reads the accounts and records a learned username.

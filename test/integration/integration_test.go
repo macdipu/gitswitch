@@ -2259,3 +2259,88 @@ func TestHTTPSCredentials(t *testing.T) {
 		t.Fatalf("your own helper must stay: %q", v)
 	}
 }
+
+// The GitHub browser lists what each signed-in account can see, marks
+// what is cloned already, filters, clones as the account that sees the
+// repo, and keeps showing the last list when GitHub cannot be reached.
+func TestGitHubBrowser(t *testing.T) {
+	e := newEnv(t)
+	var api *httptest.Server
+	api = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok-work" {
+			w.WriteHeader(401)
+			return
+		}
+		switch {
+		case r.URL.Path == "/user":
+			fmt.Fprint(w, `{"login":"dipu-work"}`)
+		case r.URL.Path == "/user/repos" && r.URL.Query().Get("page") == "":
+			w.Header().Set("Link", "<"+api.URL+"/user/repos?page=2>; rel=\"next\"")
+			fmt.Fprint(w, `[{"full_name":"acme-corp/api","name":"api","owner":{"login":"acme-corp"},"description":"Billing API","private":true,"language":"Go",
+				"ssh_url":"git@github.com:acme-corp/api.git","clone_url":"https://github.com/acme-corp/api.git"}]`)
+		case r.URL.Path == "/user/repos":
+			fmt.Fprint(w, `[{"full_name":"acme-corp/web","name":"web","owner":{"login":"acme-corp"},"language":"TypeScript",
+				"ssh_url":"git@github.com:acme-corp/web.git","clone_url":"https://github.com/acme-corp/web.git"}]`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer api.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITHUB_API="+api.URL)
+
+	if _, err := e.run(e.root, gsBin, "github", "list"); err == nil {
+		t.Fatal("without a signed-in account, the browser says how to sign in")
+	}
+	work := filepath.Join(e.root, "work")
+	e.gitIn(work, "clone", "-q", "git@github.com:acme-corp/api.git", "api")
+	e.git("config", "--global", "--add", "gitswitch.scanFolder", work)
+	cmd := exec.Command(gsBin, "signin", "work")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-work\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+
+	type ghRepo struct {
+		FullName string
+		Account  string
+		Private  bool
+		Cloned   []string
+	}
+	list := func(args ...string) []ghRepo {
+		t.Helper()
+		var b struct{ Repos []ghRepo }
+		must(t, json.Unmarshal([]byte(e.gs(append([]string{"github", "list", "--json"}, args...)...)), &b))
+		return b.Repos
+	}
+	rs := list()
+	if len(rs) != 2 || rs[0].FullName != "acme-corp/api" || !rs[0].Private || rs[0].Account != "work" {
+		t.Fatalf("both pages, as work: %+v", rs)
+	}
+	if len(rs[0].Cloned) != 1 || filepath.Base(rs[0].Cloned[0]) != "api" || len(rs[1].Cloned) != 0 {
+		t.Fatalf("api is cloned, web is not: %+v", rs)
+	}
+	if rs := list("--not-cloned"); len(rs) != 1 || rs[0].FullName != "acme-corp/web" {
+		t.Fatalf("--not-cloned: %+v", rs)
+	}
+	if rs := list("billing", "--private"); len(rs) != 1 || rs[0].FullName != "acme-corp/api" {
+		t.Fatalf("search: %+v", rs)
+	}
+
+	e.resetLog()
+	e.gs("github", "clone", "acme-corp/web")
+	web := filepath.Join(e.root, "web")
+	if got := e.cfg(web, "gitswitch.account"); got != "work" {
+		t.Fatalf("cloned as the account that sees it: %q", got)
+	}
+	if k := e.keysUsed(); len(k) == 0 || !strings.HasSuffix(k[0], "work") {
+		t.Fatalf("the clone must use work's key: %v", k)
+	}
+
+	api.Close() // GitHub is gone: the last list is still shown
+	if rs := list(); len(rs) != 2 {
+		t.Fatalf("cached list: %+v", rs)
+	}
+	if out, err := e.run(e.root, gsBin, "github", "list", "--refresh"); err != nil || !strings.Contains(out, "could not read its repos") {
+		t.Fatalf("a failed refresh says so and keeps the list: %v\n%s", err, out)
+	}
+}

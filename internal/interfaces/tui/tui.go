@@ -4,6 +4,7 @@ package tui
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/macdipu/gitswitch/internal/features/doctor"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
@@ -668,6 +670,7 @@ Accounts
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
+  b browse the repos your signed-in accounts can see on GitHub (type to filter; Enter clones or opens one)
   g group the list by nothing, account, owner, folder or your groups   G put the repo in a group you name
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
@@ -961,6 +964,92 @@ func (t *tui) keyAccounts(k string) {
 
 // ---------------- repos ----------------
 
+// cloneForm asks where and as whom to clone, prefilled with url, dir and
+// acct ("automatic" lets rules decide).
+func (t *tui) cloneForm(url, dir, acct string) {
+	t.form = &form{title: "Clone a repo by URL", fields: []field{
+		{label: "URL", value: url, hint: "git@github.com:owner/repo.git or https://..."},
+		{label: "Folder", value: dir, hint: "empty = ./<repo name> here"},
+		{label: "Account", value: acct, options: append([]string{"automatic"}, t.cfg.SortedIDs()...), hint: "←/→ · automatic = rules, then ask"},
+	}, submit: func(v []string) error {
+		if v[2] == "automatic" {
+			v[2] = ""
+		}
+		dir := v[1]
+		if dir == "" {
+			dir = remote.RepoName(v[0])
+		}
+		var ri repo.Info
+		var err error
+		t.suspend(func() { // git prints its progress straight to the terminal
+			fmt.Println("Cloning " + v[0] + " ...")
+			ri, err = t.app.Repos.Clone(v[0], dir, v[2], func(l string) { fmt.Print("\r\x1b[K  " + l) })
+			fmt.Println()
+			if err != nil {
+				fmt.Println("gitswitch:", err)
+			}
+		})
+		if err != nil {
+			return err
+		}
+		t.reload()
+		t.scanRepos()
+		t.say(nil, "Cloned into "+ri.Path+".")
+		return nil
+	}}
+}
+
+// browseGitHub picks one of the repos the signed-in accounts can see:
+// a cloned one opens its history, another is offered for cloning.
+func (t *tui) browseGitHub() {
+	b := t.app.Hosting.Browse(hostingapp.FetchStale)
+	if len(b.Accounts) == 0 {
+		t.say(errors.New("no account is signed in to GitHub; sign one in with g on the Accounts page"), "")
+		return
+	}
+	for _, a := range b.Accounts {
+		if a.Error != "" {
+			t.say(errors.New(a.Account+": "+a.Error+" (showing its last list)"), "")
+		}
+	}
+	var opts []string
+	var rs []hosting.RemoteRepo
+	for _, r := range b.Repos {
+		if r.Archived {
+			continue
+		}
+		label := r.FullName
+		if r.Private {
+			label += "  · private"
+		}
+		if r.Language != "" {
+			label += "  · " + r.Language
+		}
+		label += "  · " + r.Account
+		if len(r.Cloned) > 0 {
+			label += "  · cloned at " + r.Cloned[0]
+		}
+		opts, rs = append(opts, label), append(rs, r)
+	}
+	if len(opts) == 0 {
+		t.say(nil, "Your signed-in accounts see no repos on GitHub.")
+		return
+	}
+	t.picker = &picker{title: fmt.Sprintf("GitHub: %d repos · type to filter · Enter opens a cloned one or clones it", len(opts)), options: opts,
+		pick: func(i int) error {
+			r := rs[i]
+			if len(r.Cloned) > 0 {
+				if gd := t.app.Repos.At(r.Cloned[0]); gd != "" {
+					t.openHistory(gd)
+					t.tab = tabHistory
+					return nil
+				}
+			}
+			t.cloneForm(r.SSHURL, r.Name, r.Account)
+			return nil
+		}}
+}
+
 // openHistory shows a repo's history and records it as recently opened.
 func (t *tui) openHistory(gitDir string) {
 	t.histDir = gitDir
@@ -1117,36 +1206,9 @@ func (t *tui) keyRepos(k string) {
 			t.tab = tabHistory
 		}
 	case "c":
-		t.form = &form{title: "Clone a repo by URL", fields: []field{
-			{label: "URL", hint: "git@github.com:owner/repo.git or https://..."},
-			{label: "Folder", hint: "empty = ./<repo name> here"},
-			{label: "Account", value: "automatic", options: append([]string{"automatic"}, t.cfg.SortedIDs()...), hint: "←/→ · automatic = rules, then ask"},
-		}, submit: func(v []string) error {
-			if v[2] == "automatic" {
-				v[2] = ""
-			}
-			dir := v[1]
-			if dir == "" {
-				dir = remote.RepoName(v[0])
-			}
-			var ri repo.Info
-			var err error
-			t.suspend(func() { // git prints its progress straight to the terminal
-				fmt.Println("Cloning " + v[0] + " ...")
-				ri, err = t.app.Repos.Clone(v[0], dir, v[2], func(l string) { fmt.Print("\r\x1b[K  " + l) })
-				fmt.Println()
-				if err != nil {
-					fmt.Println("gitswitch:", err)
-				}
-			})
-			if err != nil {
-				return err
-			}
-			t.reload()
-			t.scanRepos()
-			t.say(nil, "Cloned into "+ri.Path+".")
-			return nil
-		}}
+		t.cloneForm("", "", "automatic")
+	case "b":
+		t.browseGitHub()
 	case "a":
 		t.form = &form{title: "Add an existing repo (nothing in it changes)", fields: []field{{label: "Repo folder", hint: "e.g. ~/code/my-app"}},
 			submit: func(v []string) error {
@@ -2253,7 +2315,7 @@ func (t *tui) footer() string {
 	case tabAccounts:
 		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g GitHub sign-in · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · c clone · a add repo · f add folder · p pin · g group by · G group · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · b GitHub · a add repo · f add folder · p pin · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:

@@ -40,6 +40,10 @@ Accounts
   gitswitch signin <id>             sign in to GitHub with a token, kept in your keychain
   gitswitch signin [--check]        which accounts are signed in (--check asks GitHub)
   gitswitch signout <id>            remove the account's token from your keychain
+  gitswitch github list [words] [--account ID] [--owner O] [--lang L] [--private|--public]
+                                    [--cloned|--not-cloned] [--archived] [--refresh] [--json]
+                                    repos your signed-in accounts can see on GitHub, and where each is cloned
+  gitswitch github clone <owner/name> [folder]clone one of them with the account that sees it
   gitswitch default <id>            optional: account used when nobody answers (or Enter)
   gitswitch default --none          remove the default: repos with nothing saved always ask
 
@@ -215,6 +219,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdTest(rest)
 	case "signin", "login":
 		return x.cmdSignin(rest)
+	case "github", "gh":
+		return x.cmdGithub(rest)
 	case "credential": // git runs it as a credential helper
 		return x.cmdCredential(rest)
 	case "signout", "logout":

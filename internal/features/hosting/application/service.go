@@ -6,6 +6,7 @@ package application
 import (
 	"errors"
 	"strings"
+	"time"
 
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
@@ -18,6 +19,8 @@ type Service struct {
 	API      hosting.API
 	Helper   hosting.HelperConfig // nil: no HTTPS credentials
 	Repos    hosting.Repos
+	Cache    hosting.Cache
+	Now      func() time.Time // nil: time.Now
 }
 
 // SignIn checks a token with the host and saves it for the account. A
@@ -59,6 +62,9 @@ func (s *Service) SignOut(accountID string) error {
 	}
 	if err := s.Secrets.Delete(a.ID); err != nil {
 		return err
+	}
+	if s.Cache != nil {
+		_ = s.Cache.Delete(a.ID) // what it saw is not shown any more
 	}
 	if why := s.syncHelper(a.Host); why != "" && s.Helper != nil && !strings.Contains(why, "gitswitch install") {
 		return errors.New("signed out, but git's credential settings could not be updated: " + why)
@@ -170,4 +176,78 @@ func (s *Service) Credential(r hosting.Request) (user, password string, ok bool)
 		return "", "", false
 	}
 	return hosting.TokenUser(a.User), tok, true
+}
+
+// Fetch says when Browse reads repo lists from the host.
+type Fetch int
+
+const (
+	FetchNone  Fetch = iota // only what is cached: never waits for the network
+	FetchStale              // accounts never read, or read over hosting.Stale ago
+	FetchAll                // every signed-in account
+)
+
+func (s *Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+// Browse lists the repos every signed-in account can see on its host,
+// each marked with where it is cloned already. A failed read keeps the
+// account's last list and says why.
+func (s *Service) Browse(fetch Fetch) hosting.Browse {
+	c := s.Accounts.Load()
+	b := hosting.Browse{Accounts: []hosting.AccountRepos{}}
+	var lists []hosting.RepoList
+	for _, st := range s.Status() {
+		if !st.SignedIn {
+			continue
+		}
+		ar := hosting.AccountRepos{Account: st.Account, Host: st.Host}
+		l, ok := s.Cache.Load(st.Account)
+		if fetch == FetchAll || (fetch == FetchStale && (!ok || s.now().Sub(l.Fetched) > hosting.Stale)) {
+			if fresh, err := s.fetch(st.Account, st.Host); err != nil {
+				ar.Error = err.Error()
+			} else {
+				l, ok = fresh, true
+			}
+		}
+		if ok {
+			ar.Fetched, ar.Count = l.Fetched, len(l.Repos)
+			ar.Stale = s.now().Sub(l.Fetched) > hosting.Stale
+			lists = append(lists, l)
+		}
+		b.Accounts = append(b.Accounts, ar)
+	}
+	b.Repos = hosting.Merge(lists)
+	if s.Repos != nil {
+		hosting.MarkCloned(b.Repos, s.Repos.List(c))
+	}
+	return b
+}
+
+// fetch reads one account's repos from the host and caches them.
+func (s *Service) fetch(accountID, host string) (hosting.RepoList, error) {
+	base, err := hosting.APIBase(host)
+	if err != nil {
+		return hosting.RepoList{}, err
+	}
+	tok, err := s.Secrets.Get(accountID)
+	if err != nil {
+		return hosting.RepoList{}, err
+	}
+	rs, err := s.API.Repos(base, tok)
+	if err != nil {
+		return hosting.RepoList{}, err
+	}
+	for i := range rs {
+		rs[i].Account = accountID
+	}
+	l := hosting.RepoList{Fetched: s.now(), Repos: rs}
+	if err := s.Cache.Save(accountID, l); err != nil {
+		return l, nil // shown now, read again next time
+	}
+	return l, nil
 }

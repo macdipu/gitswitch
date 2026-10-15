@@ -96,6 +96,10 @@ th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px
 td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
 td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 .path{font-weight:600}
+.gh-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.gh-bar input[type=search]{flex:1 1 220px;padding:6px 9px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);font-size:14px}
+.gh-bar select{padding:5px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
+.gh-bar label{flex-direction:row;align-items:center;gap:4px}
 .repo-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:-8px 0 16px}
 .repo-bar label{flex-direction:row;align-items:center;gap:6px;margin-left:auto}
 .repo-bar select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
@@ -262,6 +266,7 @@ dialog .row-actions{justify-content:flex-end}
   <nav aria-label="Pages">
     <button data-tab="accounts" aria-current="page">Accounts</button>
     <button data-tab="repos">Repos</button>
+    <button data-tab="github">GitHub</button>
     <button data-tab="history">History</button>
     <button data-tab="rules">Rules</button>
     <button data-tab="settings">Settings</button>
@@ -323,6 +328,23 @@ dialog .row-actions{justify-content:flex-end}
       <div class="full row-actions"><button class="btn primary" type="submit" id="cloneGo">Clone</button><button class="btn" type="button" id="cloneCancel">Close</button></div>
     </form>
     <div id="repos"></div>
+  </section>
+
+  <section id="tab-github" hidden>
+    <h1 tabindex="-1">GitHub</h1>
+    <p class="lead">Every repo your signed-in accounts can see on GitHub, private ones and your organizations' included, and where each is cloned. Sign an account in from its menu on the Accounts page.</p>
+    <div class="gh-bar">
+      <input id="ghText" type="search" placeholder="Search names and descriptions" aria-label="Search repos" autocomplete="off" spellcheck="false">
+      <select id="ghAccount" aria-label="Account"></select>
+      <select id="ghOwner" aria-label="Owner"></select>
+      <select id="ghLang" aria-label="Language"></select>
+      <select id="ghVis" aria-label="Visibility"><option value="">Public and private</option><option value="public">Public</option><option value="private">Private</option></select>
+      <select id="ghCloned" aria-label="Clone status"><option value="">Cloned or not</option><option value="no">Not cloned</option><option value="yes">Cloned</option></select>
+      <label class="hint"><input type="checkbox" id="ghArchived"> Archived</label>
+      <button class="btn" id="ghRefresh">Refresh</button>
+    </div>
+    <div class="hint" id="ghMeta" aria-live="polite"></div>
+    <div id="ghList"></div>
   </section>
 
   <section id="tab-history" hidden>
@@ -504,6 +526,7 @@ function show(tab){
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
   if (tab === 'repos') loadRepos();
   if (tab === 'history') fillRepoSelect();
+  if (tab === 'github') loadGithub('none');
   if (tab === 'settings') loadChecks();
   // Clicked in the sidebar: move focus to the new page, so keyboard and
   // screen reader users continue there.
@@ -923,6 +946,57 @@ $('#folderForm').onsubmit = async e => { e.preventDefault(); const f = e.target;
   if (await act(() => api('POST','/api/folder',{path:f.path.value}), 'Folder added') === undefined) return; // keep the typed path to correct it
   f.reset(); await refresh(); loadRepos(); };
 $('#folders').addEventListener('click', async e => { const p = e.target.dataset.rmfolder; if (!p) return; await act(() => api('POST','/api/folder/remove',{path:p})); await refresh(); loadRepos(); });
+
+// ---- GitHub: every repo the signed-in accounts can see ----
+// The cached lists show at once; stale ones are read again in the
+// background, so the page never waits for the network.
+let GH = null;
+async function loadGithub(fetch){
+  if (!GH) $('#ghList').innerHTML = '<p class="hint">Loading…</p>';
+  const busy = fetch !== 'none';
+  if (busy){ $('#ghRefresh').disabled = true; $('#ghRefresh').textContent = 'Refreshing…'; }
+  const g = await act(() => api('GET', '/api/github?fetch=' + fetch));
+  if (busy){ $('#ghRefresh').disabled = false; $('#ghRefresh').textContent = 'Refresh'; }
+  if (!g) return;
+  GH = g; renderGithub();
+  if (fetch === 'none' && g.accounts.some(a => a.stale || !a.count && !a.error)) loadGithub('stale');
+}
+const ghOpts = (el, list, all) => { const v = el.value; el.innerHTML = `<option value="">${all}</option>` + list.map(x => `<option>${esc(x)}</option>`).join(''); el.value = list.includes(v) ? v : ''; };
+function renderGithub(){
+  const g = GH;
+  if (!g.accounts.length){ $('#ghMeta').textContent = ''; $('#ghList').innerHTML = '<div class="empty">No account is signed in to GitHub. Sign one in from its More menu on the Accounts page, to see its repos here. Everything else in GitSwitch works without it.</div>'; return; }
+  ghOpts($('#ghAccount'), g.accounts.map(a => a.account), 'Every account');
+  ghOpts($('#ghOwner'), g.owners, 'Every owner'); ghOpts($('#ghLang'), g.languages, 'Every language');
+  const words = $('#ghText').value.toLowerCase().split(/\s+/).filter(Boolean), f = {account:$('#ghAccount').value, owner:$('#ghOwner').value, lang:$('#ghLang').value, vis:$('#ghVis').value, cloned:$('#ghCloned').value, archived:$('#ghArchived').checked};
+  const list = g.repos.filter(r => (f.archived || !r.archived) && (!f.account || r.account === f.account) && (!f.owner || r.owner === f.owner) && (!f.lang || r.language === f.lang)
+    && (!f.vis || (f.vis === 'private') === r.private) && (!f.cloned || (f.cloned === 'yes') === (r.cloned.length > 0))
+    && words.every(w => (r.fullName + ' ' + (r.description || '')).toLowerCase().includes(w)));
+  const when = a => a.fetched && !a.fetched.startsWith('0001') ? new Date(a.fetched).toLocaleString() : 'never';
+  $('#ghMeta').innerHTML = `${list.length} of ${g.repos.length} repos · ` + g.accounts.map(a => `${esc(a.account)}: ${a.error ? `<span class="status-bad">${esc(a.error)}</span>` : `${a.count} repos, read ${esc(when(a))}`}`).join(' · ');
+  $('#ghList').innerHTML = !list.length ? '<div class="empty">No repo matches.</div>' : `<table><thead><tr><th>Repo</th><th>Language</th><th>Account</th><th>Here</th><th></th></tr></thead><tbody>` + list.map((r, i) => `<tr>
+      <td><div class="path">${esc(r.fullName)}${r.private ? ' <span class="tag">private</span>' : ''}${r.archived ? ' <span class="tag">archived</span>' : ''}${r.fork ? ' <span class="tag">fork</span>' : ''}</div><div class="hint">${esc(r.description || '')}</div></td>
+      <td class="hint">${esc(r.language || '')}</td>
+      <td><span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)}</td>
+      <td class="hint">${r.cloned.length ? `<span class="status-ok">cloned</span> <span class="mono" title="${esc(r.cloned.join('\n'))}">${esc(r.cloned[0])}</span>` : 'not cloned'}</td>
+      <td><div class="row-actions"><a class="btn" href="${esc(r.webUrl)}" target="_blank" rel="noopener noreferrer">View</a>${r.cloned.length ? `<button class="btn" data-ghhist="${i}">History</button>` : `<button class="btn" data-ghclone="${i}">Clone…</button>`}</div></td></tr>`).join('') + '</tbody></table>';
+  GH.shown = list;
+}
+['#ghText', '#ghAccount', '#ghOwner', '#ghLang', '#ghVis', '#ghCloned', '#ghArchived'].forEach(s => $(s).addEventListener('input', () => GH && renderGithub()));
+$('#ghRefresh').onclick = () => loadGithub('all');
+$('#ghList').addEventListener('click', async e => {
+  const d = e.target.closest('button')?.dataset; if (!d || !GH?.shown) return;
+  if (d.ghclone !== undefined){
+    const r = GH.shown[d.ghclone];
+    show('repos'); $('#cloneOpen').onclick();
+    const f = $('#cloneForm'); f.url.value = r.sshUrl; f.dirname.value = r.name; delete f.dirname.dataset.edited; f.account.value = r.account;
+    f.dirname.focus();
+  } else if (d.ghhist !== undefined){
+    const r = GH.shown[d.ghhist];
+    if (!repos.length) repos = await act(() => api('GET','/api/repos')) || [];
+    const local = repos.find(x => x.path === r.cloned[0]); if (!local) return toast('That clone is not in the repo list any more; refresh the GitHub page');
+    show('history'); await fillRepoSelect(); $('#histRepo').value = local.gitDir; loadHistory();
+  }
+});
 
 // ---- history ----
 let H = null, R = null;          // the shown history, and {head, branches} of its repo

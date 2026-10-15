@@ -215,7 +215,7 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 | Page | Keys |
 | --- | --- |
 | Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `g` sign in to GitHub · `G` sign out of GitHub · `x` remove (then `y` keeps the key files, `D` deletes them too) |
-| Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `f` add projects folder · `a` add one repo · `p` pin · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
+| Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `b` browse GitHub · `f` add projects folder · `a` add one repo · `p` pin · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
 | History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `M` move not-pushed commits to a new branch · `D` delete merged branches · `C` commit · `S` compare with the remote branch · `p` push · `i` commit as the repo's account · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo (recent ones first) · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check · `r` runs the health checks again |
@@ -332,7 +332,7 @@ Adding or removing a repo changes only GitSwitch's list. The repo's files, remot
 
 ## Sign in to GitHub
 
-GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional, and prepares the features that use the GitHub API, such as browsing every account's repos (planned). Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata and Contents is enough.
+GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata and Contents is enough.
 
 ```sh
 gitswitch signin work                    # asks for the token; it is not shown as you paste it
@@ -342,6 +342,16 @@ gitswitch signout work                   # remove the token from your keychain
 ```
 
 The desktop app has "Sign in to GitHub…" in each account's More menu, and the terminal app uses `g` (sign in) and `G` (sign out) on the Accounts page.
+
+**Browse your GitHub repos.** Every repo your signed-in accounts can see, your own, ones you collaborate on and your organizations', private included, with where each is cloned already:
+
+```sh
+gitswitch github list                    # every repo, and where it is cloned
+gitswitch github list billing --private --not-cloned --account work
+gitswitch github clone acme/api          # clone it with the account that sees it, over ssh
+```
+
+Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same on its GitHub page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If GitHub cannot be reached, the last list is shown and says so.
 
 **HTTPS remotes.** While an account is signed in, git gets its token for the HTTPS remotes of that account's repos, so `git clone https://…`, `fetch` and `push` work as the right account too, with no password prompt. GitSwitch adds itself as a credential helper for that host only (a `credential.https://github.com/` section in your global git config) ahead of your own helpers, and answers only when it is sure which signed-in account a repo uses. Everything else (other accounts' repos, other hosts, a folder that is not a repo) goes to your own helpers exactly as before. Signing out the last account on a host, or `gitswitch uninstall`, removes the section. To push over HTTPS, give the token **Contents: read and write**; read-only is enough to clone and fetch.
 
@@ -371,6 +381,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Setup | `install`, `setup`, `uninstall [--purge]` |
 | Apps | `tui`, `ui` |
 | Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test`, `signin <id>\|--check`, `signout <id>` |
+| GitHub | `github list [words] [filters] [--refresh] [--json]`, `github clone <owner/name> [folder]` |
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |

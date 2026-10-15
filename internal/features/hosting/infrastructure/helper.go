@@ -8,6 +8,7 @@ import (
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
+	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	repoinfra "github.com/macdipu/gitswitch/internal/features/repository/infrastructure"
 )
 
@@ -103,6 +104,8 @@ func (h *HelperRepos) Current() string {
 	}
 	return h.Git.GitDirFor(wd)
 }
+
+func (h *HelperRepos) List(c *account.Config) []repo.Info { return h.Reader.List(c) }
 
 func (h *HelperRepos) AccountFor(c *account.Config, gitDir string) *account.Account {
 	a, _ := h.Reader.AccountFor(c, gitDir)

@@ -18,6 +18,8 @@ import (
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
+	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
+	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
@@ -86,7 +88,13 @@ func (s *server) routes() map[string]handler {
 			b := body(r)
 			return s.app.Hosting.SignIn(str(b, "id"), str(b, "token"))
 		},
-		"POST /api/signout":      func(r *http.Request) (any, error) { return nil, s.app.Hosting.SignOut(str(body(r), "id")) },
+		"POST /api/signout": func(r *http.Request) (any, error) { return nil, s.app.Hosting.SignOut(str(body(r), "id")) },
+		"GET /api/github": func(r *http.Request) (any, error) {
+			fetch := map[string]hostingapp.Fetch{"none": hostingapp.FetchNone, "stale": hostingapp.FetchStale, "all": hostingapp.FetchAll}[r.URL.Query().Get("fetch")]
+			b := s.app.Hosting.Browse(fetch)
+			owners, langs := hosting.Facets(b.Repos)
+			return map[string]any{"accounts": b.Accounts, "repos": b.Repos, "owners": owners, "languages": langs}, nil
+		},
 		"POST /api/signin/check": func(r *http.Request) (any, error) { return s.app.Hosting.Check(str(body(r), "id")) },
 		"POST /api/account/rename": func(r *http.Request) (any, error) {
 			b := body(r)
