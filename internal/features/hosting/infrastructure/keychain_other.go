@@ -18,7 +18,7 @@ type keychain struct{}
 func secretTool() (string, error) {
 	p, err := exec.LookPath("secret-tool")
 	if err != nil {
-		return "", errors.New("no keychain found: install secret-tool (the libsecret-tools package on Debian and Ubuntu, libsecret on Fedora and Arch) and a keyring such as GNOME Keyring")
+		return "", fmt.Errorf("%w: install secret-tool (the libsecret-tools package on Debian and Ubuntu, libsecret on Fedora and Arch) and a keyring such as GNOME Keyring", hosting.ErrNoKeychain)
 	}
 	return p, nil
 }

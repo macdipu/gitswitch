@@ -28,11 +28,16 @@ func Run(a *bootstrap.App) error {
 		return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title, DefaultDirectory: filesystem.HomeDir(), CanCreateDirectories: true})
 	}
 	return wails.Run(&options.App{
-		Title:            "GitSwitch",
-		Width:            1180,
-		Height:           780,
-		MinWidth:         760,
-		MinHeight:        520,
+		Title:     "GitSwitch",
+		Width:     1180,
+		Height:    780,
+		MinWidth:  760,
+		MinHeight: 520,
+		// Without a maximum, Wails on Linux caps the window at the size of
+		// the monitor it opened on, so it could not grow onto a bigger
+		// screen (or a display that grew after start).
+		MaxWidth:         16384,
+		MaxHeight:        16384,
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 255},
 		AssetServer:      &assetserver.Options{Handler: api.Handler(a, pick)},
 		OnStartup:        func(c context.Context) { ctx = c },

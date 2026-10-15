@@ -18,6 +18,10 @@ import (
 // ErrNoToken means an account has no token saved: it is not signed in.
 var ErrNoToken = errors.New("not signed in")
 
+// ErrNoKeychain means this computer has no keychain GitSwitch can use. No
+// account is signed in then; signing in says how to get one.
+var ErrNoKeychain = errors.New("no keychain found")
+
 // APIBase is the REST API address for a host: api.github.com for
 // github.com, and <host>/api/v3 for a GitHub Enterprise server. GitLab and
 // Bitbucket are not supported yet.

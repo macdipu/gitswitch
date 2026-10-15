@@ -82,8 +82,8 @@ func (s *Service) Status() []hosting.Status {
 			switch _, err := s.Secrets.Get(a.ID); {
 			case err == nil:
 				st.SignedIn = true
-			case !errors.Is(err, hosting.ErrNoToken):
-				st.Error = err.Error()
+			case !errors.Is(err, hosting.ErrNoToken) && !errors.Is(err, hosting.ErrNoKeychain):
+				st.Error = err.Error() // no keychain at all just means nobody signed in
 			}
 		}
 		out = append(out, st)

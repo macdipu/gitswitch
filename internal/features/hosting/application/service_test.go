@@ -2,6 +2,7 @@ package application
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -128,6 +129,10 @@ func TestStatusCheckAndSignOut(t *testing.T) {
 	sec.err = errors.New("keychain locked")
 	if st := s.Status(); st[0].Error != "keychain locked" {
 		t.Errorf("a keychain error must show: %+v", st[0])
+	}
+	sec.err = fmt.Errorf("%w: install secret-tool", hosting.ErrNoKeychain)
+	if st := s.Status(); st[0].Error != "" || st[0].SignedIn {
+		t.Errorf("no keychain at all is not an error, just nobody signed in: %+v", st[0])
 	}
 }
 
