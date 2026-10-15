@@ -317,7 +317,8 @@ dialog .row-actions{justify-content:flex-end}
       <div class="full hint" id="folders"></div>
     </form>
     <div class="repo-bar"><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span>
-      <label>Group by<select id="repoGroupBy"><option value="none">Nothing</option><option value="account">Account</option><option value="owner">Owner or organization</option><option value="folder">Folder</option><option value="group">Your groups</option></select></label></div>
+      <label>Sort by<select id="repoSortBy"><option value="folder">Folder</option><option value="name">Name</option><option value="recent">Recently opened</option><option value="account">Account</option></select></label>
+      <label style="margin-left:0">Group by<select id="repoGroupBy"><option value="none">Nothing</option><option value="account">Account</option><option value="owner">Owner or organization</option><option value="folder">Folder</option><option value="group">Your groups</option></select></label></div>
     <form class="card" id="cloneForm" hidden>
       <label class="full">Repo URL<input name="url" placeholder="git@github.com:owner/repo.git or https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></label>
       <label>Clone into folder<span style="display:flex;gap:8px"><input name="parent" required style="flex:1"><button class="btn" type="button" id="cloneBrowse">Browse…</button></span></label>
@@ -841,11 +842,14 @@ async function loadRepos(){
   if (!c.scanFolders.length && !c.repos.length){ $('#repos').innerHTML = ''; repos = []; return; }
   $('#repos').innerHTML = '<p class="hint">Looking for repos…</p>';
   const g = await act(() => api('GET', '/api/repo/groups')) || {by:'none', groups:[]};
-  $('#repoGroupBy').value = g.by;
+  $('#repoGroupBy').value = g.by; $('#repoSortBy').value = g.sort;
   repos = []; repoGroups = [];
   for (const x of g.groups){ if (x.name) repoGroups.push({at:repos.length, name:x.name, n:x.repos.length}); repos.push(...x.repos); }
   renderRepos();
 }
+$('#repoSortBy').onchange = async e => {
+  if (await act(() => api('POST','/api/settings',{repoSort:e.target.value})) !== undefined) loadRepos();
+};
 $('#repoGroupBy').onchange = async e => {
   if (await act(() => api('POST','/api/settings',{repoGroups:e.target.value})) !== undefined) loadRepos();
 };

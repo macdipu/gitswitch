@@ -27,7 +27,7 @@ desktop app, the terminal app and the CLI alike.
 | 24 | **Safe repository operations**: registering or removing never touches remotes, branches, files or identity | done | Only `gitswitch.*` keys in global git config change. |
 | 8 | **Repository discovery**: scan a chosen folder for repos | done | Project folders (`gitswitch.scanFolder`), 5 levels deep. |
 | 15 | **Git identity association** and mismatch warnings | done | `gitswitch use`, rules, and the wrong-email flag. |
-| 7 | **Local repository manager**: paths, branches, remotes, identities | partly | Branch, remotes and grouping (#12) are done. Sort orders other than pinned first, then by folder, are still to come. |
+| 7 | **Local repository manager**: paths, branches, remotes, identities | done | Paths, branch, remotes, account and email per repo; grouping (#12); sorting by folder, name, recently opened or account, pinned first (`repo.SortRepos`, `gitswitch.repoSort`): `repo list --sort`, `set repo-sort`, desktop "Sort by", terminal app `s`. |
 | 16 | **Repository details**: URL, remotes, branch, git root, account | done | `gitswitch repo show [--json]`. |
 | 9 | **Open repository** in the file manager or editor | done | `gitswitch repo open [--editor]`; editor from `gitswitch set editor`, `$VISUAL` or `$EDITOR`. |
 | 11 | **Favorites and recent repositories** | done | Pinning (`gitswitch repo pin`), and the last 10 repos opened (`gitswitch.recent`, newest last): `repo open` and showing a repo's history record one. `gitswitch repo recent [--json]`, the top of the desktop History repo menu, and the terminal app's `o` list. |

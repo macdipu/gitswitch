@@ -318,7 +318,7 @@ func TestGroups(t *testing.T) {
 	if s.GroupBy() != repo.ByNone {
 		t.Errorf("an unknown saved value must read as none, got %q", s.GroupBy())
 	}
-	if gs, err := s.Groups(repo.ByFolder); err != nil || len(gs) != 1 || len(gs[0].Repos) != 2 {
+	if gs, err := s.Groups(repo.ByFolder, ""); err != nil || len(gs) != 1 || len(gs[0].Repos) != 2 {
 		t.Errorf("groups = %+v, %v", gs, err)
 	}
 

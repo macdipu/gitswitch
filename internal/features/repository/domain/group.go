@@ -157,3 +157,60 @@ func MarkClones(list []Info) {
 		}
 	}
 }
+
+// Ways to sort the repo list (gitswitch.repoSort). Pinned repos come
+// first in every order.
+const (
+	SortFolder  = "folder"  // by full path (the default)
+	SortName    = "name"    // by the repo folder's name
+	SortRecent  = "recent"  // recently opened first
+	SortAccount = "account" // by the account it uses
+)
+
+// SortBys lists the ways to sort, in the order the apps offer them.
+var SortBys = []string{SortFolder, SortName, SortRecent, SortAccount}
+
+// CheckSortBy accepts one of SortBys ("" is SortFolder).
+func CheckSortBy(by string) (string, error) {
+	by = strings.ToLower(strings.TrimSpace(by))
+	if by == "" {
+		return SortFolder, nil
+	}
+	for _, b := range SortBys {
+		if by == b {
+			return by, nil
+		}
+	}
+	return "", fmt.Errorf("sort by %s, %s, %s or %s, not %q", SortFolder, SortName, SortRecent, SortAccount, by)
+}
+
+// SortRepos sorts list in place: pinned first, then by the chosen order,
+// then by path, so equal entries never swap between runs.
+func SortRepos(list []Info, by string) {
+	low := strings.ToLower
+	key := func(r Info) string {
+		switch by {
+		case SortName:
+			return low(filepath.Base(r.Path))
+		case SortAccount:
+			if r.Account == "" {
+				return "￿" // no account: last
+			}
+			return low(r.Account)
+		}
+		return ""
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		a, b := list[i], list[j]
+		if a.Pinned != b.Pinned {
+			return a.Pinned
+		}
+		if by == SortRecent && a.Recent != b.Recent {
+			return a.Recent != 0 && (b.Recent == 0 || a.Recent < b.Recent)
+		}
+		if ka, kb := key(a), key(b); ka != kb {
+			return ka < kb
+		}
+		return low(a.Path) < low(b.Path)
+	})
+}

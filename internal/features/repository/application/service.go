@@ -56,8 +56,30 @@ func (s *Service) For(path string) (string, error) {
 func (s *Service) Info(gitDir string) repo.Info { return s.Reader.InfoFor(s.Lists.Load(), gitDir) }
 
 // List is the repo list: repos in the project folders plus repos added by
-// hand, pinned first.
-func (s *Service) List() []repo.Info { return s.Reader.List(s.Lists.Load()) }
+// hand, pinned first, in the saved order (SortBy).
+func (s *Service) List() []repo.Info {
+	l := s.Reader.List(s.Lists.Load())
+	repo.SortRepos(l, s.SortBy())
+	return l
+}
+
+// SortBy is how the apps sort the repo list (gitswitch.repoSort).
+func (s *Service) SortBy() string {
+	by, err := repo.CheckSortBy(s.Lists.Load().RepoSort)
+	if err != nil {
+		return repo.SortFolder // a value from a newer version, or typed by hand
+	}
+	return by
+}
+
+// SetSortBy saves how the apps sort the repo list.
+func (s *Service) SetSortBy(by string) error {
+	by, err := repo.CheckSortBy(by)
+	if err != nil {
+		return err
+	}
+	return s.Lists.SetSetting("repoSort", by)
+}
 
 // Add adds an existing repo to the list. It only records the folder in
 // gitswitch's settings; the repo itself is not changed.
@@ -208,9 +230,9 @@ func (s *Service) SetGroupBy(by string) error {
 	return s.Lists.SetSetting("repoGroups", by)
 }
 
-// Groups is the repo list split into groups: by one of repo.GroupBys, or
-// with "" the saved way (GroupBy).
-func (s *Service) Groups(by string) ([]repo.Group, error) {
+// Groups is the repo list split into groups: by one of repo.GroupBys, and
+// sorted by one of repo.SortBys inside each; "" uses the saved way.
+func (s *Service) Groups(by, sortBy string) ([]repo.Group, error) {
 	if by == "" {
 		by = s.GroupBy()
 	}
@@ -218,7 +240,14 @@ func (s *Service) Groups(by string) ([]repo.Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	return repo.GroupRepos(s.List(), by), nil
+	l := s.List()
+	if sortBy != "" {
+		if sortBy, err = repo.CheckSortBy(sortBy); err != nil {
+			return nil, err
+		}
+		repo.SortRepos(l, sortBy)
+	}
+	return repo.GroupRepos(l, by), nil
 }
 
 // SetGroup puts a listed repo in a group you name, or with name "" takes

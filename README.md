@@ -215,7 +215,7 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 | Page | Keys |
 | --- | --- |
 | Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `g` sign in to GitHub · `G` sign out of GitHub · `x` remove (then `y` keeps the key files, `D` deletes them too) |
-| Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `b` browse GitHub · `f` add projects folder · `a` add one repo · `p` pin · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
+| Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `b` browse GitHub · `f` add projects folder · `a` add one repo · `p` pin · `s` sort · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
 | History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `M` move not-pushed commits to a new branch · `D` delete merged branches · `C` commit · `S` compare with the remote branch · `p` push · `i` commit as the repo's account · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo (recent ones first) · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check · `r` runs the health checks again |
@@ -317,12 +317,15 @@ gitswitch repo recent                    # the repos you opened lately, newest f
 gitswitch repo list --by owner           # grouped: account, owner, folder or group
 gitswitch repo group Client              # put the current repo in a group you name
 gitswitch set repo-groups account        # how the apps and repo list group repos
+gitswitch set repo-sort recent           # and sort them: folder, name, recent or account
 gitswitch repo remove ~/code/old-thing   # take it off the list
 ```
 
 GitSwitch remembers the last 10 repos you opened: with `repo open`, or by showing their history in the desktop app or the terminal app. The desktop app lists the newest at the top of the History page's repo menu, and the terminal app at the top of its "other repo" list (`o` on the History page). Removing a repo from the list forgets it too.
 
 **Groups.** The repo list can be grouped by the account each repo uses, by owner (the user or organization in the origin URL, such as `github.com/acme`), by the folder it is in, or by groups you name. The choice is saved once for every front end: "Group by" on the desktop Repos page, `g` in the terminal app, or `gitswitch set repo-groups none|account|owner|folder|group`; `gitswitch repo list --by <how>` groups one listing (with `--json`, as a list of groups). Put a repo in a group with "Group…" in the desktop app, `G` in the terminal app, or `gitswitch repo group <name> [path]` (`repo ungroup` takes it out). A repo is in one group at a time.
+
+**Sorting.** Pinned repos always come first; after them the list is sorted by folder (the default), by name, by recently opened, or by account, inside each group. Choose it with "Sort by" on the desktop Repos page, `s` in the terminal app, or `gitswitch set repo-sort folder|name|recent|account`; `gitswitch repo list --sort <how>` sorts one listing.
 
 **Several clones of the same repo.** When two listed repos are clones of the same origin, each says where the other is ("also cloned at …"), whether the URL uses ssh or https, a port-443 host or `.git`. `gitswitch repo show` lists them under Clones.
 
@@ -383,7 +386,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test`, `signin <id>\|--check`, `signout <id>` |
 | GitHub | `github list [words] [filters] [--refresh] [--json]`, `github clone <owner/name> [folder]` |
 | Keys | `key new\|show\|pick\|agent` |
-| Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups` |
+| Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups`, `set repo-sort` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
 | History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `commit`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo`, `browse` |
 | Branches | `branch`, `switch`, `update` |
@@ -418,7 +421,7 @@ All settings live in git config, so the terminal, the desktop app and git always
 
 | Scope | File | Keys |
 | --- | --- | --- |
-| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default` (only if you set one), `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.recent`, `gitswitch.group`, `gitswitch.repoGroups`, `gitswitch.editor` |
+| Global | `~/.gitconfig` | `gitswitch-account.<id>.*`, `gitswitch.default` (only if you set one), `gitswitch.rule`, `gitswitch.guiPrompt`, `gitswitch.promptTimeout`, `gitswitch.scanFolder`, `gitswitch.repo`, `gitswitch.hideRepo`, `gitswitch.pin`, `gitswitch.recent`, `gitswitch.group`, `gitswitch.repoGroups`, `gitswitch.repoSort`, `gitswitch.editor` |
 | Per repo | `.git/config` | `gitswitch.account` (an account, or `ask` for ask every time) |
 
 **Security:** GitSwitch never stores passphrases. A GitHub token, if you sign in, is kept only in your OS keychain, never in git config. Keys made without a terminal (for example in the desktop app) are created inside GitSwitch, so the passphrase never appears on a command line. The desktop app serves its page inside the process: it opens no network port.

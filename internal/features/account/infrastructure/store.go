@@ -110,6 +110,8 @@ func (s *Store) LoadChecked() (*account.Config, error) {
 			}
 		case k == "gitswitch.repogroups":
 			c.RepoGroups = v
+		case k == "gitswitch.reposort":
+			c.RepoSort = v
 		case k == "gitswitch.editor":
 			c.Editor = v
 		case k == "gitswitch.renamed":

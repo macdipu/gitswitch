@@ -18,6 +18,7 @@
 //	gitswitch.recent             multi-valued: repos opened lately, newest last (at most 10)
 //	gitswitch.group              multi-valued: <name>=<path>, a repo in a group you named
 //	gitswitch.repoGroups         none | account | owner | folder | group: how the apps group the repo list
+//	gitswitch.repoSort           folder | name | recent | account: how the apps sort it (pinned first)
 //	gitswitch.editor             command that opens a repo folder in an editor
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch.switchChanges      ask | smart | park: what switching branch does with
@@ -80,6 +81,7 @@ type Config struct {
 	Recent        []string          `json:"recent"` // opened in gitswitch, newest first
 	Groups        []RepoGroup       `json:"groups"`
 	RepoGroups    string            `json:"repoGroups"` // how the apps group the repo list; "" is none
+	RepoSort      string            `json:"repoSort"`   // how the apps sort the repo list; "" is folder
 	Editor        string            `json:"editor"`
 	Renamed       map[string]string `json:"-"` // old id (lower case) -> new id
 }

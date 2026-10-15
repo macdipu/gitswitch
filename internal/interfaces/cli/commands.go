@@ -513,7 +513,7 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.setSwitchChanges(args[1:])
 	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | repo-groups none|account|owner|folder|group | switch-changes ask|smart|park [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo]")
 	}
 	if args[0] == "branch-prefix" {
 		if err := x.app.Refs.SetBranchPrefix(args[1]); err != nil || x.app.DryRun() {
@@ -537,6 +537,8 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.Accounts.SetSetting("editor", args[1])
 	case "repo-groups":
 		return x.app.Repos.SetGroupBy(args[1])
+	case "repo-sort":
+		return x.app.Repos.SetSortBy(args[1])
 	}
 	return fmt.Errorf("unknown setting %q", args[0])
 }

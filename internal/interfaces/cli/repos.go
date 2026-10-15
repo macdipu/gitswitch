@@ -9,7 +9,7 @@ import (
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 )
 
-const repoUsage = "gitswitch repo list [--pinned] [--by none|account|owner|folder|group] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path] | recent [--json] | group <name> [path] | ungroup [path]"
+const repoUsage = "gitswitch repo list [--pinned] [--by none|account|owner|folder|group] [--sort folder|name|recent|account] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path] | recent [--json] | group <name> [path] | ungroup [path]"
 
 // cmdRepo manages the repo list. Paths default to the current folder.
 func (x *CLI) cmdRepo(args []string) error {
@@ -21,7 +21,7 @@ func (x *CLI) cmdRepo(args []string) error {
 	var pos []string // arguments that are not options or option values
 	for i := 0; i < len(rest); i++ {
 		switch a := rest[i]; {
-		case a == "--by":
+		case a == "--by" || a == "--sort":
 			i++
 		case !strings.HasPrefix(a, "--"):
 			pos = append(pos, a)
@@ -36,7 +36,7 @@ func (x *CLI) cmdRepo(args []string) error {
 		return x.cmdClone(rest)
 	case "list", "ls":
 		by := flagValue(rest, "--by")
-		groups, err := x.app.Repos.Groups(by)
+		groups, err := x.app.Repos.Groups(by, flagValue(rest, "--sort"))
 		if err != nil {
 			return err
 		}

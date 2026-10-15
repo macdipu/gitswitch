@@ -87,3 +87,42 @@ func TestMarkClones(t *testing.T) {
 		}
 	}
 }
+
+func TestSortRepos(t *testing.T) {
+	list := []Info{
+		{Path: "/b/zeta", Account: "work", Recent: 2},
+		{Path: "/a/alpha", Account: "", Recent: 0},
+		{Path: "/c/beta", Account: "home", Recent: 1},
+		{Path: "/d/pinned", Account: "work", Pinned: true},
+		{Path: "/a/Beta", Account: "home"},
+	}
+	cases := map[string]string{
+		SortFolder:  "pinned alpha Beta zeta beta",
+		SortName:    "pinned alpha Beta beta zeta",
+		SortRecent:  "pinned beta zeta alpha Beta",
+		SortAccount: "pinned Beta beta zeta alpha",
+	}
+	for by, want := range cases {
+		l := append([]Info{}, list...)
+		SortRepos(l, by)
+		got := ""
+		for i, r := range l {
+			if i > 0 {
+				got += " "
+			}
+			got += filepath.Base(r.Path)
+		}
+		if got != want {
+			t.Errorf("sort by %s: got %q, want %q", by, got, want)
+		}
+	}
+	if by, err := CheckSortBy(" Recent "); err != nil || by != SortRecent {
+		t.Errorf("CheckSortBy = %q, %v", by, err)
+	}
+	if by, _ := CheckSortBy(""); by != SortFolder {
+		t.Errorf("the default is folder, got %q", by)
+	}
+	if _, err := CheckSortBy("size"); err == nil {
+		t.Error("an unknown order must be refused")
+	}
+}

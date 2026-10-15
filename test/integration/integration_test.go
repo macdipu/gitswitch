@@ -755,6 +755,30 @@ func TestRepoGroupsAndClones(t *testing.T) {
 	if l := e.repoList(); len(l) != 4 || l["web"].Group != "Client" {
 		t.Fatalf("flat list: %+v", l)
 	}
+	// Sorting: --sort for one listing, set repo-sort for every one. (A
+	// grouped list is sorted inside each group; this one is not grouped.)
+	e.gs("set", "repo-groups", "none")
+	order := func(args ...string) string {
+		t.Helper()
+		var rows []repoRow
+		must(t, json.Unmarshal([]byte(e.gs(append([]string{"repo", "list", "--json"}, args...)...)), &rows))
+		var names []string
+		for _, r := range rows {
+			names = append(names, filepath.Base(r.Path))
+		}
+		return strings.Join(names, " ")
+	}
+	if got := order("--sort", "name"); got != "api api-again notes web" {
+		t.Fatalf("--sort name: %q", got)
+	}
+	e.gs("repo", "pin", filepath.Join(work, "web"))
+	e.gs("set", "repo-sort", "name")
+	if got := order(); got != "web api api-again notes" {
+		t.Fatalf("saved sort, pinned first: %q", got)
+	}
+	if _, err := e.run(e.root, gsBin, "set", "repo-sort", "size"); err == nil {
+		t.Fatal("an unknown sort must be refused")
+	}
 	if _, err := e.run(e.root, gsBin, "set", "repo-groups", "colour"); err == nil {
 		t.Fatal("an unknown way to group must be refused")
 	}

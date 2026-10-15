@@ -164,8 +164,8 @@ func (s *server) routes() map[string]handler {
 			return nil, a.Repos.Open(str(b, "path"), ed)
 		},
 		"GET /api/repo/groups": func(r *http.Request) (any, error) {
-			gs, err := a.Repos.Groups(r.URL.Query().Get("by"))
-			return map[string]any{"by": a.Repos.GroupBy(), "groups": gs}, err
+			gs, err := a.Repos.Groups(r.URL.Query().Get("by"), "")
+			return map[string]any{"by": a.Repos.GroupBy(), "sort": a.Repos.SortBy(), "groups": gs}, err
 		},
 		"POST /api/repo/group": func(r *http.Request) (any, error) {
 			b := body(r)
@@ -503,6 +503,11 @@ func (s *server) settings(r *http.Request) (any, error) {
 	}
 	if v, ok := b["promptTimeout"].(float64); ok && v >= 5 {
 		if err := s.app.Accounts.SetSetting("promptTimeout", fmt.Sprint(int(v))); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["repoSort"].(string); ok {
+		if err := s.app.Repos.SetSortBy(v); err != nil {
 			return nil, err
 		}
 	}

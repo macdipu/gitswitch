@@ -672,6 +672,7 @@ Repos
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
   b browse the repos your signed-in accounts can see on GitHub (type to filter; Enter clones or opens one)
   g group the list by nothing, account, owner, folder or your groups   G put the repo in a group you name
+  s sort by folder, name, recently opened or account (pinned stay first)
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
@@ -1094,7 +1095,7 @@ type repoHeading struct {
 
 func (t *tui) scanRepos() {
 	t.repos, t.groups = nil, nil
-	groups, err := t.app.Repos.Groups("")
+	groups, err := t.app.Repos.Groups("", "")
 	if err != nil {
 		groups = []repo.Group{{Repos: t.app.Repos.List()}}
 	}
@@ -1250,6 +1251,26 @@ func (t *tui) keyRepos(k string) {
 		t.scanRepos()
 		t.keepSelected(path)
 		t.say(nil, "Grouped by "+groupByNames[next]+". g changes it.")
+	case "s":
+		by := t.app.Repos.SortBy()
+		next := repo.SortBys[0]
+		for j, b := range repo.SortBys {
+			if b == by {
+				next = repo.SortBys[(j+1)%len(repo.SortBys)]
+			}
+		}
+		path := ""
+		if r != nil {
+			path = r.Path
+		}
+		if err := t.app.Repos.SetSortBy(next); err != nil {
+			t.say(err, "")
+			return
+		}
+		t.reload()
+		t.scanRepos()
+		t.keepSelected(path)
+		t.say(nil, "Sorted by "+map[string]string{repo.SortFolder: "folder", repo.SortName: "name", repo.SortRecent: "recently opened", repo.SortAccount: "account"}[next]+" (pinned first). s changes it.")
 	case "G":
 		if r == nil || r.Missing {
 			return
@@ -2315,7 +2336,7 @@ func (t *tui) footer() string {
 	case tabAccounts:
 		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g GitHub sign-in · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · c clone · b GitHub · a add repo · f add folder · p pin · g group by · G group · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · b GitHub · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
