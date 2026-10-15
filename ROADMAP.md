@@ -197,3 +197,44 @@ README.
 | B9 | **Move not-pushed commits to a new branch** (committed on the wrong branch) | done | `refs.MoveToNewBranch`: `switch --create` at HEAD, then `update-ref` moves the old branch back to its merge base with its upstream, only while it is still where it was (otherwise the new branch is removed and nothing changes). Uncommitted changes stay: HEAD does not move. Undo (`move`) puts the commits back on the old branch, switches back and deletes the new one, refused when either branch moved since. Desktop branch menu "Move not-pushed commits to a new branch…", terminal app `M`, `gitswitch branch new <name> --move`. |
 | B10 | **Delete merged branches** | done | `refs.Merged` and `refs.Prune`: local branches merged into the remote's default branch (`for-each-ref --merged`; without one, a local main or master), never the current branch, main, master, the default branch or one checked out in another worktree. Deleted with `update-ref -d` at the commit listed, and their `branch.<name>` config removed. A branch whose upstream is gone but that is not merged (squash merge) is kept and named. Undo (`prune`) recreates them with their upstream. Desktop branch menu "Delete merged branches…", terminal app `D`, `gitswitch branch prune [-y] [--dry-run]`. |
 | B11 | **Commit** (staged files or all, message) | done | The `workspace` feature: `workspace.Commit` commits the staged files, or with `--all` every change (`git add --all`), refused when nothing is staged without it, with conflicts, mid-operation, or when the repo's email is not its account's. Picking files and lines stays with the IDE. Undo (`commit`) moves the branch back and keeps the changes in the files. Desktop "Commit…" button, terminal app `C`, `gitswitch commit -m <message> [--all]`. |
+
+## Reviews (v1.6)
+
+The pull requests waiting on you, and how your team's reviews are going,
+for every signed-in account. Inspired by
+[TeamStatus for GitHub](https://github.com/marcinreliga/TeamStatus-for-GitHub)
+(one repo, one account, a token on the command line, polling every minute),
+reworked for GitSwitch: all your accounts and their repos, the token in the
+OS keychain, and nothing running in the background.
+
+### Design rules
+
+- **Optional.** Everything here needs an account signed in to GitHub. Without
+  one the page says so in a line; the rest of GitSwitch is unchanged.
+- **Each account on its own.** Work and personal inboxes never mix; every PR
+  shows the account that sees it.
+- **No background process.** Read when the page opens, every 5 minutes while
+  it is open, or on request; cached like the GitHub repo list. The report is
+  read only when asked for.
+- **Read only.** GitSwitch shows and explains; approving, requesting
+  reviewers and merging stay on GitHub and in IDEs, a click away.
+- **Same in every front end.** Desktop app, terminal app, CLI with `--json`.
+- **One more token permission.** Reading PRs on private repos needs
+  "Pull requests: read" on a fine-grained token; the sign-in advice gains it,
+  and Reviews says what is missing rather than showing empty lists.
+
+### Features
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| R1 | **Review inbox per account**: PRs waiting for your review (from you or a team you are on), your open PRs, PRs you reviewed lately | planned | `hosting` gains `PullRequest` and `Inbox`; one GraphQL query per account (three `search` aliases with the account's login), cached. Desktop "Reviews" page, terminal app view, `gitswitch prs [--account id] [--json]`. |
+| R2 | **Status on your own PRs**: approved, changes requested, checks failing, conflicts, draft | planned | From the same query (`reviewDecision`, `statusCheckRollup`, `mergeable`, `isDraft`); chips on R1's rows with what to do next in plain words. |
+| R3 | **PR status on the History toolbar** for the current branch | planned | The branch's open PR (by head branch and remote): `PR #42 · 1 approval · checks passing`, linking to it; next to Push and "Open pull request". |
+| R4 | **Team review report**: for a repo over a period, per person PRs written, reviews given, median time to first review and to merge; team totals; and the stale review requests (open, no activity for 14 days or more, with whom they wait on) | planned | Merged and open PRs of the period with their reviews and review requests; pure, table-tested statistics in `hosting`. Desktop "Report" view with "Copy as Markdown", `gitswitch prs report [repo] [--since 30d] [--md\|--csv\|--json]`. |
+| R5 | **Reviews in the terminal app and CLI** | planned | Built with each of R1 to R4, not after them. |
+
+Order: R1 and R2 together, then R3, then R4. Each is one commit with unit
+tests (fake API), a sandbox check in the desktop app, and the README.
+
+Left out on purpose: a count of PRs needing attention, reviewer
+availability, and open-in-GitHub shortcuts.
