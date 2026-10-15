@@ -16,6 +16,8 @@
 //	gitswitch.hideRepo           multi-valued: scanned repos removed from the list
 //	gitswitch.pin                multi-valued: pinned repos (working folders)
 //	gitswitch.recent             multi-valued: repos opened lately, newest last (at most 10)
+//	gitswitch.group              multi-valued: <name>=<path>, a repo in a group you named
+//	gitswitch.repoGroups         none | account | owner | folder | group: how the apps group the repo list
 //	gitswitch.editor             command that opens a repo folder in an editor
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch.switchChanges      ask | smart | park: what switching branch does with
@@ -57,6 +59,12 @@ type Rule struct {
 
 func (r Rule) String() string { return r.Kind + ":" + r.Pattern + "=" + r.Account }
 
+// RepoGroup puts a repo (its working folder) in a group you named.
+type RepoGroup struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 // Config is everything gitswitch has stored.
 type Config struct {
 	Accounts      []Account         `json:"accounts"`
@@ -70,6 +78,8 @@ type Config struct {
 	HiddenRepos   []string          `json:"hiddenRepos"` // found by a scan, then removed
 	Pinned        []string          `json:"pinned"`
 	Recent        []string          `json:"recent"` // opened in gitswitch, newest first
+	Groups        []RepoGroup       `json:"groups"`
+	RepoGroups    string            `json:"repoGroups"` // how the apps group the repo list; "" is none
 	Editor        string            `json:"editor"`
 	Renamed       map[string]string `json:"-"` // old id (lower case) -> new id
 }

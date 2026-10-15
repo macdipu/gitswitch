@@ -23,8 +23,10 @@ type Info struct {
 	Remotes     []Remote `json:"remotes"`
 	Added       bool     `json:"added"` // added by hand (gitswitch repo add)
 	Pinned      bool     `json:"pinned"`
-	Recent      int      `json:"recent"`  // 1 for the repo opened last, 2 for the one before; 0 when not recent
-	Missing     bool     `json:"missing"` // added by hand, but the folder is gone or no longer a repo
+	Recent      int      `json:"recent"`           // 1 for the repo opened last, 2 for the one before; 0 when not recent
+	Group       string   `json:"group"`            // the group you put it in (gitswitch repo group); "" for none
+	Clones      []string `json:"clones,omitempty"` // other listed clones of the same origin
+	Missing     bool     `json:"missing"`          // added by hand, but the folder is gone or no longer a repo
 }
 
 // Remote is one configured remote.
@@ -79,4 +81,7 @@ type ListStore interface {
 	Load() *account.Config
 	AddRepoPath(list, path string) error
 	RemoveRepoPath(list, path string) error
+	// SetRepoGroup puts a repo in a named group; "" takes it out.
+	SetRepoGroup(path, name string) error
+	SetSetting(key, value string) error
 }

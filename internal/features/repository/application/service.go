@@ -1,5 +1,5 @@
 // Package application holds the repo list use cases: show, add, clone,
-// remove, pin and open repos, and the recently opened ones. Adding or removing a repo changes only
+// remove, pin, group and open repos, and the recently opened ones. Adding or removing a repo changes only
 // gitswitch's own list, never the repo. It depends only on domain ports.
 // Import it as repoapp.
 package application
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
@@ -166,6 +167,9 @@ func (s *Service) Remove(path string) error {
 	if err := s.Lists.RemoveRepoPath(repo.ListRecent, root); err != nil {
 		return err
 	}
+	if err := s.Lists.SetRepoGroup(root, ""); err != nil {
+		return err
+	}
 	for _, r := range s.Reader.Scan(c, c.ScanFolders) {
 		if samePlace(r.Path, root) {
 			return s.Lists.AddRepoPath(repo.ListHidden, root)
@@ -184,6 +188,76 @@ func (s *Service) Pin(path string, on bool) error {
 		return s.Lists.AddRepoPath(repo.ListPinned, root)
 	}
 	return fmt.Errorf("not in the repo list: %s (add it first: gitswitch repo add)", root)
+}
+
+// GroupBy is how the apps group the repo list (gitswitch.repoGroups).
+func (s *Service) GroupBy() string {
+	by, err := repo.CheckGroupBy(s.Lists.Load().RepoGroups)
+	if err != nil {
+		return repo.ByNone // a value from a newer version, or typed by hand
+	}
+	return by
+}
+
+// SetGroupBy saves how the apps group the repo list.
+func (s *Service) SetGroupBy(by string) error {
+	by, err := repo.CheckGroupBy(by)
+	if err != nil {
+		return err
+	}
+	return s.Lists.SetSetting("repoGroups", by)
+}
+
+// Groups is the repo list split into groups: by one of repo.GroupBys, or
+// with "" the saved way (GroupBy).
+func (s *Service) Groups(by string) ([]repo.Group, error) {
+	if by == "" {
+		by = s.GroupBy()
+	}
+	by, err := repo.CheckGroupBy(by)
+	if err != nil {
+		return nil, err
+	}
+	return repo.GroupRepos(s.List(), by), nil
+}
+
+// SetGroup puts a listed repo in a group you name, or with name "" takes
+// it out of its group. Only gitswitch's settings change.
+func (s *Service) SetGroup(path, name string) error {
+	root, listed := s.listed(path)
+	if strings.TrimSpace(name) == "" {
+		return s.Lists.SetRepoGroup(root, "")
+	}
+	name, err := repo.CheckGroupName(name)
+	if err != nil {
+		return err
+	}
+	if !listed {
+		return fmt.Errorf("not in the repo list: %s (add it first: gitswitch repo add)", root)
+	}
+	// Reuse the spelling of a group that already exists, so "Work" and
+	// "work" stay one group.
+	for _, g := range s.Lists.Load().Groups {
+		if strings.EqualFold(g.Name, name) {
+			name = g.Name
+			break
+		}
+	}
+	return s.Lists.SetRepoGroup(root, name)
+}
+
+// GroupNames lists the groups you made, sorted.
+func (s *Service) GroupNames() []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, g := range s.Lists.Load().Groups {
+		if k := strings.ToLower(g.Name); !seen[k] {
+			seen[k] = true
+			out = append(out, g.Name)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i]) < strings.ToLower(out[j]) })
+	return out
 }
 
 // Open opens a repo folder in the file manager, or with editor in the

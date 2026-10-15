@@ -574,12 +574,14 @@ func TestCompletionsAndAccountsList(t *testing.T) {
 }
 
 type repoRow struct {
-	Path    string `json:"path"`
-	Branch  string `json:"branch"`
-	Added   bool   `json:"added"`
-	Pinned  bool   `json:"pinned"`
-	Recent  int    `json:"recent"`
-	Missing bool   `json:"missing"`
+	Path    string   `json:"path"`
+	Branch  string   `json:"branch"`
+	Added   bool     `json:"added"`
+	Pinned  bool     `json:"pinned"`
+	Recent  int      `json:"recent"`
+	Group   string   `json:"group"`
+	Clones  []string `json:"clones"`
+	Missing bool     `json:"missing"`
 	Remotes []struct {
 		Name, URL string
 	} `json:"remotes"`
@@ -679,6 +681,83 @@ func TestRepoRegistry(t *testing.T) {
 	}
 	if _, err := e.run(e.root, gsBin, "repo", "add", e.home); err == nil {
 		t.Fatal("adding a folder that is not a repo should fail")
+	}
+}
+
+// The repo list groups by account, owner, folder or a group you name, and
+// two clones of the same origin know about each other, however the URL is
+// written.
+func TestRepoGroupsAndClones(t *testing.T) {
+	e := newEnv(t)
+	work := filepath.Join(e.root, "work")
+	e.gitIn(work, "clone", "-q", "git@github.com:acme-corp/api.git", "api")
+	e.gitIn(work, "clone", "-q", "git@github.com:acme-corp/web.git", "web")
+	e.clone("git@github.com:dipu/notes.git", "notes")
+	notes := filepath.Join(e.root, "notes")
+	again := filepath.Join(e.root, "api-again")
+	e.clone("git@github.com:acme-corp/api.git", "api-again")
+	e.gitIn(again, "remote", "set-url", "origin", "ssh://git@ssh.github.com:443/Acme-Corp/api") // same repo, written another way
+	e.git("config", "--global", "--add", "gitswitch.scanFolder", work)
+	e.gs("repo", "add", notes)
+	e.gs("repo", "add", again)
+
+	l := e.repoList()
+	if c := l["api"].Clones; len(c) != 1 || filepath.Base(c[0]) != "api-again" {
+		t.Fatalf("api clones = %v", c)
+	}
+	if c := l["web"].Clones; len(c) != 0 {
+		t.Fatalf("web has no other clone, got %v", c)
+	}
+	if out := e.gs("repo", "list"); !strings.Contains(out, "also cloned at") {
+		t.Fatalf("repo list should say where else api is cloned:\n%s", out)
+	}
+
+	// groups maps each group's name, in lower case, to its repos.
+	groups := func(args ...string) map[string][]string {
+		t.Helper()
+		var gs []struct {
+			Name  string
+			Repos []repoRow
+		}
+		must(t, json.Unmarshal([]byte(e.gs(append([]string{"repo", "list", "--json"}, args...)...)), &gs))
+		m := map[string][]string{}
+		for _, g := range gs {
+			for _, r := range g.Repos {
+				m[strings.ToLower(g.Name)] = append(m[strings.ToLower(g.Name)], filepath.Base(r.Path))
+			}
+		}
+		return m
+	}
+	if g := groups("--by", "owner"); len(g["github.com/acme-corp"]) != 3 || len(g["github.com/dipu"]) != 1 {
+		t.Fatalf("by owner = %v", g)
+	}
+	if g := groups("--by", "folder"); len(g) != 2 || len(g[strings.ToLower(filepath.Dir(l["api"].Path))]) != 2 {
+		t.Fatalf("by folder = %v", g)
+	}
+
+	e.gs("repo", "group", "Client", filepath.Join(work, "web"))
+	e.gs("repo", "group", "client", notes) // the same group, whatever the case
+	if g := groups("--by", "group"); len(g["client"]) != 2 || len(g["not in a group"]) != 2 {
+		t.Fatalf("by group = %v", g)
+	}
+	e.gs("repo", "ungroup", notes)
+	if g := groups("--by", "group"); len(g["client"]) != 1 {
+		t.Fatalf("after ungroup = %v", g)
+	}
+
+	// The saved way to group applies to the text list; --json stays flat.
+	e.gs("set", "repo-groups", "group")
+	if out := e.gs("repo", "list"); !strings.Contains(out, "Client (1)") || !strings.Contains(out, "Not in a group (3)") {
+		t.Fatalf("grouped list:\n%s", out)
+	}
+	if l := e.repoList(); len(l) != 4 || l["web"].Group != "Client" {
+		t.Fatalf("flat list: %+v", l)
+	}
+	if _, err := e.run(e.root, gsBin, "set", "repo-groups", "colour"); err == nil {
+		t.Fatal("an unknown way to group must be refused")
+	}
+	if _, err := e.run(e.root, gsBin, "repo", "group", "a=b", notes); err == nil {
+		t.Fatal("a group name with = must be refused")
 	}
 }
 

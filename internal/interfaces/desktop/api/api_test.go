@@ -55,6 +55,18 @@ func TestHandler(t *testing.T) {
 	if w, m := call(t, h, "POST", "/api/repo/opened", `{"gitDir":`+quote(home)+`}`); w.Code != 400 || m["error"] == nil {
 		t.Fatalf("opened a folder that is not a repo = %d %v, want an error", w.Code, m)
 	}
+	if w, m := call(t, h, "POST", "/api/repo/group", `{"path":`+quote(home)+`,"name":"Client"}`); w.Code != 400 || m["error"] == nil {
+		t.Fatalf("grouping a folder that is not listed = %d %v, want an error", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/settings", `{"repoGroups":"colour"}`); w.Code != 400 || m["error"] == nil {
+		t.Fatalf("an unknown way to group = %d %v, want an error", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/settings", `{"repoGroups":"owner"}`); w.Code != 200 {
+		t.Fatalf("group by owner = %d %v", w.Code, m)
+	}
+	if _, m := call(t, h, "GET", "/api/repo/groups", ""); m["data"].(map[string]any)["by"] != "owner" {
+		t.Fatalf("GET /api/repo/groups = %v, want by owner", m)
+	}
 	// A clone runs in the background; a bad URL ends the job with an error.
 	if w, _ := call(t, h, "POST", "/api/repo/clone", `{"url":"ext::sh -c id","parent":`+quote(home)+`,"name":"x"}`); w.Code != 200 {
 		t.Fatalf("start clone = %d", w.Code)

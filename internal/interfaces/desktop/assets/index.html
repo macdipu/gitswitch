@@ -94,7 +94,11 @@ th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px
 td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
 td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 .path{font-weight:600}
-.repo-bar{display:flex;gap:12px;align-items:center;margin:-8px 0 16px}
+.repo-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:-8px 0 16px}
+.repo-bar label{flex-direction:row;align-items:center;gap:6px;margin-left:auto}
+.repo-bar select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
+tr.group-row th{padding-top:18px;color:var(--ink);font-size:14px}
+tr.group-row th .hint{font-weight:400}
 .pin{all:unset;cursor:pointer;color:var(--muted);padding:0 4px 0 0}
 .pin[aria-pressed=true]{color:var(--a3)}
 .pin:focus-visible{outline:2px solid var(--focus)}
@@ -305,7 +309,8 @@ dialog .row-actions{justify-content:flex-end}
       <button class="btn primary" type="submit">Add folder</button>
       <div class="full hint" id="folders"></div>
     </form>
-    <div class="repo-bar"><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span></div>
+    <div class="repo-bar"><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span>
+      <label>Group by<select id="repoGroupBy"><option value="none">Nothing</option><option value="account">Account</option><option value="owner">Owner or organization</option><option value="folder">Folder</option><option value="group">Your groups</option></select></label></div>
     <form class="card" id="cloneForm" hidden>
       <label class="full">Repo URL<input name="url" placeholder="git@github.com:owner/repo.git or https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></label>
       <label>Clone into folder<span style="display:flex;gap:8px"><input name="parent" required style="flex:1"><button class="btn" type="button" id="cloneBrowse">Browse…</button></span></label>
@@ -778,14 +783,21 @@ $('#acctForm').onsubmit = async e => {
 $('#installBtn').onclick = async () => { await act(() => api('POST','/api/install'), 'Installed. Every terminal and IDE now uses GitSwitch.'); refresh(); if (!$('#tab-settings').hidden) loadChecks(); };
 
 // ---- repos ----
+let repoGroups = []; // headings in the repo table: {at: index of its first repo, name, n}
 async function loadRepos(){
   const c = S.config;
   $('#folders').innerHTML = c.scanFolders.length ? 'Scanning: ' + c.scanFolders.map(p => `<code>${esc(p)}</code> <button class="btn" style="padding:0 6px" data-rmfolder="${esc(p)}" aria-label="Stop scanning ${esc(p)}">×</button>`).join(' ') : 'Add the folders where you keep your projects.';
   if (!c.scanFolders.length && !c.repos.length){ $('#repos').innerHTML = ''; repos = []; return; }
   $('#repos').innerHTML = '<p class="hint">Looking for repos…</p>';
-  repos = await act(() => api('GET', '/api/repos')) || [];
+  const g = await act(() => api('GET', '/api/repo/groups')) || {by:'none', groups:[]};
+  $('#repoGroupBy').value = g.by;
+  repos = []; repoGroups = [];
+  for (const x of g.groups){ if (x.name) repoGroups.push({at:repos.length, name:x.name, n:x.repos.length}); repos.push(...x.repos); }
   renderRepos();
 }
+$('#repoGroupBy').onchange = async e => {
+  if (await act(() => api('POST','/api/settings',{repoGroups:e.target.value})) !== undefined) loadRepos();
+};
 function acctOptions(sel, askLabel){
   return `<option value="">${askLabel}</option>` + S.config.accounts.map(a => `<option value="${esc(a.id)}"${a.id === sel ? ' selected' : ''}>${esc(a.id)}</option>`).join('');
 }
@@ -802,21 +814,24 @@ async function pickFolder(title){
   if (r.supported) return r.path || null;
   return await ask(title + ' (full path):', {input:'', ok:'Choose'}) || null;
 }
-const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
+const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button><button class="btn" data-group="${i}" title="${r.group ? 'In group ' + esc(r.group) : 'Put it in a group you name'}">Group…</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
+// clonesNote says where else the same origin is cloned
+const clonesNote = r => !r.clones?.length ? '' : ` · <span title="${esc(r.clones.join('\n'))}">also cloned at ${esc(r.clones[0].split(/[\\/]/).pop())}${r.clones.length > 1 ? ` and ${r.clones.length - 1} more` : ''}</span>`;
+const groupRow = i => repoGroups.filter(g => g.at === i).map(g => `<tr class="group-row"><th colspan="5">${esc(g.name)} <span class="hint">(${g.n})</span></th></tr>`).join('');
 function renderRepos(){
   if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found. Add a projects folder, or an existing repo.</div>'; return; }
   const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', default:'default',
     asks: 'asks on next push', 'asks-every-time':'asks on every push', '':'no matching account'};
   $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
-    repos.map((r, i) => r.missing ? `<tr>
+    repos.map((r, i) => groupRow(i) + (r.missing ? `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="Pin to the top">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.path)}</div></td>
       <td colspan="3" class="status-bad">Folder not found or no longer a git repo. Remove it from the list, or add it again from its new place.</td>
       <td>${repoActions(r, i)}</td></tr>` : `<tr>
-      <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="${r.pinned ? 'Unpin' : 'Pin to the top'}">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono" title="${esc(r.path)}">${esc(r.branch || 'detached HEAD')} · ${esc(r.remote || 'no remote')}</div></td>
+      <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="${r.pinned ? 'Unpin' : 'Pin to the top'}">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono" title="${esc(r.path)}">${esc(r.branch || 'detached HEAD')} · ${esc(r.remote || 'no remote')}${clonesNote(r)}</div></td>
       <td><select data-repo="${i}" aria-label="Account for ${esc(r.path)}">${repoAcctOptions(r.saved)}</select></td>
       <td class="hint">${r.sshOverride ? '<span class="status-bad">bypassed: repo sets its own core.sshCommand. Choose an account here to fix it</span>' : r.account && (!r.saved || r.saved === 'ask') ? `<span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)} by ${esc(why[r.reason] || r.reason)}` : (why[r.reason] ?? esc(r.reason))}</td>
       <td class="${r.emailBad ? 'status-bad' : 'hint'}">${esc(r.email || 'not set yet')}${r.emailBad ? ' (wrong account)' : ''}</td>
-      <td>${repoActions(r, i)}</td></tr>`).join('') + '</tbody></table>';
+      <td>${repoActions(r, i)}</td></tr>`)).join('') + '</tbody></table>';
 }
 $('#repos').addEventListener('change', async e => {
   const i = e.target.dataset.repo; if (i === undefined) return;
@@ -827,6 +842,12 @@ $('#repos').addEventListener('click', async e => {
   const d = e.target.closest('button')?.dataset; if (!d) return;
   if (d.hist !== undefined){ show('history'); $('#histRepo').value = repos[d.hist].gitDir; loadHistory(); }
   else if (d.open !== undefined) act(() => api('POST','/api/repo/open',{path:repos[d.open].path}));
+  else if (d.group !== undefined){
+    const r = repos[d.group], mine = [...new Set((S.config.groups || []).map(g => g.name))];
+    const name = await ask(`Group for ${r.path.split(/[\\/]/).pop()}. Leave it empty to take the repo out of its group.` + (mine.length ? `\nYour groups: ${mine.join(', ')}` : ''), {input:r.group || '', ok:'Save'});
+    if (name === null) return;
+    if (await act(() => api('POST','/api/repo/group',{path:r.path, name}), name.trim() ? 'In group ' + name.trim() + ($('#repoGroupBy').value === 'group' ? '' : '. Group by "Your groups" to see it together') : 'Taken out of its group') !== undefined){ await refresh(); loadRepos(); }
+  }
   else if (d.pin !== undefined){ const r = repos[d.pin]; if (await act(() => api('POST','/api/repo/pin',{path:r.path, on:!r.pinned})) !== undefined) loadRepos(); }
   else if (d.rmrepo !== undefined){
     const r = repos[d.rmrepo];

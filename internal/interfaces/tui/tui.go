@@ -96,6 +96,7 @@ type tui struct {
 	cfg     *account.Config
 	app     *bootstrap.App
 	repos   []repo.Info
+	groups  []repoHeading // headings on the Repos page, by the repo they come before
 	scanned bool
 	checks  []doctor.Check // the health checks; run only on the Settings page
 	hooked  bool           // git runs through gitswitch
@@ -660,6 +661,7 @@ Accounts
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
+  g group the list by nothing, account, owner, folder or your groups   G put the repo in a group you name
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
@@ -949,8 +951,25 @@ func (t *tui) recentRepos() []repo.Info {
 	return out[:min(len(out), 5)]
 }
 
+// repoHeading is a group heading above repo at on the Repos page.
+type repoHeading struct {
+	at   int
+	name string
+	n    int
+}
+
 func (t *tui) scanRepos() {
-	t.repos = t.app.Repos.List()
+	t.repos, t.groups = nil, nil
+	groups, err := t.app.Repos.Groups("")
+	if err != nil {
+		groups = []repo.Group{{Repos: t.app.Repos.List()}}
+	}
+	for _, g := range groups {
+		if g.Name != "" {
+			t.groups = append(t.groups, repoHeading{len(t.repos), g.Name, len(g.Repos)})
+		}
+		t.repos = append(t.repos, g.Repos...)
+	}
 	if gd := t.app.Repos.Current(); gd != "" {
 		found := false
 		for _, r := range t.repos {
@@ -960,9 +979,27 @@ func (t *tui) scanRepos() {
 		}
 		if !found {
 			t.repos = append([]repo.Info{t.app.Repos.Info(gd)}, t.repos...)
+			for i := range t.groups {
+				t.groups[i].at++
+			}
+			if len(t.groups) > 0 {
+				t.groups = append([]repoHeading{{0, "This folder (not in the list)", 1}}, t.groups...)
+			}
 		}
 	}
 	t.scanned = true
+}
+
+// groupByNames are the Repos page's ways to group, as g cycles them.
+var groupByNames = map[string]string{repo.ByNone: "nothing", repo.ByAccount: "account", repo.ByOwner: "owner or organization", repo.ByFolder: "folder", repo.ByGroup: "your groups"}
+
+// keepSelected selects the repo at path again after the list changed.
+func (t *tui) keepSelected(path string) {
+	for j, x := range t.repos {
+		if x.Path == path {
+			t.sel[tabRepos] = j
+		}
+	}
 }
 
 func (t *tui) keyRepos(k string) {
@@ -1085,11 +1122,53 @@ func (t *tui) keyRepos(k string) {
 		t.say(t.app.Repos.Pin(path, on), map[bool]string{true: "Pinned.", false: "Unpinned."}[on])
 		t.reload()
 		t.scanRepos()
-		for j, x := range t.repos { // keep the same repo selected after it moves
-			if x.Path == path {
-				t.sel[tabRepos] = j
+		t.keepSelected(path) // it moved
+	case "g":
+		by := t.app.Repos.GroupBy()
+		next := repo.GroupBys[0]
+		for j, b := range repo.GroupBys {
+			if b == by {
+				next = repo.GroupBys[(j+1)%len(repo.GroupBys)]
 			}
 		}
+		path := ""
+		if r != nil {
+			path = r.Path
+		}
+		if err := t.app.Repos.SetGroupBy(next); err != nil {
+			t.say(err, "")
+			return
+		}
+		t.reload()
+		t.scanRepos()
+		t.keepSelected(path)
+		t.say(nil, "Grouped by "+groupByNames[next]+". g changes it.")
+	case "G":
+		if r == nil || r.Missing {
+			return
+		}
+		path, hint := r.Path, "empty = take it out of its group"
+		if names := t.app.Repos.GroupNames(); len(names) > 0 {
+			hint += " · yours: " + strings.Join(names, ", ")
+		}
+		t.form = &form{title: "Group for " + filepath.Base(path), fields: []field{{label: "Group", value: r.Group, hint: hint}},
+			submit: func(v []string) error {
+				if err := t.app.Repos.SetGroup(path, v[0]); err != nil {
+					return err
+				}
+				t.reload()
+				t.scanRepos()
+				t.keepSelected(path)
+				switch {
+				case strings.TrimSpace(v[0]) == "":
+					t.say(nil, "Taken out of its group.")
+				case t.app.Repos.GroupBy() != repo.ByGroup:
+					t.say(nil, "In group "+strings.TrimSpace(v[0])+". Press g until the list is grouped by your groups to see it together.")
+				default:
+					t.say(nil, "In group "+strings.TrimSpace(v[0])+".")
+				}
+				return nil
+			}}
 	case "o", "O":
 		if r != nil {
 			t.say(t.app.Repos.Open(r.Path, k == "O"), "Opened "+filepath.Base(r.Path)+".")
@@ -2129,7 +2208,7 @@ func (t *tui) footer() string {
 	case tabAccounts:
 		return "a add · e edit · R rename · t test · k public key · K pick key · d default · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · c clone · a add repo · f add folder · p pin · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · a add repo · f add folder · p pin · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
@@ -2199,8 +2278,20 @@ func (t *tui) drawRepos() ([]string, int) {
 		return append(l, " No repos found. Press f to add the folder where you keep your projects, or a to add one repo."), -1
 	}
 	why := map[string]string{"saved": "saved", "owner-rule": "owner rule", "folder-rule": "folder rule", "only-account": "only account", "asks": "asks on next push", "asks-every-time": "asks on every push", "": "no account for this host"}
+	selLine, hdr := -1, len(l) // the selection, counted below the fixed lines
 	for i, r := range t.repos {
+		for _, g := range t.groups {
+			if g.at == i {
+				if i > 0 {
+					l = append(l, "")
+				}
+				l = append(l, " "+cBold+g.name+cReset+cDim+fmt.Sprintf(" (%d)", g.n)+cReset)
+			}
+		}
 		on := i == t.sel[tabRepos]
+		if on {
+			selLine = len(l) - hdr
+		}
 		star := "  "
 		if r.Pinned {
 			star = cYellow + "★ " + cReset + boldIf(on)
@@ -2224,9 +2315,16 @@ func (t *tui) drawRepos() ([]string, int) {
 		if branch == "" {
 			branch = "(detached)"
 		}
-		l = append(l, fmt.Sprintf("%s%s%-22s%s %s  %s  %s  %s", mark(on), star, clip(filepath.Base(r.Path), 22), cReset, cDim+padANSI(clip(branch, 16), 16)+cReset, padANSI(acct, 34), padANSI(email, 34), cDim+r.Remote+cReset))
+		clones := ""
+		if len(r.Clones) > 0 {
+			clones = cYellow + fmt.Sprintf("  · also cloned at %s", r.Clones[0]) + cReset
+			if len(r.Clones) > 1 {
+				clones += cYellow + fmt.Sprintf(" and %d more", len(r.Clones)-1) + cReset
+			}
+		}
+		l = append(l, fmt.Sprintf("%s%s%-22s%s %s  %s  %s  %s%s", mark(on), star, clip(filepath.Base(r.Path), 22), cReset, cDim+padANSI(clip(branch, 16), 16)+cReset, padANSI(acct, 34), padANSI(email, 34), cDim+r.Remote+cReset, clones))
 	}
-	return l, t.sel[tabRepos]
+	return l, selLine
 }
 
 func (t *tui) drawHistory() ([]string, int) {

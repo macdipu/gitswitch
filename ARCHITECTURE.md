@@ -35,7 +35,7 @@ internal/
       domain/                 remote URLs: host and path, port-443 hosts, which URLs may be cloned, web links and pull request links; Explain (git and ssh errors in plain words)
       infrastructure/         Runner: the only code that runs git (dry-run, hidden windows, errors)
     repository/
-      domain/                 Info, Remote; ports Reader, Locator, Cloner, ListStore
+      domain/                 Info, Remote; grouping the list (Group, by account, owner, folder or your groups) and clones of the same origin; ports Reader, Locator, Cloner, ListStore
       application/            the repo list: show, add, clone, remove, pin, open; the recently opened repos
       infrastructure/         Reader (find repos on disk, read them with git), Cloner
     history/

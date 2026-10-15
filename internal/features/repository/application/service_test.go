@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,27 @@ func (f *fakeLists) RemoveRepoPath(list, path string) error {
 		}
 	}
 	f.lists[list] = keep
+	return nil
+}
+
+func (f *fakeLists) SetRepoGroup(path, name string) error {
+	var keep []account.RepoGroup
+	for _, g := range f.c.Groups {
+		if g.Path != path {
+			keep = append(keep, g)
+		}
+	}
+	if name != "" {
+		keep = append(keep, account.RepoGroup{Name: name, Path: path})
+	}
+	f.c.Groups = keep
+	return nil
+}
+func (f *fakeLists) SetSetting(key, value string) error {
+	if key != "repoGroups" {
+		return errors.New("unexpected setting " + key)
+	}
+	f.c.RepoGroups = value
 	return nil
 }
 
@@ -254,6 +276,54 @@ func TestRemoveForgetsARecentRepo(t *testing.T) {
 	}
 	if len(l.lists[repo.ListRecent]) != 0 {
 		t.Errorf("recent = %v", l.lists[repo.ListRecent])
+	}
+}
+
+func TestGroups(t *testing.T) {
+	s, g, l, _ := newService(t)
+	api, web := abs(t, "/src/api"), abs(t, "/src/web")
+	g.repos[api], g.repos[web] = filepath.Join(api, ".git"), filepath.Join(web, ".git")
+	l.lists[repo.ListAdded] = []string{api}
+
+	if err := s.SetGroup(web, "Client"); err == nil || !strings.Contains(err.Error(), "repo add") {
+		t.Errorf("grouping an unlisted repo: %v", err)
+	}
+	if err := s.SetGroup(api, "a=b"); err == nil {
+		t.Error("a bad group name must be refused")
+	}
+	l.lists[repo.ListAdded] = []string{api, web}
+	if err := s.SetGroup(api, " Client "); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetGroup(web, "client"); err != nil { // same group, other case
+		t.Fatal(err)
+	}
+	if got := s.GroupNames(); len(got) != 1 || got[0] != "Client" {
+		t.Errorf("group names = %v, want one Client", got)
+	}
+	if err := s.SetGroup(web, ""); err != nil || len(l.c.Groups) != 1 {
+		t.Errorf("taking web out: err=%v groups=%v", err, l.c.Groups)
+	}
+
+	if s.GroupBy() != repo.ByNone {
+		t.Errorf("group by starts as none, got %q", s.GroupBy())
+	}
+	if err := s.SetGroupBy("colour"); err == nil {
+		t.Error("an unknown way to group must be refused")
+	}
+	if err := s.SetGroupBy("Folder"); err != nil || s.GroupBy() != repo.ByFolder {
+		t.Errorf("err=%v by=%q", err, s.GroupBy())
+	}
+	l.c.RepoGroups = "from-a-newer-version"
+	if s.GroupBy() != repo.ByNone {
+		t.Errorf("an unknown saved value must read as none, got %q", s.GroupBy())
+	}
+	if gs, err := s.Groups(repo.ByFolder); err != nil || len(gs) != 1 || len(gs[0].Repos) != 2 {
+		t.Errorf("groups = %+v, %v", gs, err)
+	}
+
+	if err := s.Remove(api); err != nil || len(l.c.Groups) != 0 {
+		t.Errorf("removing a repo must take it out of its group: err=%v groups=%v", err, l.c.Groups)
 	}
 }
 

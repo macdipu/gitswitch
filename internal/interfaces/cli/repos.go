@@ -9,7 +9,7 @@ import (
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 )
 
-const repoUsage = "gitswitch repo list [--pinned] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path] | recent [--json]"
+const repoUsage = "gitswitch repo list [--pinned] [--by none|account|owner|folder|group] [--json] | clone <url> [folder] [--account <id>] | add [path] | remove [path] | show [path] [--json] | open [path] [--editor] | pin [path] | unpin [path] | recent [--json] | group <name> [path] | ungroup [path]"
 
 // cmdRepo manages the repo list. Paths default to the current folder.
 func (x *CLI) cmdRepo(args []string) error {
@@ -18,37 +18,88 @@ func (x *CLI) cmdRepo(args []string) error {
 	}
 	sub, rest := args[0], args[1:]
 	asJSON := hasFlag(rest, "--json")
-	path := "."
-	for _, a := range rest {
-		if !strings.HasPrefix(a, "--") {
-			path = a
-			break
+	var pos []string // arguments that are not options or option values
+	for i := 0; i < len(rest); i++ {
+		switch a := rest[i]; {
+		case a == "--by":
+			i++
+		case !strings.HasPrefix(a, "--"):
+			pos = append(pos, a)
 		}
+	}
+	path := "."
+	if len(pos) > 0 {
+		path = pos[0]
 	}
 	switch sub {
 	case "clone":
 		return x.cmdClone(rest)
 	case "list", "ls":
-		var list []repo.Info
-		for _, r := range x.app.Repos.List() {
-			if r.Pinned || !hasFlag(rest, "--pinned") {
-				list = append(list, r)
+		by := flagValue(rest, "--by")
+		groups, err := x.app.Repos.Groups(by)
+		if err != nil {
+			return err
+		}
+		n := 0
+		for i := range groups {
+			var keep []repo.Info
+			for _, r := range groups[i].Repos {
+				if r.Pinned || !hasFlag(rest, "--pinned") {
+					keep = append(keep, r)
+				}
 			}
+			groups[i].Repos, n = keep, n+len(keep)
 		}
 		if asJSON {
-			if list == nil {
-				list = []repo.Info{}
+			if by != "" { // grouped on request; without --by the flat list scripts already read
+				out := []repo.Group{}
+				for _, g := range groups {
+					if len(g.Repos) > 0 {
+						out = append(out, g)
+					}
+				}
+				return json.NewEncoder(x.out).Encode(out)
+			}
+			list := []repo.Info{}
+			for _, g := range groups {
+				list = append(list, g.Repos...)
 			}
 			return json.NewEncoder(x.out).Encode(list)
 		}
-		if len(list) == 0 {
+		if n == 0 {
 			x.say("No repos yet. Add one with `gitswitch repo add <path>`, or a project folder with the apps.")
 			return nil
 		}
-		for _, r := range list {
-			x.sayf("%s %-48s %-20s %s\n", repoMarks(r), r.Path, orDash(r.Branch), repoAccount(r))
+		for i, g := range groups {
+			if len(g.Repos) == 0 {
+				continue
+			}
+			if g.Name != "" {
+				if i > 0 {
+					x.say()
+				}
+				x.sayf("%s (%d)\n", g.Name, len(g.Repos))
+			}
+			for _, r := range g.Repos {
+				x.sayf("%s %-48s %-20s %s%s\n", repoMarks(r), r.Path, orDash(r.Branch), repoAccount(r), cloneNote(r))
+			}
 		}
 		return nil
+	case "group":
+		if len(pos) < 1 || len(pos) > 2 {
+			return usageErr("gitswitch repo group <name> [path]")
+		}
+		path = "."
+		if len(pos) == 2 {
+			path = pos[1]
+		}
+		if err := x.app.Repos.SetGroup(path, pos[0]); err != nil {
+			return err
+		}
+		x.sayf("In group %s. See the groups with: gitswitch repo list --by group\n", strings.TrimSpace(pos[0]))
+		return nil
+	case "ungroup":
+		return x.app.Repos.SetGroup(path, "")
 	case "add":
 		r, err := x.app.Repos.Add(path)
 		if err != nil {
@@ -111,6 +162,12 @@ func (x *CLI) cmdRepo(args []string) error {
 			listed = "not in the list (gitswitch repo add)"
 		}
 		x.say("List:    ", listed+map[bool]string{true: ", pinned"}[r.Pinned])
+		if r.Group != "" {
+			x.say("Group:   ", r.Group)
+		}
+		for i, c := range x.clonesOf(r) {
+			x.say(map[bool]string{true: "Clones:  ", false: "         "}[i == 0], c)
+		}
 		if r.EmailBad {
 			x.say("warning: repo email does not match the account; run `gitswitch use", r.Account+"`")
 		}
@@ -162,6 +219,27 @@ func (x *CLI) inList(path string) bool {
 		}
 	}
 	return false
+}
+
+// clonesOf lists the other listed clones of a repo's origin.
+func (x *CLI) clonesOf(r repo.Info) []string {
+	for _, l := range x.app.Repos.List() {
+		if l.Path == r.Path {
+			return l.Clones
+		}
+	}
+	return nil
+}
+
+// cloneNote says where else a repo is cloned, for the repo list.
+func cloneNote(r repo.Info) string {
+	switch len(r.Clones) {
+	case 0:
+		return ""
+	case 1:
+		return "  · also cloned at " + r.Clones[0]
+	}
+	return fmt.Sprintf("  · also cloned at %s and %d more", r.Clones[0], len(r.Clones)-1)
 }
 
 // repoMarks is a two-letter status column: * pinned, + added by hand, ! missing.

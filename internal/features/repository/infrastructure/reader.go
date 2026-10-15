@@ -57,6 +57,7 @@ func (r *Reader) InfoFor(c *account.Config, gitDir string) repo.Info {
 	ri.Remotes = r.remotes(gitDir)
 	ri.Added, ri.Pinned = filesystem.HasPath(c.Repos, ri.Path), filesystem.HasPath(c.Pinned, ri.Path)
 	ri.Recent = recentRank(c, ri.Path)
+	ri.Group = groupOf(c, ri.Path)
 	if a, why := r.AccountFor(c, gitDir); a != nil {
 		ri.Account, ri.Reason = a.ID, why
 		ri.EmailBad = ri.Email != "" && !strings.EqualFold(ri.Email, a.Email)
@@ -100,7 +101,7 @@ func (r *Reader) List(c *account.Config) []repo.Info {
 			dirs = append(dirs, gd)
 		} else {
 			missing = append(missing, repo.Info{Path: p, Added: true, Missing: true, Pinned: filesystem.HasPath(c.Pinned, p),
-				Recent: recentRank(c, p), Remotes: []repo.Remote{}})
+				Recent: recentRank(c, p), Group: groupOf(c, p), Remotes: []repo.Remote{}})
 		}
 	}
 	var out []repo.Info
@@ -116,6 +117,7 @@ func (r *Reader) List(c *account.Config) []repo.Info {
 		}
 		return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path)
 	})
+	repo.MarkClones(out)
 	return out
 }
 
@@ -128,6 +130,16 @@ func recentRank(c *account.Config, path string) int {
 		}
 	}
 	return 0
+}
+
+// groupOf is the group you put a repo in, or "".
+func groupOf(c *account.Config, path string) string {
+	for _, g := range c.Groups {
+		if filesystem.SamePath(g.Path, path) {
+			return g.Name
+		}
+	}
+	return ""
 }
 
 // Scan finds repos in folders (up to 5 levels deep) and reads them in parallel.

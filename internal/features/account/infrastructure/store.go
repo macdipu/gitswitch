@@ -39,7 +39,7 @@ func (s *Store) Load() *account.Config {
 func (s *Store) LoadChecked() (*account.Config, error) {
 	// Lists start empty, not nil, so the apps get [] rather than null in JSON.
 	c := &account.Config{GUIPrompt: true, PromptTimeout: 60, Accounts: []account.Account{}, Rules: []account.Rule{},
-		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}, Recent: []string{}}
+		ScanFolders: []string{}, Repos: []string{}, HiddenRepos: []string{}, Pinned: []string{}, Recent: []string{}, Groups: []account.RepoGroup{}}
 	accts := map[string]*account.Account{}
 	var order []string
 	out, err := s.Git.Run("config", "--global", "-z", "--get-regexp", `^gitswitch`)
@@ -104,6 +104,12 @@ func (s *Store) LoadChecked() (*account.Config, error) {
 			c.Pinned = append(c.Pinned, v)
 		case k == "gitswitch.recent": // the file lists the newest last
 			c.Recent = append([]string{v}, c.Recent...)
+		case k == "gitswitch.group":
+			if name, p, ok := strings.Cut(v, "="); ok && name != "" && p != "" {
+				c.Groups = append(c.Groups, account.RepoGroup{Name: name, Path: p})
+			}
+		case k == "gitswitch.repogroups":
+			c.RepoGroups = v
 		case k == "gitswitch.editor":
 			c.Editor = v
 		case k == "gitswitch.renamed":
@@ -396,6 +402,23 @@ func (s *Store) RemoveRepoPath(key, p string) error {
 		}
 	}
 	return nil
+}
+
+// SetRepoGroup puts a repo in a named group, or with name "" takes it out
+// of the one it is in. A repo is in one group at a time.
+func (s *Store) SetRepoGroup(p, name string) error {
+	for _, g := range s.Load().Groups {
+		if filesystem.SamePath(g.Path, p) {
+			if _, err := s.Git.Global("--fixed-value", "--unset-all", "gitswitch.group", g.Name+"="+g.Path); err != nil {
+				return err
+			}
+		}
+	}
+	if name == "" {
+		return nil
+	}
+	_, err := s.Git.Global("--add", "gitswitch.group", name+"="+p)
+	return err
 }
 
 func (s *Store) repoList(key string) []string {

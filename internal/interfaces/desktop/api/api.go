@@ -149,6 +149,14 @@ func (s *server) routes() map[string]handler {
 			ed, _ := b["editor"].(bool)
 			return nil, a.Repos.Open(str(b, "path"), ed)
 		},
+		"GET /api/repo/groups": func(r *http.Request) (any, error) {
+			gs, err := a.Repos.Groups(r.URL.Query().Get("by"))
+			return map[string]any{"by": a.Repos.GroupBy(), "groups": gs}, err
+		},
+		"POST /api/repo/group": func(r *http.Request) (any, error) {
+			b := body(r)
+			return nil, a.Repos.SetGroup(str(b, "path"), str(b, "name"))
+		},
 		"POST /api/repo/opened": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(str(body(r), "gitDir"))
 			if err != nil {
@@ -480,6 +488,11 @@ func (s *server) settings(r *http.Request) (any, error) {
 	}
 	if v, ok := b["promptTimeout"].(float64); ok && v >= 5 {
 		if err := s.app.Accounts.SetSetting("promptTimeout", fmt.Sprint(int(v))); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["repoGroups"].(string); ok {
+		if err := s.app.Repos.SetGroupBy(v); err != nil {
 			return nil, err
 		}
 	}

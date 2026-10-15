@@ -27,12 +27,12 @@ desktop app, the terminal app and the CLI alike.
 | 24 | **Safe repository operations**: registering or removing never touches remotes, branches, files or identity | done | Only `gitswitch.*` keys in global git config change. |
 | 8 | **Repository discovery**: scan a chosen folder for repos | done | Project folders (`gitswitch.scanFolder`), 5 levels deep. |
 | 15 | **Git identity association** and mismatch warnings | done | `gitswitch use`, rules, and the wrong-email flag. |
-| 7 | **Local repository manager**: paths, branches, remotes, identities | partly | Branch and remotes added; grouping and sorting still to come. |
+| 7 | **Local repository manager**: paths, branches, remotes, identities | partly | Branch, remotes and grouping (#12) are done. Sort orders other than pinned first, then by folder, are still to come. |
 | 16 | **Repository details**: URL, remotes, branch, git root, account | done | `gitswitch repo show [--json]`. |
 | 9 | **Open repository** in the file manager or editor | done | `gitswitch repo open [--editor]`; editor from `gitswitch set editor`, `$VISUAL` or `$EDITOR`. |
 | 11 | **Favorites and recent repositories** | done | Pinning (`gitswitch repo pin`), and the last 10 repos opened (`gitswitch.recent`, newest last): `repo open` and showing a repo's history record one. `gitswitch repo recent [--json]`, the top of the desktop History repo menu, and the terminal app's `o` list. |
-| 12 | **Repository grouping** by account, organization, parent folder or custom group | planned | |
-| 14 | **Multiple local clones** of the same remote | partly | Each clone is its own entry today; showing them together is planned. |
+| 12 | **Repository grouping** by account, organization, parent folder or custom group | done | `repo.GroupRepos`: by account, owner (host and user or organization from the origin URL, GitLab subgroups included), folder, or a group you name (`gitswitch.group = <name>=<path>`). The way to group is saved in `gitswitch.repoGroups`, shared by every front end. `gitswitch repo list [--by ...] [--json]`, `repo group <name> [path]`, `repo ungroup [path]`, `gitswitch set repo-groups ...`; desktop Repos page "Group by" and "Group…"; terminal app `g` (group by) and `G` (group). |
+| 14 | **Multiple local clones** of the same remote | done | Each clone is its own entry, and says where the others are ("also cloned at ..."): `repo.MarkClones` matches origins however they are written (ssh or https, port-443 hosts, `.git`, case). `clones` in `repo list --json`, "Clones" in `repo show`, the desktop and terminal Repos pages. Grouping by owner shows them together. |
 
 ### Remote repositories (GitHub)
 
@@ -57,7 +57,7 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 | --- | --- | --- | --- |
 | 19 | **GUI**: browsing, native folder picker, contextual actions, clone progress | partly | Folder picker, clone with progress, add, remove, pin and open are done. Browsing needs #2. |
 | 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | partly | Clone, add, pin, remove and open are done (Repos page: c, a, p, x, o). Browsing needs #2. |
-| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin`, `--json`. |
+| 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `--json`. |
 
 ## A full git client
 

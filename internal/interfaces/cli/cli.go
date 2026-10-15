@@ -47,7 +47,8 @@ Repos and rules
   gitswitch rule add owner:<org> <id>     e.g. owner:acme-corp client-acme
   gitswitch rule add folder:<path> <id>   e.g. folder:~/work polygon
   gitswitch rule list | remove owner:<org>|folder:<path>|<n>
-  gitswitch repo list [--pinned] [--json]   repos in your project folders plus ones you added
+  gitswitch repo list [--pinned] [--by account|owner|folder|group] [--json]
+                                    repos in your project folders plus ones you added
   gitswitch repo clone <url> [folder] [--account <id>]   clone with the right account from the start
   gitswitch repo add [path]         add an existing repo to the list (nothing in it changes)
   gitswitch repo remove [path]      take a repo off the list (its files are not touched)
@@ -55,6 +56,8 @@ Repos and rules
   gitswitch repo open [path] [--editor]   open in the file manager or your editor
   gitswitch repo pin|unpin [path]   keep a repo at the top of the list
   gitswitch repo recent [--json]    repos you opened lately, newest first
+  gitswitch repo group <name> [path] | ungroup [path]
+                                    put a repo in a group you name, or take it out
   gitswitch status [--json]
   gitswitch fix-author              fix not-pushed commits made with the wrong account
 
@@ -101,6 +104,7 @@ Settings
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
   gitswitch set editor <command>    editor for repo open --editor (e.g. code)
+  gitswitch set repo-groups <how>   group the repo list: none, account, owner, folder or group
   gitswitch set branch-prefix <prefix>   put e.g. feature/ in front of new branch names ("" for none)
   gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
                                     uncommitted changes, in every repo or this one (default: ask;
