@@ -215,6 +215,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdTest(rest)
 	case "signin", "login":
 		return x.cmdSignin(rest)
+	case "credential": // git runs it as a credential helper
+		return x.cmdCredential(rest)
 	case "signout", "logout":
 		return x.cmdSignout(rest)
 	case "default":

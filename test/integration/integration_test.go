@@ -2167,3 +2167,95 @@ func TestSignInToGitHub(t *testing.T) {
 		t.Fatal("removing an account must remove its token")
 	}
 }
+
+// Once an account is signed in, git gets its token for HTTPS remotes of
+// that account's repos, and only those: every other repo and host still
+// gets the helpers you had. Signing out and uninstalling take GitSwitch's
+// helper out again.
+func TestHTTPSCredentials(t *testing.T) {
+	e := newEnv(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok-work" {
+			w.WriteHeader(401)
+			return
+		}
+		fmt.Fprint(w, `{"login":"dipu-work"}`)
+	}))
+	defer api.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITHUB_API="+api.URL)
+	// the helper you already had
+	e.git("config", "--global", "credential.helper", `!f() { test "$1" = get && echo username=old && echo password=oldpass; }; f`)
+
+	repoAt := func(name, acct string) string {
+		dir := filepath.Join(e.root, name)
+		e.git("init", "-q", dir)
+		e.gitIn(dir, "remote", "add", "origin", "https://github.com/acme-corp/"+name+".git")
+		e.gsIn(dir, "use", acct)
+		return dir
+	}
+	api1, web := repoAt("api", "work"), repoAt("web", "client")
+	fill := func(dir, host string) string {
+		t.Helper()
+		cmd := exec.Command("git", "credential", "fill")
+		cmd.Dir, cmd.Env = dir, e.vars
+		cmd.Stdin = strings.NewReader("protocol=https\nhost=" + host + "\n\n")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git credential fill in %s: %v\n%s", dir, err, out)
+		}
+		for _, l := range strings.Split(string(out), "\n") {
+			if p, ok := strings.CutPrefix(l, "password="); ok {
+				return p
+			}
+		}
+		return ""
+	}
+	if p := fill(api1, "github.com"); p != "oldpass" {
+		t.Fatalf("before signing in, your helper answers: %q", p)
+	}
+
+	cmd := exec.Command(gsBin, "signin", "work")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-work\n")
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "HTTPS remotes of work's repos") {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	if p := fill(api1, "github.com"); p != "tok-work" {
+		t.Fatalf("a repo of the signed-in account gets its token, got %q", p)
+	}
+	if p := fill(web, "github.com"); p != "oldpass" {
+		t.Fatalf("a repo of another account keeps your helper, got %q", p)
+	}
+	if p := fill(e.root, "github.com"); p != "oldpass" {
+		t.Fatalf("outside a repo, your helper answers, got %q", p)
+	}
+	if p := fill(api1, "gitlab.com"); p != "oldpass" {
+		t.Fatalf("another host keeps your helper, got %q", p)
+	}
+	// While cloning, git points GIT_DIR at the new repo.
+	cmd = exec.Command("git", "credential", "fill")
+	cmd.Dir, cmd.Env = e.root, append(append([]string{}, e.vars...), "GIT_DIR="+filepath.Join(api1, ".git"))
+	cmd.Stdin = strings.NewReader("protocol=https\nhost=github.com\n\n")
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "password=tok-work") {
+		t.Fatalf("with GIT_DIR: %v\n%s", err, out)
+	}
+
+	e.gs("signout", "work")
+	if p := fill(api1, "github.com"); p != "oldpass" {
+		t.Fatalf("after signout, your helper answers again: %q", p)
+	}
+	if out, _ := e.run(e.root, "git", "config", "--global", "--get-regexp", `^credential\.https`); strings.Contains(out, "gitswitch") {
+		t.Fatalf("signout must remove GitSwitch's helper:\n%s", out)
+	}
+	cmd = exec.Command(gsBin, "signin", "work")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-work\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("signin again: %v\n%s", err, out)
+	}
+	e.gs("uninstall", "--purge")
+	if out, _ := e.run(e.root, "git", "config", "--global", "--get-regexp", `^credential\.https`); strings.Contains(out, "gitswitch") {
+		t.Fatalf("uninstall must remove GitSwitch's helper:\n%s", out)
+	}
+	if v := e.cfg(e.root, "credential.helper"); !strings.Contains(v, "oldpass") {
+		t.Fatalf("your own helper must stay: %q", v)
+	}
+}

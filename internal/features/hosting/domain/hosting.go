@@ -87,6 +87,9 @@ type Grant struct {
 type SignedIn struct {
 	Account string `json:"account"`
 	Host    string `json:"host"`
+	// HTTPS is whether git now gets the token for HTTPS remotes of this
+	// account's repos ("" when it does, else why not).
+	HTTPS string `json:"https"`
 	User
 	Grant
 }
@@ -113,6 +116,28 @@ type Secrets interface {
 type API interface {
 	// Whoami returns who the token signs in as.
 	Whoami(base, token string) (User, Grant, error)
+}
+
+// HelperConfig keeps GitSwitch's credential helper section for each host
+// in the global git config.
+type HelperConfig interface {
+	// Hook is git's global core.sshCommand.
+	Hook() string
+	// Entries lists the system and global credential helper settings.
+	Entries() ([]HelperEntry, error)
+	// Write replaces the host's section with these helper values.
+	Write(host string, values []string) error
+	// Remove deletes the host's section; a missing one is fine.
+	Remove(host string) error
+}
+
+// Repos finds the repo git is working on and the account it uses.
+type Repos interface {
+	// Current is the git dir of the repo git runs the helper for, or "".
+	Current() string
+	// AccountFor resolves the repo's account without asking; nil when
+	// rules and the default do not decide.
+	AccountFor(c *account.Config, gitDir string) *account.Account
 }
 
 // Accounts reads the accounts and records a learned username.

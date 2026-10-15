@@ -745,7 +745,7 @@ $('#accounts').addEventListener('click', async e => {
     const token = await ask(`Paste the token for ${id}:`, {input:'', secret:true, ok:'Sign in'});
     if (token === null){ delete openDetail[id]; renderAccounts(); return; }
     const r = await act(() => api('POST', '/api/signin', {id, token}));
-    if (r){ delete openDetail[id]; toast(`Signed in to GitHub as ${r.login}` + (r.expires ? ` · the token expires ${r.expires}` : '')); refresh(); }
+    if (r){ delete openDetail[id]; toast(`Signed in to GitHub as ${r.login}` + (r.expires ? ` · the token expires ${r.expires}` : '') + (r.https ? '' : ` · git uses it for HTTPS remotes of ${id}'s repos`)); refresh(); }
   } else if (b.dataset.act === 'apicheck'){
     const r = await act(() => api('POST', '/api/signin/check', {id}));
     if (r){ openDetail[id] = `<span class="status-ok">The token works: GitHub knows it as <strong>${esc(r.login)}</strong>${r.expires ? ', until ' + esc(r.expires) : ''}.</span>`; renderAccounts(); }

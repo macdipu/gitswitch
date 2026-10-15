@@ -343,6 +343,8 @@ gitswitch signout work                   # remove the token from your keychain
 
 The desktop app has "Sign in to GitHub…" in each account's More menu, and the terminal app uses `g` (sign in) and `G` (sign out) on the Accounts page.
 
+**HTTPS remotes.** While an account is signed in, git gets its token for the HTTPS remotes of that account's repos, so `git clone https://…`, `fetch` and `push` work as the right account too, with no password prompt. GitSwitch adds itself as a credential helper for that host only (a `credential.https://github.com/` section in your global git config) ahead of your own helpers, and answers only when it is sure which signed-in account a repo uses. Everything else (other accounts' repos, other hosts, a folder that is not a repo) goes to your own helpers exactly as before. Signing out the last account on a host, or `gitswitch uninstall`, removes the section. To push over HTTPS, give the token **Contents: read and write**; read-only is enough to clone and fetch.
+
 GitSwitch checks the token with GitHub before keeping it, and refuses a token of another GitHub user than the one the account's key logs in as. The token is kept in your OS keychain (macOS Keychain, Windows Credential Manager, or the Secret Service through `secret-tool` on Linux), never in git config or a file, and never on a command line. Renaming an account takes its token along; removing an account removes it. Signing out only removes it from your computer: delete it on GitHub to revoke it. GitHub Enterprise servers work too; GitLab and Bitbucket are not supported yet.
 
 ## Health check

@@ -2,6 +2,7 @@ package application
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -114,5 +115,84 @@ func TestStatusCheckAndSignOut(t *testing.T) {
 	sec.err = errors.New("keychain locked")
 	if st := s.Status(); st[0].Error != "keychain locked" {
 		t.Errorf("a keychain error must show: %+v", st[0])
+	}
+}
+
+type fakeHelper struct {
+	hook     string
+	entries  []hosting.HelperEntry
+	sections map[string][]string
+}
+
+func (f *fakeHelper) Hook() string                            { return f.hook }
+func (f *fakeHelper) Entries() ([]hosting.HelperEntry, error) { return f.entries, nil }
+func (f *fakeHelper) Write(host string, v []string) error     { f.sections[host] = v; return nil }
+func (f *fakeHelper) Remove(host string) error                { delete(f.sections, host); return nil }
+
+type fakeRepos struct {
+	current string
+	account map[string]string // git dir -> account id
+}
+
+func (f *fakeRepos) Current() string { return f.current }
+func (f *fakeRepos) AccountFor(c *account.Config, gd string) *account.Account {
+	return c.Account(f.account[gd])
+}
+
+func TestHelperFollowsSignIns(t *testing.T) {
+	s, _, _, _ := newService()
+	h := &fakeHelper{hook: `"/bin/gitswitch" ssh`, entries: []hosting.HelperEntry{{URL: "", Value: "osxkeychain"}}, sections: map[string][]string{}}
+	s.Helper = h
+	r, err := s.SignIn("work", "tok-work")
+	if err != nil || r.HTTPS != "" {
+		t.Fatalf("SignIn = %+v, %v", r, err)
+	}
+	if got := h.sections["github.com"]; !reflect.DeepEqual(got, []string{"", `!"/bin/gitswitch" credential`, "osxkeychain"}) {
+		t.Fatalf("section = %q", got)
+	}
+	if _, err := s.SignIn("home", "tok-home"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SignOut("work"); err != nil || h.sections["github.com"] == nil {
+		t.Fatalf("home is still signed in on github.com: %v %v", err, h.sections)
+	}
+	if err := s.SignOut("home"); err != nil || h.sections["github.com"] != nil {
+		t.Fatalf("nobody is signed in: %v %v", err, h.sections)
+	}
+	h.hook = "ssh"
+	if r, _ := s.SignIn("work", "tok-work"); !strings.Contains(r.HTTPS, "gitswitch install") || h.sections["github.com"] != nil {
+		t.Errorf("not installed: %+v %v", r, h.sections)
+	}
+}
+
+func TestCredential(t *testing.T) {
+	s, _, sec, _ := newService()
+	repos := &fakeRepos{current: "/src/api/.git", account: map[string]string{"/src/api/.git": "work", "/src/web/.git": "home"}}
+	s.Repos = repos
+	sec.m["work"] = "tok-work"
+	req := hosting.Request{Protocol: "https", Host: "github.com"}
+	if u, p, ok := s.Credential(req); !ok || u != "dipu-work" || p != "tok-work" {
+		t.Fatalf("Credential = %q %q %v", u, p, ok)
+	}
+	cases := map[string]func(){
+		"http":          func() { req.Protocol = "http" },
+		"another host":  func() { req.Host = "gitlab.com" },
+		"another user":  func() { req.Username = "someone" },
+		"not signed in": func() { repos.current = "/src/web/.git" },
+		"no repo":       func() { repos.current = "" },
+		"no account":    func() { repos.current = "/src/other/.git" },
+	}
+	for name, change := range cases {
+		req = hosting.Request{Protocol: "https", Host: "github.com"}
+		repos.current = "/src/api/.git"
+		change()
+		if _, _, ok := s.Credential(req); ok {
+			t.Errorf("%s: must not answer", name)
+		}
+	}
+	req = hosting.Request{Protocol: "https", Host: "ssh.github.com", Username: "Dipu-Work"}
+	repos.current = "/src/api/.git"
+	if _, _, ok := s.Credential(req); !ok {
+		t.Error("the same user in another case, on a port-443 host, must be answered")
 	}
 }

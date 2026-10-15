@@ -48,7 +48,7 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 | 5 | **Clone via URL** | done | `gitswitch repo clone <url> [folder] [--account id]`, "Clone from URL…" in the desktop app, `c` in the terminal app. The account is saved in the new repo before the first fetch (`git clone -c gitswitch.account=<id>`). HTTPS uses git's own credentials for now (see #23). |
 | 13 | **Clone status detection**: which remote repos are already cloned, and where | planned | Match registry remotes against API results. |
 | 17 | **Refresh and sync metadata** | planned | Cache API results; never block the UI on the network. |
-| 23 | **Secure authentication**: account-specific credentials, SSH and HTTPS, nothing exposed | partly | Tokens are in the OS keychain (never in git config, files or command lines). HTTPS through a git credential helper per account is next. |
+| 23 | **Secure authentication**: account-specific credentials, SSH and HTTPS, nothing exposed | done | Tokens are in the OS keychain (never in git config, files or command lines). For HTTPS, `gitswitch credential` is a git credential helper in its own `credential.https://<host>/` section, written while an account on the host is signed in: ahead of your helpers, answering only for repos whose account is signed in, so everything else reaches your helpers unchanged. Removed on the last sign-out and on uninstall; `uninstall --purge` also deletes the tokens. |
 | 18 | **Error handling**: auth failures, inaccessible repos, invalid folders, network issues, clone conflicts | partly | Clone explains bad URLs, non-empty folders, wrong-host accounts, access and network failures. API errors come with the browser. |
 
 ### Front ends

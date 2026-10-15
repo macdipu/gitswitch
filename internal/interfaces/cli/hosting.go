@@ -47,6 +47,27 @@ func (x *CLI) cmdSignin(args []string) error {
 	if s.Expires != "" {
 		x.say("The token expires", s.Expires+".")
 	}
+	if s.HTTPS == "" {
+		x.sayf("Git now uses it for HTTPS remotes of %s's repos on %s; other repos keep your own credentials.\n", s.Account, s.Host)
+	} else {
+		x.say("HTTPS remotes:", s.HTTPS)
+	}
+	return nil
+}
+
+// cmdCredential is git's credential helper protocol: "get" answers with
+// the token of the repo's signed-in account, or nothing, so git asks your
+// own helpers. GitSwitch keeps no other credentials: store and erase do
+// nothing. It never prompts, never fails and prints only the answer.
+func (x *CLI) cmdCredential(args []string) error {
+	in, _ := io.ReadAll(io.LimitReader(os.Stdin, 64<<10))
+	if len(args) != 1 || args[0] != "get" {
+		return nil
+	}
+	r := hosting.ParseRequest(string(in))
+	if user, pass, ok := x.app.Hosting.Credential(r); ok {
+		fmt.Fprintf(x.out, "username=%s\npassword=%s\n", user, pass)
+	}
 	return nil
 }
 

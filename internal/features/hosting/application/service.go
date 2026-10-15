@@ -5,7 +5,9 @@ package application
 
 import (
 	"errors"
+	"strings"
 
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 )
 
@@ -14,6 +16,8 @@ type Service struct {
 	Accounts hosting.Accounts
 	Secrets  hosting.Secrets
 	API      hosting.API
+	Helper   hosting.HelperConfig // nil: no HTTPS credentials
+	Repos    hosting.Repos
 }
 
 // SignIn checks a token with the host and saves it for the account. A
@@ -44,7 +48,7 @@ func (s *Service) SignIn(accountID, token string) (hosting.SignedIn, error) {
 	if a.User == "" {
 		_ = s.Accounts.SetUser(a.ID, u.Login) // only a hint for later checks
 	}
-	return hosting.SignedIn{Account: a.ID, Host: a.Host, User: u, Grant: g}, nil
+	return hosting.SignedIn{Account: a.ID, Host: a.Host, User: u, Grant: g, HTTPS: s.syncHelper(a.Host)}, nil
 }
 
 // SignOut forgets an account's token. Signing out twice is fine.
@@ -53,7 +57,13 @@ func (s *Service) SignOut(accountID string) error {
 	if err != nil {
 		return err
 	}
-	return s.Secrets.Delete(a.ID)
+	if err := s.Secrets.Delete(a.ID); err != nil {
+		return err
+	}
+	if why := s.syncHelper(a.Host); why != "" && s.Helper != nil && !strings.Contains(why, "gitswitch install") {
+		return errors.New("signed out, but git's credential settings could not be updated: " + why)
+	}
+	return nil
 }
 
 // Status says which accounts are signed in, without the network.
@@ -99,4 +109,65 @@ func (s *Service) Check(accountID string) (hosting.SignedIn, error) {
 		return hosting.SignedIn{}, err
 	}
 	return hosting.SignedIn{Account: a.ID, Host: a.Host, User: u, Grant: g}, nil
+}
+
+// syncHelper keeps git's credential helper section for a host: present
+// while an account on the host is signed in, gone when none is. It
+// returns why HTTPS remotes do not get the token, or "".
+func (s *Service) syncHelper(host string) string {
+	if s.Helper == nil {
+		return "no credential helper here"
+	}
+	host = remote.CanonicalHost(host) // ssh.github.com and github.com share one section
+	signed := false
+	for _, st := range s.Status() {
+		if st.SignedIn && remote.SameHost(st.Host, host) {
+			signed = true
+		}
+	}
+	if !signed {
+		if err := s.Helper.Remove(host); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+	cmd, ok := hosting.HelperCommand(s.Helper.Hook())
+	if !ok {
+		return "git does not run through gitswitch yet (gitswitch install), so HTTPS remotes keep using your own credentials"
+	}
+	entries, err := s.Helper.Entries()
+	if err != nil {
+		return err.Error()
+	}
+	values := append([]string{"", cmd}, hosting.PreviousHelpers(entries, host)...)
+	if err := s.Helper.Write(host, values); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// Credential answers git's "get" as a credential helper: the token of the
+// signed-in account the repo uses, for an https request to its host. ok is
+// false whenever GitSwitch is not sure, so git asks your own helpers.
+func (s *Service) Credential(r hosting.Request) (user, password string, ok bool) {
+	if r.Protocol != "https" || s.Repos == nil {
+		return "", "", false
+	}
+	c := s.Accounts.Load()
+	gd := s.Repos.Current()
+	if gd == "" {
+		return "", "", false
+	}
+	a := s.Repos.AccountFor(c, gd)
+	if a == nil || !remote.SameHost(a.Host, r.Host) {
+		return "", "", false
+	}
+	if r.Username != "" && !strings.EqualFold(r.Username, hosting.TokenUser(a.User)) {
+		return "", "", false // the URL names another user
+	}
+	tok, err := s.Secrets.Get(a.ID)
+	if err != nil {
+		return "", "", false
+	}
+	return hosting.TokenUser(a.User), tok, true
 }

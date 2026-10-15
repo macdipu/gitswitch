@@ -15,6 +15,7 @@ import (
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	accountinfra "github.com/macdipu/gitswitch/internal/features/account/infrastructure"
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
+	hostinginfra "github.com/macdipu/gitswitch/internal/features/hosting/infrastructure"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
@@ -314,6 +315,7 @@ func (in *Installer) Uninstall(purge bool, report func(string)) error {
 			_, _ = in.Git.Global("--unset", "core.sshCommand")
 		}
 	}
+	in.removeCredentialHelpers()
 	if v, _ := in.Git.Global("--get", "gitswitch.setUseConfigOnly"); v == "true" {
 		_, _ = in.Git.Global("--unset", "user.useConfigOnly")
 	}
@@ -338,8 +340,12 @@ func (in *Installer) Uninstall(purge bool, report func(string)) error {
 		_, _ = in.Git.Global("--remove-section", sec)
 	}
 	if purge {
+		secrets := hostinginfra.NewSecrets()
 		for _, a := range in.Store.Load().Accounts {
 			_, _ = in.Git.Global("--remove-section", "gitswitch-account."+a.ID)
+			if !in.FS.Dry("remove the GitHub token of " + a.ID + " from the keychain") {
+				_ = secrets.Delete(a.ID) // none saved is fine
+			}
 		}
 		out, _ := in.Git.Run("config", "--global", "--name-only", "--get-regexp", `^includeif\..*\.path$`)
 		for _, k := range strings.Split(out, "\n") {
@@ -501,4 +507,23 @@ func (in *Installer) addToPath(dir string) error {
 		in.say("Could not add ~/.local/bin to your PATH. Add this line to your shell profile:\n  " + line)
 	}
 	return nil
+}
+
+// removeCredentialHelpers deletes the credential.https://<host>/ sections
+// GitSwitch wrote for signed-in accounts (see the hosting feature), so git
+// asks only your own credential helpers again.
+func (in *Installer) removeCredentialHelpers() {
+	out, _ := in.Git.Global("-z", "--get-regexp", `^credential\..*/\.helper$`)
+	done := map[string]bool{}
+	for _, rec := range strings.Split(out, "\x00") {
+		key, val, _ := strings.Cut(rec, "\n")
+		section, ok := strings.CutSuffix(key, ".helper")
+		if !ok || done[section] || !strings.Contains(strings.ToLower(val), "gitswitch") || !strings.HasSuffix(val, " credential") {
+			continue
+		}
+		done[section] = true
+		if _, err := in.Git.Global("--remove-section", section); err == nil {
+			in.say("Removed GitSwitch's HTTPS credential helper (" + section + ").")
+		}
+	}
 }

@@ -878,7 +878,11 @@ func (t *tui) keyAccounts(k string) {
 					return err
 				}
 				t.reload()
-				t.say(nil, id+" is signed in to GitHub as "+r.Login+".")
+				msg := id + " is signed in to GitHub as " + r.Login + "."
+				if r.HTTPS == "" {
+					msg += " Git uses the token for HTTPS remotes of its repos."
+				}
+				t.say(nil, msg)
 				return nil
 			}}
 	case "G":
