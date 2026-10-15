@@ -84,7 +84,7 @@ func (x *CLI) readToken(id, host string) (string, error) {
 	}
 	defer terminal.RestoreTTY(st)
 	fmt.Fprintf(x.out, "Create a token for %s while signed in to %s as that account:\r\n  %s\r\n", id, host, hosting.TokenPage(host))
-	fmt.Fprint(x.out, "A fine-grained token with \"All repositories\" and read access to Metadata and Contents is enough.\r\n")
+	fmt.Fprint(x.out, "A fine-grained token with \"All repositories\" and read access to Metadata, Contents and Pull requests is enough.\r\n")
 	fmt.Fprint(x.out, "Paste the token (it is not shown) and press Enter: ")
 	var b []byte
 	one := make([]byte, 1)

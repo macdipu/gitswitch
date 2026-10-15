@@ -81,7 +81,7 @@ func New(dryRun bool, out io.Writer) *App {
 		Undo:      undos,
 		Workspace: &workspaceapp.Service{Git: &workspaceinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Hosting: &hostingapp.Service{Accounts: store, Secrets: secrets, API: &hostinginfra.GitHub{Version: Version},
-			Helper: &hostinginfra.HelperConfig{Git: git}, Repos: &hostinginfra.HelperRepos{Git: git, Reader: reader}, Cache: hostinginfra.Cache{}},
+			Helper: &hostinginfra.HelperConfig{Git: git}, Repos: &hostinginfra.HelperRepos{Git: git, Reader: reader}, Cache: hostinginfra.Cache{}, Inboxes: hostinginfra.Cache{}},
 		Setup:  installer,
 		Doctor: &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
 		dryRun: dryRun,

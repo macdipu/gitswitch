@@ -33,7 +33,7 @@ import (
 // The TUI runs only while it is open, in the terminal it was started from
 // (Windows Terminal, VS Code, Android Studio, macOS Terminal, ...).
 
-var tabNames = []string{"Accounts", "Repos", "History", "Rules", "Settings"}
+var tabNames = []string{"Accounts", "Repos", "History", "Rules", "Settings", "Reviews"}
 
 const (
 	tabAccounts = iota
@@ -41,6 +41,7 @@ const (
 	tabHistory
 	tabRules
 	tabSettings
+	tabReviews
 )
 
 type field struct {
@@ -94,11 +95,13 @@ type viewer struct {
 
 type tui struct {
 	tab     int
-	sel     [5]int
-	off     [5]int
+	sel     [6]int
+	off     [6]int
 	cfg     *account.Config
 	app     *bootstrap.App
 	repos   []repo.Info
+	reviews []hosting.Inbox           // signed-in accounts' pull requests
+	rvRows  []hosting.PullRequest     // the Reviews page's rows, in order
 	apis    map[string]hosting.Status // GitHub sign-in by account id (lower case)
 	groups  []repoHeading             // headings on the Repos page, by the repo they come before
 	scanned bool
@@ -583,6 +586,8 @@ func (t *tui) rowsOf(tab int) int {
 		return len(t.cfg.Rules)
 	case tabSettings:
 		return settingRows + len(t.checks)
+	case tabReviews:
+		return len(t.rvRows)
 	}
 	return 0
 }
@@ -600,6 +605,9 @@ func (t *tui) switchTab(i int) {
 		t.checks = t.app.Doctor.Run(false)
 		t.clampSel()
 	}
+	if t.tab == tabReviews {
+		t.loadReviews(hostingapp.FetchStale)
+	}
 }
 
 func (t *tui) handleMain(k string) {
@@ -616,7 +624,7 @@ func (t *tui) handleMain(k string) {
 	case "backtab", "left":
 		t.switchTab(t.tab - 1)
 		return
-	case "1", "2", "3", "4", "5":
+	case "1", "2", "3", "4", "5", "6":
 		t.switchTab(int(k[0] - '1'))
 		return
 	case "up", "k":
@@ -656,6 +664,8 @@ func (t *tui) handleMain(k string) {
 		t.keyRules(k)
 	case tabSettings:
 		t.keySettings(k)
+	case tabReviews:
+		t.keyReviews(k)
 	}
 }
 
@@ -691,6 +701,8 @@ Rules
   a add rule   x remove rule
 Settings
   Enter toggle or fix the selected item   r run the health checks again
+Reviews (6)
+  Enter or o open the pull request in the browser   r read them again from GitHub
 In forms
   Tab / ↑↓ next field   ←→ change choice   Enter next / save   Esc cancel   Ctrl+U clear field
 In lists that pop up (branch, repo, key)
@@ -874,7 +886,7 @@ func (t *tui) keyAccounts(k string) {
 			t.say(err, "")
 			return
 		}
-		t.form = &form{title: "Sign " + id + " in to GitHub: create a token at " + hosting.TokenPage(host) + " (read access to Metadata and Contents is enough)",
+		t.form = &form{title: "Sign " + id + " in to GitHub: create a token at " + hosting.TokenPage(host) + " (read access to Metadata, Contents and Pull requests is enough)",
 			fields: []field{{label: "Token", secret: true, hint: "kept in your keychain, never in git config"}},
 			submit: func(v []string) error {
 				r, err := t.app.Hosting.SignIn(id, v[0])
@@ -961,6 +973,90 @@ func (t *tui) keyAccounts(k string) {
 				}}
 		}
 	}
+}
+
+// ---------------- reviews ----------------
+
+// loadReviews reads the signed-in accounts' pull requests: from the cache,
+// from GitHub when it is older than 5 minutes (fetch FetchStale) or now
+// (FetchAll).
+func (t *tui) loadReviews(fetch hostingapp.Fetch) {
+	t.reviews = t.app.Hosting.Reviews(fetch)
+	t.rvRows = nil
+	for _, in := range t.reviews {
+		for _, l := range [][]hosting.PullRequest{in.ToReview, in.Mine, in.Reviewed} {
+			t.rvRows = append(t.rvRows, l...)
+		}
+	}
+	t.clampSel()
+}
+
+func (t *tui) keyReviews(k string) {
+	i := t.sel[tabReviews]
+	switch k {
+	case "r":
+		t.loadReviews(hostingapp.FetchAll)
+		t.say(nil, "Read again from GitHub.")
+	case "enter", "o":
+		if i >= 0 && i < len(t.rvRows) {
+			p := t.rvRows[i]
+			t.say(process.OpenBrowser(p.URL), "Opened "+p.Repo+fmt.Sprintf("#%d", p.Number)+".")
+		}
+	}
+}
+
+func (t *tui) drawReviews() ([]string, int) {
+	if len(t.reviews) == 0 {
+		return []string{" No account is signed in to GitHub. Sign one in with g on the Accounts page (1) to see your pull requests here."}, -1
+	}
+	var l []string
+	selLine, row := -1, 0
+	section := func(title string, prs []hosting.PullRequest, author bool) {
+		l = append(l, " "+cDim+fmt.Sprintf("%s (%d)", title, len(prs))+cReset)
+		if len(prs) == 0 {
+			l = append(l, "   "+cDim+"none"+cReset)
+		}
+		for _, p := range prs {
+			on := row == t.sel[tabReviews]
+			if on {
+				selLine = len(l)
+			}
+			meta := p.Repo + fmt.Sprintf("#%d", p.Number)
+			if author {
+				meta += " · " + p.Author
+			}
+			var chips []string
+			for _, c := range p.Chips {
+				switch {
+				case c.Bad:
+					chips = append(chips, cRed+c.Text+cReset)
+				case c.Kind == "ready":
+					chips = append(chips, cGreen+c.Text+cReset)
+				default:
+					chips = append(chips, cDim+c.Text+cReset)
+				}
+			}
+			l = append(l, fmt.Sprintf("%s%s%s  %s%s  %s", mark(on), boldIf(on), history.CleanText(p.Title), cReset+cDim, meta+cReset, strings.Join(chips, " · ")))
+			row++
+		}
+	}
+	for i, in := range t.reviews {
+		if i > 0 {
+			l = append(l, "")
+		}
+		head := " " + t.color(in.Account) + in.Account + cReset + " " + cBold + in.Login + cReset + cDim + " on " + in.Host
+		if !in.Fetched.IsZero() {
+			head += " · read " + refs.Ago(time.Now().Unix(), in.Fetched.Unix())
+		}
+		l = append(l, head+cReset)
+		if in.Error != "" {
+			l = append(l, " "+cRed+"could not read them: "+in.Error+cReset)
+		}
+		section("Waiting for your review", in.ToReview, true)
+		section("Your pull requests", in.Mine, false)
+		section("Reviewed by you lately", in.Reviewed, true)
+	}
+	return l, selLine
 }
 
 // ---------------- repos ----------------
@@ -2270,6 +2366,8 @@ func (t *tui) draw() {
 		lines, sel = t.drawRules()
 	case tabSettings:
 		lines, sel = t.drawSettings()
+	case tabReviews:
+		lines, sel = t.drawReviews()
 	}
 	// keep the selection in view
 	o := &t.off[t.tab]
@@ -2357,6 +2455,8 @@ func (t *tui) footer() string {
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
+	case tabReviews:
+		return "Enter or o open in the browser · r refresh · ? help · q quit"
 	}
 	return "Enter toggle / fix · r check again · ? help · q quit"
 }

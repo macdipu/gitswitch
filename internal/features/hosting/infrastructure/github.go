@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,4 +141,109 @@ func nextLink(h string) string {
 		return m[1]
 	}
 	return ""
+}
+
+// prFields are the pull request fields the inbox reads.
+const prFields = `... on PullRequest { number title url isDraft createdAt updatedAt author { login }
+  repository { nameWithOwner } reviewDecision mergeable
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }`
+
+// inboxQuery reads the three inbox searches in one request.
+const inboxQuery = `query($toReview: String!, $mine: String!, $reviewed: String!) {
+  toReview: search(query: $toReview, type: ISSUE, first: 50) { nodes { ` + prFields + ` } }
+  mine: search(query: $mine, type: ISSUE, first: 50) { nodes { ` + prFields + ` } }
+  reviewed: search(query: $reviewed, type: ISSUE, first: 30) { nodes { ` + prFields + ` } }
+}`
+
+type ghPR struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	URL       string `json:"url"`
+	IsDraft   bool   `json:"isDraft"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+	Author    *struct {
+		Login string `json:"login"`
+	} `json:"author"` // null for a deleted user
+	Repository struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+	ReviewDecision string `json:"reviewDecision"`
+	Mergeable      string `json:"mergeable"`
+	Commits        struct {
+		Nodes []struct {
+			Commit struct {
+				StatusCheckRollup *struct {
+					State string `json:"state"`
+				} `json:"statusCheckRollup"`
+			} `json:"commit"`
+		} `json:"nodes"`
+	} `json:"commits"`
+}
+
+func (p ghPR) domain() hosting.PullRequest {
+	out := hosting.PullRequest{Repo: p.Repository.NameWithOwner, Number: p.Number, Title: p.Title, URL: p.URL, Draft: p.IsDraft,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, ReviewDecision: p.ReviewDecision, Mergeable: p.Mergeable}
+	if p.Author != nil {
+		out.Author = p.Author.Login
+	} else {
+		out.Author = "ghost"
+	}
+	if n := p.Commits.Nodes; len(n) > 0 && n[0].Commit.StatusCheckRollup != nil {
+		out.Checks = n[0].Commit.StatusCheckRollup.State
+	}
+	return out
+}
+
+// Inbox runs the three inbox searches in one GraphQL request.
+func (g *GitHub) Inbox(base, token, login string) (toReview, mine, reviewed []hosting.PullRequest, err error) {
+	q1, q2, q3 := hosting.InboxQueries(login)
+	body, _ := json.Marshal(map[string]any{"query": inboxQuery, "variables": map[string]string{"toReview": q1, "mine": q2, "reviewed": q3}})
+	req, err := http.NewRequest("POST", hosting.GraphQLURL(baseFor(base)), bytes.NewReader(body))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "gitswitch/"+g.Version)
+	res, err := g.client().Do(req)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("could not reach %s: %v. Check your network connection", req.URL.Host, err)
+	}
+	defer res.Body.Close()
+	var r struct {
+		Data map[string]struct {
+			Nodes []ghPR `json:"nodes"`
+		} `json:"data"`
+		Errors []struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	decErr := json.NewDecoder(res.Body).Decode(&r)
+	switch {
+	case res.StatusCode == http.StatusUnauthorized:
+		return nil, nil, nil, errors.New("GitHub refused the token: it is wrong, expired or revoked. Sign in again")
+	case res.StatusCode != http.StatusOK:
+		return nil, nil, nil, fmt.Errorf("GitHub answered %s", res.Status)
+	case decErr != nil:
+		return nil, nil, nil, errors.New("GitHub's answer could not be read")
+	}
+	if len(r.Errors) > 0 && r.Data == nil {
+		msg := r.Errors[0].Message
+		if r.Errors[0].Type == "FORBIDDEN" || strings.Contains(msg, "not accessible") {
+			return nil, nil, nil, errors.New("the token cannot read pull requests: give it \"Pull requests: read\" on GitHub (Settings → Developer settings → Personal access tokens), then sign in again")
+		}
+		return nil, nil, nil, fmt.Errorf("GitHub: %s", msg)
+	}
+	conv := func(key string) []hosting.PullRequest {
+		out := []hosting.PullRequest{}
+		for _, n := range r.Data[key].Nodes {
+			if n.Number != 0 { // search hits that are not pull requests come back empty
+				out = append(out, n.domain())
+			}
+		}
+		return out
+	}
+	return conv("toReview"), conv("mine"), conv("reviewed"), nil
 }

@@ -50,3 +50,35 @@ func (c Cache) Delete(id string) error {
 	}
 	return nil
 }
+
+// Inboxes are kept next to the repo lists, one file per account.
+func (c Cache) inboxPath(id string) string {
+	return strings.TrimSuffix(c.path(id), ".json") + ".inbox.json"
+}
+
+func (c Cache) LoadInbox(id string) (hosting.Inbox, bool) {
+	var in hosting.Inbox
+	b, err := os.ReadFile(c.inboxPath(id))
+	if err != nil || json.Unmarshal(b, &in) != nil {
+		return hosting.Inbox{}, false
+	}
+	return in, true
+}
+
+func (c Cache) SaveInbox(id string, in hosting.Inbox) error {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(c.inboxPath(id)), 0o700); err != nil {
+		return err
+	}
+	return filesystem.WriteAtomic(c.inboxPath(id), b, 0o600)
+}
+
+func (c Cache) DeleteInbox(id string) error {
+	if err := os.Remove(c.inboxPath(id)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}

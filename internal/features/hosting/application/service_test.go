@@ -44,11 +44,23 @@ func (f *fakeSecrets) Delete(id string) error { delete(f.m, id); return f.err }
 
 // fakeAPI knows tokens by value: token -> login, and token -> repos.
 type fakeAPI struct {
-	users map[string]string
-	bases []string
-	repos map[string][]hosting.RemoteRepo
-	calls int
-	err   error // Repos fails with it
+	users  map[string]string
+	bases  []string
+	repos  map[string][]hosting.RemoteRepo
+	calls  int
+	err    error // Repos and Inbox fail with it
+	logins []string
+}
+
+func (f *fakeAPI) Inbox(base, token, login string) ([]hosting.PullRequest, []hosting.PullRequest, []hosting.PullRequest, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, nil, nil, f.err
+	}
+	f.logins = append(f.logins, login)
+	return []hosting.PullRequest{{Repo: "acme/api", Number: 7, Title: "Add billing", ReviewDecision: "REVIEW_REQUIRED"}},
+		[]hosting.PullRequest{{Repo: "acme/web", Number: 3, Title: "Fix login", Mergeable: "CONFLICTING", ReviewDecision: "APPROVED"}},
+		nil, nil
 }
 
 func (f *fakeAPI) Repos(base, token string) ([]hosting.RemoteRepo, error) {

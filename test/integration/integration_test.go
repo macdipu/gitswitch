@@ -2421,3 +2421,67 @@ func TestUpdateWithRebase(t *testing.T) {
 		t.Fatal("the rebase must be aborted")
 	}
 }
+
+// gitswitch prs lists each signed-in account's pull requests with what
+// stands out about its own, and keeps the last inbox when GitHub is gone.
+func TestReviewInbox(t *testing.T) {
+	e := newEnv(t)
+	var asked string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok-work" {
+			w.WriteHeader(401)
+			return
+		}
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"dipu-work"}`)
+		case "/graphql":
+			var body struct{ Variables map[string]string }
+			must(t, json.NewDecoder(r.Body).Decode(&body))
+			asked = body.Variables["toReview"] + " | " + body.Variables["mine"]
+			fmt.Fprint(w, `{"data":{
+			  "toReview":{"nodes":[{"number":7,"title":"Add billing","url":"https://github.com/acme/api/pull/7","author":{"login":"naser"},"repository":{"nameWithOwner":"acme/api"},"reviewDecision":"REVIEW_REQUIRED","mergeable":"MERGEABLE","commits":{"nodes":[]}}]},
+			  "mine":{"nodes":[{"number":3,"title":"Fix login","url":"https://github.com/acme/web/pull/3","author":{"login":"dipu-work"},"repository":{"nameWithOwner":"acme/web"},"reviewDecision":"CHANGES_REQUESTED","mergeable":"CONFLICTING","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}]},
+			  "reviewed":{"nodes":[]}}}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer api.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITHUB_API="+api.URL)
+
+	if _, err := e.run(e.root, gsBin, "prs"); err == nil {
+		t.Fatal("without a signed-in account, prs says how to sign in")
+	}
+	cmd := exec.Command(gsBin, "signin", "work")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-work\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	out := e.gs("prs")
+	for _, want := range []string{"Waiting for your review (1)", "acme/api#7  Add billing  · naser", "Waiting for review",
+		"Your pull requests (1)", "! Conflicts", "! Checks failing", "! Changes requested", "Reviewed by you lately (0)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("prs output lacks %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(asked, "review-requested:dipu-work") || !strings.Contains(asked, "author:dipu-work") {
+		t.Fatalf("searched as %q", asked)
+	}
+	var inboxes []struct {
+		Account string
+		Mine    []struct {
+			Number int
+			Chips  []struct{ Kind string }
+		}
+	}
+	must(t, json.Unmarshal([]byte(e.gs("prs", "--json")), &inboxes))
+	if len(inboxes) != 1 || inboxes[0].Account != "work" || len(inboxes[0].Mine) != 1 || len(inboxes[0].Mine[0].Chips) != 3 {
+		t.Fatalf("--json: %+v", inboxes)
+	}
+
+	api.Close() // GitHub is gone: the last inbox is still shown
+	if out, err := e.run(e.root, gsBin, "prs", "--refresh"); err != nil || !strings.Contains(out, "could not read it") || !strings.Contains(out, "Add billing") {
+		t.Fatalf("a failed refresh keeps the inbox: %v\n%s", err, out)
+	}
+}

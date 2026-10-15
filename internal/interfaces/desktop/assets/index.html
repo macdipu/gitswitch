@@ -96,6 +96,23 @@ th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:8px
 td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
 td select{padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
 .path{font-weight:600}
+.rv-bar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.rv-bar .hint{flex:1}
+.rv-acct{margin:0 0 22px}
+.rv-acct h2{display:flex;align-items:center;gap:8px;font-size:17px;margin:0 0 8px}
+.rv-acct h2 .hint{font-weight:400;font-size:13px}
+.rv-group{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);margin:0 0 10px}
+.rv-group h3{margin:0;padding:8px 12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--rule)}
+.pr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:8px 12px;border-bottom:1px solid var(--rule)}
+.pr:last-child{border-bottom:0}
+.pr a.prt{color:var(--ink);text-decoration:none;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr a.prt:hover{text-decoration:underline}
+.pr .meta{grid-column:1;font-size:12.5px;color:var(--muted)}
+.pr .chips{grid-row:1/3;grid-column:2;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;align-items:center;max-width:320px}
+.prchip{font-size:11.5px;line-height:18px;padding:0 7px;border-radius:999px;border:1px solid var(--rule);color:var(--muted);white-space:nowrap}
+.prchip.bad{border-color:var(--bad);color:var(--bad)}
+.prchip.ready{border-color:var(--ok);color:var(--ok)}
+.rv-none{padding:8px 12px;font-size:13px;color:var(--muted)}
 .gh-sec{margin-top:28px;padding-top:18px;border-top:1px solid var(--rule)}
 .gh-sec h2{font-size:18px;margin:0 0 4px}
 .gh-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
@@ -347,6 +364,7 @@ dialog .row-actions{justify-content:flex-end}
     <button data-tab="accounts" aria-current="page">Accounts</button>
     <button data-tab="repos">Repos</button>
     <button data-tab="history">History</button>
+    <button data-tab="reviews">Reviews</button>
     <button data-tab="rules">Rules</button>
     <button data-tab="settings">Settings</button>
   </nav>
@@ -426,6 +444,13 @@ dialog .row-actions{justify-content:flex-end}
     <div id="repos"></div>
   </section>
 
+
+  <section id="tab-reviews" hidden>
+    <h1 tabindex="-1">Reviews</h1>
+    <p class="lead">Pull requests waiting for your review, yours with what stands out, and ones you reviewed lately, for each account signed in to GitHub.</p>
+    <div class="rv-bar"><span class="hint" id="rvMeta" aria-live="polite"></span><button class="btn" id="rvRefresh">Refresh</button></div>
+    <div id="rvList"></div>
+  </section>
 
   <section id="tab-history" hidden>
     <h1 tabindex="-1" class="sr-only">History</h1>
@@ -619,6 +644,7 @@ function show(tab){
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
   document.querySelector('main').classList.toggle('wide', tab === 'history');
   if (tab === 'repos') loadRepos();
+  if (tab === 'reviews') loadReviews('none');
   if (tab === 'history') fillRepoSelect();
   if (tab === 'settings') loadChecks();
   // Clicked in the sidebar: move focus to the new page, so keyboard and
@@ -864,7 +890,7 @@ $('#accounts').addEventListener('click', async e => {
   } else if (b.dataset.act === 'signin'){
     const page = 'https://' + (a.host === 'ssh.github.com' ? 'github.com' : a.host) + '/settings/personal-access-tokens/new';
     openDetail[id] = `To sign <strong>${esc(id)}</strong> in to GitHub, create a token while signed in to GitHub as ${a.user ? '<strong>' + esc(a.user) + '</strong>' : 'this account'}:
-      <a href="${esc(page)}" target="_blank" rel="noopener noreferrer">${esc(page)}</a>. A fine-grained token with “All repositories” and read access to Metadata and Contents is enough. GitSwitch keeps it in your keychain, never in git config.`;
+      <a href="${esc(page)}" target="_blank" rel="noopener noreferrer">${esc(page)}</a>. A fine-grained token with “All repositories” and read access to Metadata, Contents and Pull requests is enough. GitSwitch keeps it in your keychain, never in git config.`;
     renderAccounts();
     const token = await ask(`Paste the token for ${id}:`, {input:'', secret:true, ok:'Sign in'});
     if (token === null){ delete openDetail[id]; renderAccounts(); return; }
@@ -1101,6 +1127,45 @@ $('#ghList').addEventListener('click', async e => {
     show('history'); await fillRepoSelect(); $('#histRepo').value = local.gitDir; loadHistory();
   }
 });
+
+// ---- Reviews: each signed-in account's pull requests ----
+// The cached inboxes show at once; those older than 5 minutes are read
+// again, and again every 5 minutes while the page stays open. Nothing
+// runs while it is closed.
+let RV = null;
+async function loadReviews(fetch){
+  if (!RV) $('#rvList').innerHTML = '<p class="hint">Loading…</p>';
+  const busy = fetch !== 'none', b = $('#rvRefresh');
+  if (busy){ b.disabled = true; b.textContent = 'Refreshing…'; }
+  const r = await act(() => api('GET', '/api/reviews?fetch=' + fetch));
+  if (busy){ b.disabled = false; b.textContent = 'Refresh'; }
+  if (!r) return;
+  RV = r; renderReviews();
+  if (fetch === 'none' && r.some(i => i.stale)) loadReviews('stale');
+}
+setInterval(() => { if (!$('#tab-reviews').hidden && RV?.length) loadReviews('stale'); }, 60000);
+$('#rvRefresh').onclick = () => loadReviews('all');
+function renderReviews(){
+  if (!RV.length){
+    $('#rvMeta').textContent = '';
+    $('#rvList').innerHTML = '<div class="empty">No account is signed in to GitHub. Sign one in from its More menu on the Accounts page to see your pull requests here. Everything else in GitSwitch works without it.</div>';
+    return;
+  }
+  const read = i => i.fetched && !i.fetched.startsWith('0001') ? when(Date.parse(i.fetched) / 1000) : 'never';
+  $('#rvMeta').textContent = RV.map(i => `${i.account}: read ${read(i)}`).join(' · ');
+  const chip = c => `<span class="prchip${c.bad ? ' bad' : c.kind === 'ready' ? ' ready' : ''}"${c.hint ? ` title="${esc(c.hint)}"` : ''}>${esc(c.text)}</span>`;
+  const row = (p, author) => `<div class="pr"><a class="prt" href="${esc(p.url)}" title="${esc(p.title)}">${esc(p.title)}</a>
+      <div class="meta">${esc(p.repo)} #${p.number}${author ? ' · ' + esc(p.author) : ''} · updated ${esc(when(Date.parse(p.updatedAt) / 1000))}</div>
+      <div class="chips">${(p.chips || []).map(chip).join('')}</div></div>`;
+  const group = (title, prs, author, none) => `<div class="rv-group"><h3>${title} (${prs.length})</h3>${prs.length ? prs.map(p => row(p, author)).join('') : `<div class="rv-none">${none}</div>`}</div>`;
+  $('#rvList').innerHTML = RV.map(i => `<section class="rv-acct" aria-label="${esc(i.account)}">
+      <h2><span class="chip" style="color:${colorOf(i.account)};border-color:currentColor">${esc(i.account)}</span>${esc(i.login || '')} <span class="hint">on ${esc(i.host)}</span></h2>
+      ${i.error ? `<div class="alert bad" role="status">Could not read ${esc(i.account)}’s pull requests: ${esc(i.error)}${i.fetched && !i.fetched.startsWith('0001') ? ' Showing the last ones.' : ''}</div>` : ''}
+      ${group('Waiting for your review', i.toReview || [], true, 'Nothing waits for your review.')}
+      ${group('Your pull requests', i.mine || [], false, 'You have no open pull requests.')}
+      ${group('Reviewed by you lately', i.reviewed || [], true, 'No open pull request you reviewed.')}
+    </section>`).join('');
+}
 
 // ---- history ----
 let H = null, R = null;          // the shown history, and {head, branches} of its repo

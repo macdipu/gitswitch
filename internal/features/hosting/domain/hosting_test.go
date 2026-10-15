@@ -47,3 +47,54 @@ func TestSameUser(t *testing.T) {
 		t.Errorf("an untested account takes any user: %v", err)
 	}
 }
+
+func TestStatusChips(t *testing.T) {
+	kinds := func(p PullRequest) string {
+		var out []string
+		for _, c := range StatusChips(p) {
+			out = append(out, c.Kind)
+		}
+		return strings.Join(out, " ")
+	}
+	cases := []struct {
+		pr   PullRequest
+		want string
+	}{
+		{PullRequest{ReviewDecision: "APPROVED", Checks: "SUCCESS", Mergeable: "MERGEABLE"}, "ready"},
+		{PullRequest{ReviewDecision: "APPROVED"}, "ready"},
+		{PullRequest{ReviewDecision: "APPROVED", Checks: "FAILURE"}, "failing approved"},
+		{PullRequest{ReviewDecision: "APPROVED", Checks: "PENDING"}, "running approved"},
+		{PullRequest{ReviewDecision: "CHANGES_REQUESTED", Mergeable: "CONFLICTING"}, "conflict changes"},
+		{PullRequest{ReviewDecision: "REVIEW_REQUIRED"}, "waiting"},
+		{PullRequest{ReviewDecision: "REVIEW_REQUIRED", Draft: true}, "draft"},
+		{PullRequest{Checks: "ERROR"}, "failing"},
+		{PullRequest{}, ""},
+	}
+	for _, c := range cases {
+		if got := kinds(c.pr); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.pr, got, c.want)
+		}
+	}
+	for _, c := range StatusChips(PullRequest{Mergeable: "CONFLICTING", ReviewDecision: "CHANGES_REQUESTED", Checks: "FAILURE"}) {
+		if !c.Bad || c.Hint == "" {
+			t.Errorf("what needs you says what to do: %+v", c)
+		}
+	}
+}
+
+func TestInboxQueriesAndGraphQLURL(t *testing.T) {
+	r, m, rv := InboxQueries("dipu")
+	if !strings.Contains(r, "review-requested:dipu") || !strings.Contains(m, "author:dipu") || !strings.Contains(rv, "reviewed-by:dipu -author:dipu") || !strings.Contains(r, "is:open") {
+		t.Errorf("queries: %q %q %q", r, m, rv)
+	}
+	for base, want := range map[string]string{
+		"https://api.github.com":           "https://api.github.com/graphql",
+		"https://github.acme.corp/api/v3":  "https://github.acme.corp/api/graphql",
+		"https://github.acme.corp/api/v3/": "https://github.acme.corp/api/graphql",
+		"http://127.0.0.1:5555":            "http://127.0.0.1:5555/graphql",
+	} {
+		if got := GraphQLURL(base); got != want {
+			t.Errorf("GraphQLURL(%q) = %q", base, got)
+		}
+	}
+}

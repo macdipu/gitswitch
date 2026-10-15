@@ -44,6 +44,9 @@ Accounts
                                     [--cloned|--not-cloned] [--archived] [--refresh] [--json]
                                     repos your signed-in accounts can see on GitHub, and where each is cloned
   gitswitch github clone <owner/name> [folder]clone one of them with the account that sees it
+  gitswitch prs [--account ID] [--refresh] [--json]
+                                              pull requests waiting for your review, yours with what stands out,
+                                              and ones you reviewed lately, for each signed-in account
   gitswitch default <id>            optional: account used when nobody answers (or Enter)
   gitswitch default --none          remove the default: repos with nothing saved always ask
 
@@ -224,6 +227,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdSignin(rest)
 	case "github", "gh":
 		return x.cmdGithub(rest)
+	case "prs", "reviews":
+		return x.cmdPrs(rest)
 	case "credential": // git runs it as a credential helper
 		return x.cmdCredential(rest)
 	case "signout", "logout":

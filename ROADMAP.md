@@ -227,11 +227,11 @@ OS keychain, and nothing running in the background.
 
 | # | Feature | Status | How |
 | --- | --- | --- | --- |
-| R1 | **Review inbox per account**: PRs waiting for your review (from you or a team you are on), your open PRs, PRs you reviewed lately | planned | `hosting` gains `PullRequest` and `Inbox`; one GraphQL query per account (three `search` aliases with the account's login), cached. Desktop "Reviews" page, terminal app view, `gitswitch prs [--account id] [--json]`. |
-| R2 | **Status on your own PRs**: approved, changes requested, checks failing, conflicts, draft | planned | From the same query (`reviewDecision`, `statusCheckRollup`, `mergeable`, `isDraft`); chips on R1's rows with what to do next in plain words. |
+| R1 | **Review inbox per account**: PRs waiting for your review (from you or a team you are on), your open PRs, PRs you reviewed lately | done | `hostingapp.Reviews`: one GraphQL request per signed-in account (three `search` aliases with its login, `hosting.InboxQueries`), cached per account (`<cache>/remote-repos/<account>.inbox.json`) and read again after 5 minutes; a failed read keeps the last inbox and says why; signing out forgets it. Desktop "Reviews" page (read again every 5 minutes while open), terminal app tab 6, `gitswitch prs [--account id] [--refresh] [--json]`. A token without "Pull requests: read" gets that advice. |
+| R2 | **Status on your own PRs**: approved, changes requested, checks failing, conflicts, draft | done | `hosting.StatusChips` from `reviewDecision`, `statusCheckRollup` and `mergeable`: draft, conflicts, checks failing or running, changes requested, approved or approved and ready to merge; what needs you in red with what to do, ready in green. |
 | R3 | **PR status on the History toolbar** for the current branch | planned | The branch's open PR (by head branch and remote): `PR #42 · 1 approval · checks passing`, linking to it; next to Push and "Open pull request". |
 | R4 | **Team review report**: for a repo over a period, per person PRs written, reviews given, median time to first review and to merge; team totals; and the stale review requests (open, no activity for 14 days or more, with whom they wait on) | planned | Merged and open PRs of the period with their reviews and review requests; pure, table-tested statistics in `hosting`. Desktop "Report" view with "Copy as Markdown", `gitswitch prs report [repo] [--since 30d] [--md\|--csv\|--json]`. |
-| R5 | **Reviews in the terminal app and CLI** | planned | Built with each of R1 to R4, not after them. |
+| R5 | **Reviews in the terminal app and CLI** | partly | Done for R1 and R2 (terminal app tab 6, `gitswitch prs`); R3 and R4 bring theirs. |
 
 Order: R1 and R2 together, then R3, then R4. Each is one commit with unit
 tests (fake API), a sandbox check in the desktop app, and the README.

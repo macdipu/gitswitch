@@ -124,6 +124,16 @@ type API interface {
 	// Repos lists every repo the token's user can see: their own, ones
 	// they collaborate on and their organizations', private ones included.
 	Repos(base, token string) ([]RemoteRepo, error)
+	// Inbox reads the open pull requests of login's inbox: waiting for its
+	// review, its own, and ones it reviewed (see InboxQueries).
+	Inbox(base, token, login string) (toReview, mine, reviewed []PullRequest, err error)
+}
+
+// InboxCache keeps each account's last inbox on disk.
+type InboxCache interface {
+	LoadInbox(accountID string) (Inbox, bool)
+	SaveInbox(accountID string, in Inbox) error
+	DeleteInbox(accountID string) error
 }
 
 // Cache keeps each account's last repo list on disk.

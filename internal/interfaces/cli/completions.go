@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test signin signout github default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test signin signout github prs default use forget rule repo status log fix-author commit branch switch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.

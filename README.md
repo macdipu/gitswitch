@@ -347,7 +347,7 @@ Adding or removing a repo changes only GitSwitch's list. The repo's files, remot
 
 ## Sign in to GitHub
 
-GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata and Contents is enough.
+GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata, Contents and Pull requests is enough.
 
 ```sh
 gitswitch signin work                    # asks for the token; it is not shown as you paste it
@@ -367,6 +367,8 @@ gitswitch github clone acme/api          # clone it with the account that sees i
 ```
 
 Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same under the accounts on its Accounts page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If GitHub cannot be reached, the last list is shown and says so.
+
+**Reviews.** The Reviews page (and tab 6 in the terminal app, `gitswitch prs` in a terminal) lists, for each signed-in account, the pull requests waiting for its review, its own open pull requests with what stands out about each (conflicts, checks failing or running, changes requested, approved and ready to merge, draft), and open ones it reviewed lately. Click one to open it on GitHub. It is read when you open the page and again every 5 minutes while it stays open, never in the background; `gitswitch prs --refresh` reads it now and `--json` gives it to scripts. The token needs read access to Pull requests.
 
 **HTTPS remotes.** While an account is signed in, git gets its token for the HTTPS remotes of that account's repos, so `git clone https://…`, `fetch` and `push` work as the right account too, with no password prompt. GitSwitch adds itself as a credential helper for that host only (a `credential.https://github.com/` section in your global git config) ahead of your own helpers, and answers only when it is sure which signed-in account a repo uses. Everything else (other accounts' repos, other hosts, a folder that is not a repo) goes to your own helpers exactly as before. Signing out the last account on a host, or `gitswitch uninstall`, removes the section. To push over HTTPS, give the token **Contents: read and write**; read-only is enough to clone and fetch.
 

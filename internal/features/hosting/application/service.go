@@ -20,6 +20,7 @@ type Service struct {
 	Helper   hosting.HelperConfig // nil: no HTTPS credentials
 	Repos    hosting.Repos
 	Cache    hosting.Cache
+	Inboxes  hosting.InboxCache
 	Now      func() time.Time // nil: time.Now
 }
 
@@ -65,6 +66,9 @@ func (s *Service) SignOut(accountID string) error {
 	}
 	if s.Cache != nil {
 		_ = s.Cache.Delete(a.ID) // what it saw is not shown any more
+	}
+	if s.Inboxes != nil {
+		_ = s.Inboxes.DeleteInbox(a.ID)
 	}
 	if why := s.syncHelper(a.Host); why != "" && s.Helper != nil && !strings.Contains(why, "gitswitch install") {
 		return errors.New("signed out, but git's credential settings could not be updated: " + why)
@@ -250,4 +254,71 @@ func (s *Service) fetch(accountID, host string) (hosting.RepoList, error) {
 		return l, nil // shown now, read again next time
 	}
 	return l, nil
+}
+
+// Reviews reads every signed-in account's inbox: pull requests waiting
+// for its review, its own with what stands out about each, and ones it
+// reviewed lately. A failed read keeps the account's last inbox and says
+// why. fetch works as in Browse, against hosting.ReviewsStale.
+func (s *Service) Reviews(fetch Fetch) []hosting.Inbox {
+	c := s.Accounts.Load()
+	out := []hosting.Inbox{}
+	for _, st := range s.Status() {
+		if !st.SignedIn {
+			continue
+		}
+		a := c.Account(st.Account)
+		in, ok := s.Inboxes.LoadInbox(st.Account)
+		if fetch == FetchAll || (fetch == FetchStale && (!ok || s.now().Sub(in.Fetched) > hosting.ReviewsStale)) {
+			fresh, err := s.fetchInbox(a.ID, a.Host, a.User)
+			if err != nil {
+				in.Error = err.Error()
+			} else {
+				in, ok = fresh, true
+			}
+		}
+		in.Account, in.Host = st.Account, st.Host
+		in.Stale = !ok || s.now().Sub(in.Fetched) > hosting.ReviewsStale
+		out = append(out, in)
+	}
+	return out
+}
+
+func (s *Service) fetchInbox(accountID, host, login string) (hosting.Inbox, error) {
+	base, err := hosting.APIBase(host)
+	if err != nil {
+		return hosting.Inbox{}, err
+	}
+	tok, err := s.Secrets.Get(accountID)
+	if err != nil {
+		return hosting.Inbox{}, err
+	}
+	if login == "" { // signed in before GitSwitch kept the user: ask GitHub
+		u, _, err := s.API.Whoami(base, tok)
+		if err != nil {
+			return hosting.Inbox{}, err
+		}
+		login = u.Login
+		_ = s.Accounts.SetUser(accountID, login)
+	}
+	toReview, mine, reviewed, err := s.API.Inbox(base, tok, login)
+	if err != nil {
+		return hosting.Inbox{}, err
+	}
+	for _, l := range [][]hosting.PullRequest{toReview, mine, reviewed} {
+		for i := range l {
+			l[i].Chips = hosting.StatusChips(l[i])
+		}
+	}
+	in := hosting.Inbox{Account: accountID, Host: host, Login: login, Fetched: s.now(),
+		ToReview: nonNil(toReview), Mine: nonNil(mine), Reviewed: nonNil(reviewed)}
+	_ = s.Inboxes.SaveInbox(accountID, in) // shown now, read again next time
+	return in, nil
+}
+
+func nonNil(l []hosting.PullRequest) []hosting.PullRequest {
+	if l == nil {
+		return []hosting.PullRequest{}
+	}
+	return l
 }

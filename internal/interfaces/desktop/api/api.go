@@ -89,6 +89,10 @@ func (s *server) routes() map[string]handler {
 			return s.app.Hosting.SignIn(str(b, "id"), str(b, "token"))
 		},
 		"POST /api/signout": func(r *http.Request) (any, error) { return nil, s.app.Hosting.SignOut(str(body(r), "id")) },
+		"GET /api/reviews": func(r *http.Request) (any, error) {
+			fetch := map[string]hostingapp.Fetch{"none": hostingapp.FetchNone, "stale": hostingapp.FetchStale, "all": hostingapp.FetchAll}[r.URL.Query().Get("fetch")]
+			return s.app.Hosting.Reviews(fetch), nil
+		},
 		"GET /api/github": func(r *http.Request) (any, error) {
 			fetch := map[string]hostingapp.Fetch{"none": hostingapp.FetchNone, "stale": hostingapp.FetchStale, "all": hostingapp.FetchAll}[r.URL.Query().Get("fetch")]
 			b := s.app.Hosting.Browse(fetch)
