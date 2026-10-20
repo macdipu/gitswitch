@@ -199,7 +199,7 @@ Both edit the same settings. A change in one shows up in the other.
 | --- | --- | --- |
 | Open | `gitswitch` (or `gitswitch tui`) | `gitswitch ui`, or GitSwitch in the Start / app menu |
 | Best for | IDE terminals, SSH sessions, WSL, servers | Mouse users, the visual history graph and commit actions |
-| Pages | Accounts, Repos, History, Rules, Settings | Accounts, Repos, History, Rules, Settings |
+| Pages | Accounts, Repos, History, Rules, Settings, Reviews | Accounts, Repos, History, Reviews, Rules, Settings |
 | Runs in | the terminal | the system web view (WebView2, WebKit, WebKitGTK) |
 | Closes | press `q` | close the window |
 
@@ -210,15 +210,16 @@ On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian an
 <details>
 <summary>Terminal app keys</summary>
 
-`1`–`5` or Tab switch pages, ↑↓ move, `?` shows all keys, `q` or Ctrl+C quits. Esc closes a form or pop-up, but never quits.
+`1`–`6` or Tab switch pages (Reviews is `6`), ↑↓ move, `?` shows all keys, `q` or Ctrl+C quits. Esc closes a form or pop-up, but never quits.
 
 | Page | Keys |
 | --- | --- |
 | Accounts | `a` add · `e` edit · `R` rename · `t` test login · `k` public key (`c` copy, `o` open GitHub page) · `K` use another key · `d` make default (on the default: remove it) · `p` load passphrase into agent · `g` sign in to GitHub · `G` sign out of GitHub · `x` remove (then `y` keeps the key files, `D` deletes them too) |
 | Repos | Enter choose account (or follow rules and default, or ask every time) · `h` history · `c` clone by URL · `b` browse GitHub · `f` add projects folder · `a` add one repo · `p` pin · `s` sort · `g` group by · `G` put in a group · `o` open folder · `O` open in editor · `x` remove from list · `r` rescan |
-| History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `M` move not-pushed commits to a new branch · `D` delete merged branches · `C` commit · `S` compare with the remote branch · `p` push · `i` commit as the repo's account · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `o` other repo (recent ones first) · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
+| History | Enter commit details · `m` load more · `/` filter · `b` switch branch (with uncommitted changes: `s` smart switch, `p` park; `S`/`P` also remember it for the repo) · `n` new branch here · `N` new branch at the selected commit · `M` move not-pushed commits to a new branch · `D` delete merged branches · `C` commit · `S` compare with the remote branch · `p` push · `i` commit as the repo's account · `P` parked changes · `R` resolve a smart switch · `U` undo · `u` update · on a commit: `v` revert · `d` drop · `z` roll back · `c` cherry-pick (Space marks several) · `w` view on the web · `K` the branch's pull request · `o` other repo (recent ones first) · `f` only wrong-account commits · `x` fix not-pushed commits · `r` reload |
 | Rules | `a` add · `x` remove |
 | Settings | Enter toggles an option or fixes a failed check · `r` runs the health checks again |
+| Reviews | Enter or `o` open the pull request in the browser · `r` read them again from GitHub |
 
 Questions answer only to the keys they name; `n` or Esc cancels. Lists that pop up (branch, repo, key) filter as you type, so letters go into the filter there. When git or ssh fails with an error GitSwitch knows, a "What went wrong" panel explains it, with git's own message below.
 
@@ -347,6 +348,8 @@ Adding or removing a repo changes only GitSwitch's list. The repo's files, remot
 
 ## Sign in to GitHub
 
+**GitHub only.** The key-based account switching works with any host (GitHub, GitLab, Bitbucket, your own server). The sign-in, the repo browser, Reviews and a branch's pull request work with GitHub and GitHub Enterprise only; GitLab and Bitbucket accounts show them as not available.
+
 GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata, Contents and Pull requests is enough.
 
 ```sh
@@ -400,12 +403,12 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Setup | `install`, `setup`, `uninstall [--purge]` |
 | Apps | `tui`, `ui` |
 | Accounts | `account add\|edit\|list\|remove [--delete-keys]\|rename`, `default <id>\|--none`, `test`, `signin <id>\|--check`, `signout <id>` |
-| GitHub | `github list [words] [filters] [--refresh] [--json]`, `github clone <owner/name> [folder]` |
+| GitHub | `github list [words] [filters] [--refresh] [--json]`, `github clone <owner/name> [folder]`, `prs [--account ID] [--refresh] [--json]` |
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups`, `set repo-sort` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
-| History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `commit`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo`, `browse` |
-| Branches | `branch`, `switch`, `update [--rebase]` |
+| History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `commit -m <message> [--all]`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo [--show]`, `browse` |
+| Branches | `branch [--json]`, `branch new <name> [--from <commit>\|--move]`, `branch compare`, `branch pr`, `branch prune`, `switch <branch> [--smart\|--park]`, `update [--rebase]`, `push [--open] [-y]`, `parked [show\|restore\|drop]`, `resolve [--done\|--abort\|--park]` |
 | Diagnostics | `doctor [--fix]` |
 | Settings | `set gui-prompt on\|off`, `set prompt-timeout <s>`, `set editor <command>`, `set switch-changes ask\|smart\|park [--repo]`, `set branch-prefix <prefix>`, `set pull ff-only\|rebase [--repo]` |
 | Shell | `completions bash\|zsh\|fish\|powershell` |
