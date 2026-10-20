@@ -203,6 +203,8 @@ Both edit the same settings. A change in one shows up in the other.
 | Runs in | the terminal | the system web view (WebView2, WebKit, WebKitGTK) |
 | Closes | press `q` | close the window |
 
+In the desktop app, `1`–`6` switch pages and `?` (or **Shortcuts** at the bottom of the sidebar) lists every shortcut. The page was checked with axe in light and dark for contrast, labels and structure.
+
 The terminal program (`gitswitch`) and the desktop app (`gitswitch-app`) are two files, installed together. Git only ever runs `gitswitch`, which is small and has no window code, so the desktop app never slows down a clone, pull or push.
 
 On Linux the desktop app needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora). The installer skips the app when WebKitGTK is missing or the app does not start, so servers need nothing extra; install WebKitGTK and run the installer again to add it. The desktop app runs on Ubuntu 22.04 and newer, and other systems with glibc 2.35 or newer. `GITSWITCH_CLI_ONLY=1` installs only the terminal program.

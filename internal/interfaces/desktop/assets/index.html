@@ -7,8 +7,8 @@
 <style>
 :root{
   --paper:#F7F8FA; --panel:#FFFFFF; --ink:#18202B; --muted:#5B6675; --rule:#E2E6EC; --hover:#EEF1F5;
-  --focus:#2F6FEB; --bad:#C92A37; --bad-soft:#FBE9EB; --ok:#1F8A4C;
-  --a0:#2F6FEB; --a1:#0E9F8E; --a2:#8A5CF6; --a3:#D9822B; --a4:#D6457A; --a5:#4F8A2F;
+  --focus:#2660D0; --bad:#C92A37; --bad-soft:#FBE9EB; --ok:#17773F;
+  --a0:#2660D0; --a1:#0E9F8E; --a2:#8A5CF6; --a3:#D9822B; --a4:#D6457A; --a5:#4F8A2F;
   --radius:6px;
   color-scheme:light dark; /* native controls (selects, scrollbars) follow the theme */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Noto Sans", sans-serif;
@@ -16,7 +16,7 @@
 }
 @media (prefers-color-scheme:dark){
   :root{ --paper:#12161C; --panel:#1A2029; --ink:#E7EBF0; --muted:#9AA5B4; --rule:#2B3440; --hover:#222A35;
-    --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59; }
+    --focus:#6B9AF8; --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59; }
 }
 *{box-sizing:border-box}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -149,6 +149,12 @@ a.prstate.ok{color:var(--ok)}
 .popover{position:absolute;top:calc(100% + 6px);left:0;z-index:5;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .14);padding:10px;width:320px;max-width:calc(100vw - 32px)}
 #tab-history.norepo .toolbar,#tab-history.norepo .searchrow,#tab-history.norepo .refside,#tab-history.norepo #histKeys,#tab-history.norepo .details{display:none}
 #tab-history.norepo .hist-main{grid-template-columns:minmax(0,1fr)}
+.linkbtn{background:none;border:0;padding:4px 0;color:var(--muted);font-size:13px;cursor:pointer;text-align:left}
+.linkbtn:hover{color:var(--ink);text-decoration:underline}
+.side-foot{display:flex;flex-direction:column;gap:4px}
+.keylist{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0 0 14px;font-size:14px}
+.keylist dt{white-space:nowrap}.keylist dd{margin:0;color:var(--muted)}
+.keyhead{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .popover.right{left:auto;right:0;min-width:200px}
 .popover.menu{width:max-content;display:flex;flex-direction:column;gap:2px;padding:6px}
 .popover.menu .btn{text-align:left;border-color:transparent;width:100%}
@@ -156,7 +162,7 @@ a.prstate.ok{color:var(--ok)}
 .empty .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .popover input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin-bottom:8px}
 .blist{max-height:280px;overflow:auto;display:flex;flex-direction:column}
-.blist h4{margin:8px 4px 4px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.blist .gh{margin:8px 4px 4px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .blist button{all:unset;cursor:pointer;padding:6px 8px;border-radius:4px;font-size:14px;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .blist button:hover,.blist button:focus-visible{background:var(--hover)}
 .blist button[aria-current=true]{font-weight:600}
@@ -352,7 +358,7 @@ dialog.diffdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px)
 details.checks-more>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:8px 0}
 .set-row{display:flex;flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--ink)}
 .set-row input[type=number]{width:5.5em;padding:5px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--panel)}
-h3{font-size:16px;margin:28px 0 10px}
+h3,h2.h3{font-size:16px;margin:28px 0 10px}
 @media (max-width:820px){body{grid-template-columns:176px 1fr} aside{padding:16px 10px} main{padding:20px} form.card{grid-template-columns:1fr} }
 @media (max-width:600px){body{grid-template-columns:1fr} aside{position:static;height:auto;gap:10px} nav{flex-direction:row;flex-wrap:wrap} .lanes,.side-foot{display:none}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
@@ -380,7 +386,7 @@ dialog .row-actions{justify-content:flex-end}
     <button data-tab="settings">Settings</button>
   </nav>
   <div class="lanes" id="lanes"></div>
-  <div class="side-foot" id="foot"></div>
+  <div class="side-foot"><span id="foot"></span><button class="linkbtn" id="keysBtn" type="button" title="Keyboard shortcuts (?)">Shortcuts <kbd>?</kbd></button></div>
 </aside>
 
 <main>
@@ -570,9 +576,9 @@ dialog .row-actions{justify-content:flex-end}
       <p class="hint full" style="margin:0">A rebase never runs with uncommitted changes or your own merge commits, stops with nothing changed if your commits clash, and can be undone until you push. One repo: <span class="mono">gitswitch set pull rebase --repo</span>.</p>
       <p class="hint full" style="margin:0">Changes are saved right away.</p>
     </form>
-    <h3>Health check</h3>
+    <h2 class="h3">Health check</h2>
     <div class="checks" id="checks"></div>
-    <h3>Guided setup</h3>
+    <h2 class="h3">Guided setup</h2>
     <p class="hint">Walks you through connecting git, adding an account and its key, and choosing your projects folder.</p>
     <button class="btn" id="rerunSetup">Run guided setup</button>
   </section>
@@ -581,6 +587,26 @@ dialog .row-actions{justify-content:flex-end}
 <dialog id="diffDlg" class="diffdlg" aria-labelledby="diffDlgPath">
   <div class="diffbox"><div class="dh"><span class="fn" id="diffDlgPath"></span><button class="btn ghost" id="diffDlgClose" aria-label="Close the diff" title="Close (Esc)">✕</button></div><div id="diffDlgBody"></div></div>
 </dialog>
+<dialog id="keysDlg" aria-labelledby="keysTitle"><form method="dialog">
+  <h2 id="keysTitle" style="margin:0 0 10px;font-size:17px">Keyboard shortcuts</h2>
+  <dl class="keylist">
+    <dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>Accounts, Repos, History, Reviews, Rules, Settings</dd>
+    <dt><kbd>?</kbd></dt><dd>This list</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Close a menu, pop-up or this list</dd>
+  </dl>
+  <h3 class="keyhead">On History</h3>
+  <dl class="keylist">
+    <dt><kbd>/</kbd></dt><dd>Search messages</dd>
+    <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next, previous commit</dd>
+    <dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click</dt><dd>Select several commits</dd>
+    <dt><kbd>b</kbd></dt><dd>Switch branch</dd>
+    <dt><kbd>t</kbd></dt><dd>Show or hide the branches panel</dd>
+    <dt><kbd>f</kbd></dt><dd>Filters</dd>
+    <dt><kbd>r</kbd></dt><dd>Reload</dd>
+    <dt><kbd>Shift</kbd>+<kbd>U</kbd></dt><dd>Undo the last change</dd>
+  </dl>
+  <div class="row-actions"><button class="btn primary" value="ok">Close</button></div>
+</form></dialog>
 <dialog id="dlg"><form method="dialog">
   <p id="dlgMsg"></p>
   <input id="dlgInput" aria-labelledby="dlgMsg" hidden>
@@ -1052,7 +1078,7 @@ function renderRepos(){
   if (!repos.length){ $('#repos').innerHTML = emptyRepos(); return; }
   const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', default:'default',
     asks: 'asks on next push', 'asks-every-time':'asks on every push', '':'no matching account'};
-  $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
+  $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>` +
     repos.map((r, i) => groupRow(i) + (r.missing ? `<tr>
       <td><div class="path"><button class="pin" data-pin="${i}" aria-pressed="${r.pinned}" aria-label="Pin ${esc(r.path)}" title="Pin to the top">${r.pinned ? '★' : '☆'}</button>${esc(r.path.split(/[\\/]/).pop())}</div><div class="hint mono">${esc(r.path)}</div></td>
       <td colspan="3" class="status-bad">Folder not found or no longer a git repo. Remove it from the list, or add it again from its new place.</td>
@@ -1152,7 +1178,7 @@ function renderGithub(){
     && words.every(w => (r.fullName + ' ' + (r.description || '')).toLowerCase().includes(w)));
   const when = a => a.fetched && !a.fetched.startsWith('0001') ? new Date(a.fetched).toLocaleString() : 'never';
   $('#ghMeta').innerHTML = `${list.length} of ${g.repos.length} repos · ` + g.accounts.map(a => `${esc(a.account)}: ${a.error ? `<span class="status-bad">${esc(a.error)}</span>` : `${a.count} repos, read ${esc(when(a))}`}`).join(' · ');
-  $('#ghList').innerHTML = !list.length ? '<div class="empty">No repo matches.</div>' : `<table><thead><tr><th>Repo</th><th>Language</th><th>Account</th><th>Here</th><th></th></tr></thead><tbody>` + list.map((r, i) => `<tr>
+  $('#ghList').innerHTML = !list.length ? '<div class="empty">No repo matches.</div>' : `<table><thead><tr><th>Repo</th><th>Language</th><th>Account</th><th>Here</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>` + list.map((r, i) => `<tr>
       <td><div class="path">${esc(r.fullName)}${r.private ? ' <span class="tag">private</span>' : ''}${r.archived ? ' <span class="tag">archived</span>' : ''}${r.fork ? ' <span class="tag">fork</span>' : ''}</div><div class="hint">${esc(r.description || '')}</div></td>
       <td class="hint">${esc(r.language || '')}</td>
       <td><span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)}</td>
@@ -1582,8 +1608,10 @@ function renderBranches(){
   const parked = n => (R.parked || []).filter(p => p.branch === n).length;
   const item = b => `<button role="option" data-branch="${esc(b.name)}" aria-current="${b.current}">${b.current ? '✓ ' : ''}${esc(b.name)}${parked(b.name) ? `<span class="tag" title="Uncommitted changes parked on ${esc(b.name)} (git stash), restored when you switch to it">${parked(b.name)} parked</span>` : ''}${b.upstream ? `<span class="up">→ ${esc(b.upstream)}</span>` : ''}</button>`;
   const l = local.filter(b => has(b.name)), r = remote.filter(b => has(b.name));
-  $('#branchList').innerHTML = (l.length ? '<h4>On this computer</h4>' + l.map(item).join('') : '')
-    + (r.length ? '<h4>On the remote</h4>' + r.map(item).join('') : '') || '<p class="hint" style="margin:4px">No branch matches.</p>';
+  // A listbox may hold only options and groups, so each heading is a group's label.
+  const grp = (title, items) => `<div role="group" aria-label="${title}"><div class="gh" aria-hidden="true">${title}</div>${items.map(item).join('')}</div>`;
+  $('#branchList').innerHTML = (l.length ? grp('On this computer', l) : '')
+    + (r.length ? grp('On the remote', r) : '') || '<p class="hint" style="margin:4px">No branch matches.</p>';
 }
 $('#branchFind').oninput = renderBranches;
 $('#branchFind').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); $('#branchList button')?.click(); } if (e.key === 'ArrowDown'){ e.preventDefault(); $('#branchList button')?.focus(); } };
@@ -2247,6 +2275,15 @@ async function commitAction(a){
 }
 
 // ---- keyboard ----
+// Keys that work on every page: 1-6 for the pages, ? for the list.
+const pageKeys = ['accounts', 'repos', 'history', 'reviews', 'rules', 'settings'];
+document.addEventListener('keydown', e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('input, select, textarea, [contenteditable]')) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (e.key === '?'){ e.preventDefault(); $('#keysDlg').showModal(); return; }
+  if (/^[1-6]$/.test(e.key) && $('#tab-welcome').hidden){ e.preventDefault(); show(pageKeys[+e.key - 1]); }
+});
+$('#keysBtn').onclick = () => $('#keysDlg').showModal();
 document.addEventListener('keydown', e => {
   if (!histVisible() || $('#dlg').open || e.altKey) return;
   const typing = e.target.closest('input, select, textarea');
@@ -2277,7 +2314,7 @@ document.addEventListener('keydown', e => {
 function renderRules(){
   const c = S.config;
   $('#ruleAcct').innerHTML = c.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
-  $('#rules').innerHTML = c.rules.length ? `<table><thead><tr><th>When</th><th>Use account</th><th></th></tr></thead><tbody>` +
+  $('#rules').innerHTML = c.rules.length ? `<table><thead><tr><th>When</th><th>Use account</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>` +
     c.rules.map((r, i) => `<tr><td>${r.kind === 'owner' ? 'Owner or org is' : 'Repo is inside'} <code>${esc(r.pattern)}</code></td>
       <td><span style="color:${colorOf(r.account)}">●</span> ${esc(r.account)}</td><td><button class="btn danger" data-rule="${i}">Remove</button></td></tr>`).join('') + '</tbody></table>'
     : '<div class="empty">No rules yet. Example: when the owner is your company org, use your work account.</div>';
