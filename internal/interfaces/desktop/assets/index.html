@@ -147,6 +147,13 @@ a.prstate.bad{color:var(--bad)}
 a.prstate.ok{color:var(--ok)}
 .pop-wrap{position:relative}
 .popover{position:absolute;top:calc(100% + 6px);left:0;z-index:5;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .14);padding:10px;width:320px;max-width:calc(100vw - 32px)}
+#tab-history.norepo .toolbar,#tab-history.norepo .searchrow,#tab-history.norepo .refside,#tab-history.norepo #histKeys,#tab-history.norepo .details{display:none}
+#tab-history.norepo .hist-main{grid-template-columns:minmax(0,1fr)}
+.popover.right{left:auto;right:0;min-width:200px}
+.popover.menu{width:max-content;display:flex;flex-direction:column;gap:2px;padding:6px}
+.popover.menu .btn{text-align:left;border-color:transparent;width:100%}
+.popover.menu .btn:hover{background:var(--hover)}
+.empty .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .popover input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin-bottom:8px}
 .blist{max-height:280px;overflow:auto;display:flex;flex-direction:column}
 .blist h4{margin:8px 4px 4px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
@@ -477,14 +484,19 @@ dialog .row-actions{justify-content:flex-end}
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
       <a class="prstate" id="prState" hidden></a>
-      <button class="btn ghost" id="compareBtn" hidden title="List the commits you would push and pull">Compare</button>
       <button class="btn" id="commitBtn">Commit…</button>
       <button class="btn ghost" id="fetchBtn" title="Read the remote's new commits, so “to pull” is up to date. Nothing in your branches or files changes">Fetch</button>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
       <button class="btn" id="pushBtn">Push</button>
       <span class="spacer"></span>
       <button class="btn" id="undoBtn" hidden>↶ Undo</button>
-      <button class="btn ghost" id="browseRepo" title="Open the repo on GitHub, GitLab, …">View on web ↗</button>
+      <div class="pop-wrap">
+        <button class="btn ghost" id="actionsBtn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: compare with the remote, view on the web" style="font-size:17px;line-height:1">⋯</button>
+        <div class="popover right menu" id="actionsPop" role="menu" hidden>
+          <button class="btn" id="compareBtn" role="menuitem" hidden title="List the commits you would push and pull">Compare with the remote…</button>
+          <button class="btn" id="browseRepo" role="menuitem" title="Open the repo on GitHub, GitLab, …">View on the web ↗</button>
+        </div>
+      </div>
       <button class="btn ghost" id="histReload" title="Reload (r)" aria-label="Reload" style="font-size:17px;line-height:1">↻</button>
     </div>
     <form class="searchrow" id="histSearchForm" role="search">
@@ -645,6 +657,24 @@ const colorOf = id => { if (!S) return 'var(--muted)'; const i = S.config.accoun
 
 // navigation
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
+const currentTab = () => document.querySelector('nav button[aria-current="page"]')?.dataset.tab;
+// syncState reads the settings again, because the terminal app, the CLI or
+// another window may have changed them since. It redraws only when
+// something changed, and forgets the repo list then.
+async function syncState(){
+  const before = JSON.stringify(S?.config);
+  let fresh;
+  try { fresh = await api('GET', '/api/state'); } catch { return false; }
+  if (JSON.stringify(fresh.config) === before) return false;
+  repos = [];
+  await refresh();
+  return true;
+}
+window.addEventListener('focus', () => {
+  const tab = currentTab();
+  if (!['repos', 'history'].includes(tab) || $('#dlg').open) return;
+  syncState().then(changed => { if (changed && tab === currentTab()) tab === 'repos' ? loadRepos() : fillRepoSelect(); });
+});
 function show(tab){
   document.querySelectorAll('nav button').forEach(b => b.dataset.tab === tab ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + tab);
@@ -652,6 +682,11 @@ function show(tab){
   if (tab === 'repos') loadRepos();
   if (tab === 'reviews') loadReviews('none');
   if (tab === 'history') fillRepoSelect();
+  // Changed from outside meanwhile (terminal app, CLI): read the page again.
+  if (['repos', 'reviews', 'history'].includes(tab)) syncState().then(changed => {
+    if (!changed || tab !== currentTab()) return;
+    if (tab === 'repos') loadRepos(); else if (tab === 'reviews') loadReviews('none'); else fillRepoSelect();
+  });
   if (tab === 'settings') loadChecks();
   // Clicked in the sidebar: move focus to the new page, so keyboard and
   // screen reader users continue there.
@@ -971,7 +1006,7 @@ let repoGroups = []; // headings in the repo table: {at: index of its first repo
 async function loadRepos(){
   const c = S.config;
   $('#folders').innerHTML = c.scanFolders.length ? 'Scanning: ' + c.scanFolders.map(p => `<code>${esc(p)}</code> <button class="btn" style="padding:0 6px" data-rmfolder="${esc(p)}" aria-label="Stop scanning ${esc(p)}">×</button>`).join(' ') : 'Add the folders where you keep your projects.';
-  if (!c.scanFolders.length && !c.repos.length){ $('#repos').innerHTML = ''; repos = []; return; }
+  if (!c.scanFolders.length && !c.repos.length){ repos = []; $('#repos').innerHTML = emptyRepos(); return; }
   $('#repos').innerHTML = '<p class="hint">Looking for repos…</p>';
   const g = await act(() => api('GET', '/api/repo/groups')) || {by:'none', groups:[]};
   $('#repoGroupBy').value = g.by; $('#repoSortBy').value = g.sort;
@@ -1005,8 +1040,16 @@ const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<but
 // clonesNote says where else the same origin is cloned
 const clonesNote = r => !r.clones?.length ? '' : ` · <span title="${esc(r.clones.join('\n'))}">also cloned at ${esc(r.clones[0].split(/[\\/]/).pop())}${r.clones.length > 1 ? ` and ${r.clones.length - 1} more` : ''}</span>`;
 const groupRow = i => repoGroups.filter(g => g.at === i).map(g => `<tr class="group-row"><th colspan="5">${esc(g.name)} <span class="hint">(${g.n})</span></th></tr>`).join('');
+// No repos yet: say how to get some, with the buttons right there.
+const emptyRepos = () => `<div class="empty"><strong>No git repos yet.</strong><br>Add the folder where you keep your projects (GitSwitch finds the repos in it), add one repo that lives elsewhere, or clone one.
+  <div class="acts"><button class="btn primary" data-empty="folder">Add a projects folder…</button><button class="btn" data-empty="add">Add an existing repo…</button><button class="btn" data-empty="clone">Clone from URL…</button></div></div>`;
+document.addEventListener('click', e => {
+  const k = e.target.closest('[data-empty]')?.dataset.empty; if (!k) return;
+  if (k === 'folder') $('#browseFolder').click(); else if (k === 'add') $('#addRepo').click(); else if (k === 'clone') $('#cloneOpen').click();
+  else if (k === 'repos') show('repos'); else if (k === 'accounts') show('accounts');
+});
 function renderRepos(){
-  if (!repos.length){ $('#repos').innerHTML = '<div class="empty">No git repos found. Add a projects folder, or an existing repo.</div>'; return; }
+  if (!repos.length){ $('#repos').innerHTML = emptyRepos(); return; }
   const why = {saved:'saved', 'owner-rule':'owner rule', 'folder-rule':'folder rule', 'only-account':'only account', default:'default',
     asks: 'asks on next push', 'asks-every-time':'asks on every push', '':'no matching account'};
   $('#repos').innerHTML = `<table><thead><tr><th>Repo</th><th>Account</th><th>Decided by</th><th>Commit email</th><th></th></tr></thead><tbody>` +
@@ -1154,7 +1197,7 @@ $('#rvRefresh').onclick = () => loadReviews('all');
 function renderReviews(){
   if (!RV.length){
     $('#rvMeta').textContent = '';
-    $('#rvList').innerHTML = '<div class="empty">No account is signed in to GitHub. Sign one in from its More menu on the Accounts page to see your pull requests here. Everything else in GitSwitch works without it.</div>';
+    $('#rvList').innerHTML = '<div class="empty"><strong>No account is signed in to GitHub.</strong><br>Sign one in from its More menu on the Accounts page to see your pull requests here. Everything else in GitSwitch works without it.<div class="acts"><button class="btn primary" data-empty="accounts">Go to Accounts</button></div></div>';
     return;
   }
   const read = i => i.fetched && !i.fetched.startsWith('0001') ? when(Date.parse(i.fetched) / 1000) : 'never';
@@ -1204,6 +1247,7 @@ function renderRepoOptions(ok){
 async function fillRepoSelect(){
   if (!repos.length && (S.config.scanFolders.length || S.config.repos.length)) repos = await act(() => api('GET','/api/repos')) || [];
   const cur = $('#histRepo').value, ok = repos.filter(r => !r.missing);
+  $('#tab-history').classList.toggle('norepo', !ok.length);
   renderRepoOptions(ok);
   if (cur) $('#histRepo').value = cur;
   const fa = $('#filterPanel').account;
@@ -1211,7 +1255,12 @@ async function fillRepoSelect(){
   fa.value = F.account;
   const gone = cur && $('#histRepo').value !== cur; // the shown repo was removed or moved
   if (gone){ picked.clear(); H = null; R = null; delete $('#history').dataset.loaded; }
-  if (!ok.length){ if (gone){ $('#history').innerHTML = ''; $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = ''; renderToolbar(); renderDetails(); } return; }
+  if (!ok.length){
+    $('#history').innerHTML = '<div class="empty"><strong>No repos to show yet.</strong><br>History reads the repos GitSwitch knows about. Add a projects folder or a repo first.<div class="acts"><button class="btn primary" data-empty="repos">Go to Repos</button></div></div>';
+    $('#histMeta').innerHTML = ''; $('#histAlert').innerHTML = '';
+    if (gone){ H = null; R = null; renderToolbar(); renderDetails(); }
+    return;
+  }
   if (gone || !$('#history').dataset.loaded) loadHistory();
 }
 $('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; loadHistory(); };
@@ -1356,7 +1405,12 @@ async function loadBranchPR(gd){
   try { r = await api('GET', '/api/repo/pr?gitDir=' + encodeURIComponent(gd)); } catch { return; }
   if ($('#histRepo').value !== gd) return; // another repo was picked meanwhile
   if (!r?.found){
-    if (r?.reason){ el.removeAttribute('href'); el.textContent = 'Pull request: not shown'; el.title = r.reason; el.className = 'prstate'; el.hidden = false; }
+    if (r?.reason){
+      const signIn = /^sign .* in to GitHub/.test(r.reason);
+      el.removeAttribute('href'); el.className = 'prstate'; el.hidden = false;
+      el.textContent = signIn ? 'Sign in to GitHub to see its pull request' : 'Pull request: could not read';
+      el.title = r.reason;
+    }
     return;
   }
   const bad = r.pr.chips.some(c => c.Bad || c.bad), ready = r.pr.chips.some(c => c.kind === 'ready');
@@ -1618,8 +1672,15 @@ $('#moveBranchBtn').onclick = async () => {
   picked.clear(); loadHistory();
 };
 const fileList = f => !f?.length ? 'no files' : `${f.length} file${f.length > 1 ? 's' : ''}: ` + f.slice(0, 8).join(', ') + (f.length > 8 ? ` and ${f.length - 8} more` : '');
+function toggleActions(open = $('#actionsPop').hidden){
+  $('#actionsPop').hidden = !open; $('#actionsBtn').setAttribute('aria-expanded', String(open));
+  if (open) $('#actionsPop').querySelector('button:not([hidden])')?.focus();
+}
+$('#actionsBtn').onclick = () => toggleActions();
+$('#actionsPop').addEventListener('click', () => toggleActions(false));
 document.addEventListener('click', e => {
   if (!$('#branchPop').hidden && !e.target.closest('.pop-wrap')) toggleBranches(false);
+  if (!$('#actionsPop').hidden && !e.target.closest('.pop-wrap')) toggleActions(false);
 });
 
 // ---- the commit list ----
@@ -2190,6 +2251,7 @@ document.addEventListener('keydown', e => {
   if (!histVisible() || $('#dlg').open || e.altKey) return;
   const typing = e.target.closest('input, select, textarea');
   if (e.key === 'Escape'){
+    if (!$('#actionsPop').hidden){ toggleActions(false); $('#actionsBtn').focus(); return; }
     if (!$('#branchPop').hidden){ toggleBranches(false); $('#branchBtn').focus(); return; }
     if (!$('#filterPanel').hidden){ toggleFilters(false); return; }
     if (typing){ e.target.blur(); return; }
