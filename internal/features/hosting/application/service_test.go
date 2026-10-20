@@ -50,11 +50,12 @@ type fakeAPI struct {
 	calls  int
 	err    error // Repos and Inbox fail with it
 	logins []string
+	kinds  []hosting.Kind       // the kind of host of each Whoami
 	pr     *hosting.PullRequest // BranchPR answers with it
 	asked  []string             // repo@branch of each BranchPR
 }
 
-func (f *fakeAPI) BranchPR(base, token, repo, branch string) (*hosting.PullRequest, error) {
+func (f *fakeAPI) BranchPR(kind hosting.Kind, base, token, repo, branch string) (*hosting.PullRequest, error) {
 	f.asked = append(f.asked, repo+"@"+branch)
 	if f.err != nil {
 		return nil, f.err
@@ -62,7 +63,7 @@ func (f *fakeAPI) BranchPR(base, token, repo, branch string) (*hosting.PullReque
 	return f.pr, nil
 }
 
-func (f *fakeAPI) Inbox(base, token, login string) ([]hosting.PullRequest, []hosting.PullRequest, []hosting.PullRequest, error) {
+func (f *fakeAPI) Inbox(kind hosting.Kind, base, token, login string) ([]hosting.PullRequest, []hosting.PullRequest, []hosting.PullRequest, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, nil, nil, f.err
@@ -73,7 +74,7 @@ func (f *fakeAPI) Inbox(base, token, login string) ([]hosting.PullRequest, []hos
 		nil, nil
 }
 
-func (f *fakeAPI) Repos(base, token string) ([]hosting.RemoteRepo, error) {
+func (f *fakeAPI) Repos(kind hosting.Kind, base, token string) ([]hosting.RemoteRepo, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err
@@ -81,8 +82,9 @@ func (f *fakeAPI) Repos(base, token string) ([]hosting.RemoteRepo, error) {
 	return append([]hosting.RemoteRepo{}, f.repos[token]...), nil
 }
 
-func (f *fakeAPI) Whoami(base, token string) (hosting.User, hosting.Grant, error) {
+func (f *fakeAPI) Whoami(kind hosting.Kind, base, token string) (hosting.User, hosting.Grant, error) {
 	f.bases = append(f.bases, base)
+	f.kinds = append(f.kinds, kind)
 	if l, ok := f.users[token]; ok {
 		return hosting.User{Login: l}, hosting.Grant{Expires: "2027-01-01"}, nil
 	}
@@ -93,10 +95,11 @@ func newService() (*Service, *fakeAccounts, *fakeSecrets, *fakeAPI) {
 	a := &fakeAccounts{c: account.Config{Accounts: []account.Account{
 		{ID: "work", Host: "github.com", User: "dipu-work"},
 		{ID: "home", Host: "ssh.github.com"},
-		{ID: "lab", Host: "gitlab.com"},
+		{ID: "lab", Host: "bitbucket.org"},
+		{ID: "gl", Host: "gitlab.com"},
 	}}}
 	s := &fakeSecrets{m: map[string]string{}}
-	api := &fakeAPI{users: map[string]string{"tok-work": "dipu-work", "tok-home": "dipu"}}
+	api := &fakeAPI{users: map[string]string{"tok-work": "dipu-work", "tok-home": "dipu", "tok-gl": "ana"}}
 	return &Service{Accounts: a, Secrets: s, API: api}, a, s, api
 }
 
@@ -121,8 +124,11 @@ func TestSignIn(t *testing.T) {
 	if api.bases[len(api.bases)-1] != "https://api.github.com" {
 		t.Errorf("ssh.github.com must use api.github.com, got %v", api.bases)
 	}
-	if _, err := s.SignIn("lab", "tok-work"); err == nil || !strings.Contains(err.Error(), "GitHub only") {
-		t.Errorf("GitLab: %v", err)
+	if _, err := s.SignIn("lab", "tok-work"); err == nil || !strings.Contains(err.Error(), "GitHub and GitLab only") {
+		t.Errorf("Bitbucket: %v", err)
+	}
+	if _, err := s.SignIn("gl", "tok-gl"); err != nil || api.bases[len(api.bases)-1] != "https://gitlab.com/api/v4" || api.kinds[len(api.kinds)-1] != hosting.KindGitLab {
+		t.Errorf("GitLab: %v bases %v kinds %v", err, api.bases, api.kinds)
 	}
 	if _, err := s.SignIn("ghost", "tok-work"); err == nil {
 		t.Error("an unknown account must fail")
@@ -133,7 +139,7 @@ func TestStatusCheckAndSignOut(t *testing.T) {
 	s, _, sec, _ := newService()
 	sec.m["work"] = "tok-work"
 	st := s.Status()
-	if len(st) != 3 || !st[0].SignedIn || st[1].SignedIn || st[2].Supported {
+	if len(st) != 4 || !st[0].SignedIn || st[1].SignedIn || st[2].Supported || !st[3].Supported || st[3].Provider != "GitLab" || st[0].Provider != "GitHub" || !strings.Contains(st[3].TokenPage, "gitlab.com") {
 		t.Errorf("status = %+v", st)
 	}
 	if got, err := s.Check("work"); err != nil || got.Login != "dipu-work" {
@@ -349,3 +355,56 @@ func TestBranchPR(t *testing.T) {
 		t.Errorf("unknown repo: %+v", got)
 	}
 }
+
+func TestBranchPROnGitLab(t *testing.T) {
+	s, _, sec, api := newService()
+	l := &listRepos{infos: []repo.Info{{GitDir: "/src/api/.git", Account: "gl", Branch: "billing",
+		Remotes: []repo.Remote{{Name: "origin", URL: "git@gitlab.com:acme/team/api.git"}}}}}
+	s.Repos = l
+	api.pr = &hosting.PullRequest{Number: 42, Approvals: 1, Checks: "SUCCESS", ReadyToMerge: true, URL: "https://gitlab.com/acme/team/api/-/merge_requests/42"}
+	if got := s.BranchPR("/src/api/.git"); got.Found || !strings.Contains(got.Reason, "sign gl in to GitLab to see this branch's merge request") {
+		t.Fatalf("not signed in: %+v", got)
+	}
+	sec.m["gl"] = "tok-gl"
+	got := s.BranchPR("/src/api/.git")
+	if !got.Found || got.Summary != "MR !42 · 1 approval · checks passing" || got.Repo != "acme/team/api" || got.PR.Kind != hosting.KindGitLab || got.PR.Mark != "!" ||
+		!reflect.DeepEqual(api.asked, []string{"acme/team/api@billing"}) {
+		t.Fatalf("BranchPR = %+v asked %v (the nested group is the repo path)", got, api.asked)
+	}
+	if len(got.PR.Chips) != 1 || got.PR.Chips[0].Kind != "ready" {
+		t.Errorf("chips: %+v", got.PR.Chips)
+	}
+	// A GitHub-style two-part account on a three-part path is not a repo.
+	l.infos[0].Account = "work"
+	l.infos[0].Remotes = []repo.Remote{{Name: "origin", URL: "git@github.com:acme/team/api.git"}}
+	api.asked = nil
+	if got := s.BranchPR("/src/api/.git"); got.Found || len(api.asked) != 0 {
+		t.Errorf("GitHub paths have two parts: %+v asked %v", got, api.asked)
+	}
+}
+
+func TestReviewsMarkTheKindOfHost(t *testing.T) {
+	s, a, sec, _ := newService()
+	_ = a
+	sec.m["gl"] = "tok-gl"
+	s.Inboxes = &memInboxes{m: map[string]hosting.Inbox{}}
+	in := s.Reviews(FetchAll)
+	var gl *hosting.Inbox
+	for i := range in {
+		if in[i].Account == "gl" {
+			gl = &in[i]
+		}
+	}
+	if gl == nil || gl.Login != "ana" || len(gl.Mine) == 0 || gl.Mine[0].Kind != hosting.KindGitLab || gl.Mine[0].Mark != "!" {
+		t.Fatalf("a GitLab inbox: %+v", in)
+	}
+}
+
+type memInboxes struct{ m map[string]hosting.Inbox }
+
+func (c *memInboxes) LoadInbox(id string) (hosting.Inbox, bool) { in, ok := c.m[id]; return in, ok }
+func (c *memInboxes) SaveInbox(id string, in hosting.Inbox) error {
+	c.m[id] = in
+	return nil
+}
+func (c *memInboxes) DeleteInbox(id string) error { delete(c.m, id); return nil }

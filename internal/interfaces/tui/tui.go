@@ -103,7 +103,7 @@ type tui struct {
 	repos   []repo.Info
 	reviews []hosting.Inbox           // signed-in accounts' pull requests
 	rvRows  []hosting.PullRequest     // the Reviews page's rows, in order
-	apis    map[string]hosting.Status // GitHub sign-in by account id (lower case)
+	apis    map[string]hosting.Status // host sign-in (GitHub, GitLab) by account id (lower case)
 	groups  []repoHeading             // headings on the Repos page, by the repo they come before
 	scanned bool
 	checks  []doctor.Check // the health checks; run only on the Settings page
@@ -677,11 +677,11 @@ Everywhere
 Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default (again: no default, always ask)
   p passphrase to agent   x remove (then y keeps the key files, Shift+D deletes them too)
-  g sign in to GitHub with a token (kept in your keychain)   G sign out of GitHub
+  g sign in to GitHub or GitLab with a token (kept in your keychain)   G sign out
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
-  b browse the repos your signed-in accounts can see on GitHub (type to filter; Enter clones or opens one)
+  b browse the repos your signed-in accounts can see on GitHub or GitLab (type to filter; Enter clones or opens one)
   g group the list by nothing, account, owner, folder or your groups   G put the repo in a group you name
   s sort by folder, name, recently opened or account (pinned stay first)
 History
@@ -703,7 +703,7 @@ Rules
 Settings
   Enter toggle or fix the selected item   r run the health checks again
 Reviews (6)
-  Enter or o open the pull request in the browser   r read them again from GitHub
+  Enter or o open the pull or merge request in the browser   r read them again from the hosts
 In forms
   Tab / ↑↓ next field   ←→ change choice   Enter next / save   Esc cancel   Ctrl+U clear field
 In lists that pop up (branch, repo, key)
@@ -887,7 +887,9 @@ func (t *tui) keyAccounts(k string) {
 			t.say(err, "")
 			return
 		}
-		t.form = &form{title: "Sign " + id + " in to GitHub: create a token at " + hosting.TokenPage(host) + " (read access to Metadata, Contents and Pull requests is enough)",
+		page, needs := hosting.TokenHelp(host)
+		prov := hosting.KindOf(host).Name()
+		t.form = &form{title: "Sign " + id + " in to " + prov + ": create a token at " + page + " (" + strings.TrimSuffix(needs, " is enough.") + " is enough)",
 			fields: []field{{label: "Token", secret: true, hint: "kept in your keychain, never in git config"}},
 			submit: func(v []string) error {
 				r, err := t.app.Hosting.SignIn(id, v[0])
@@ -895,7 +897,7 @@ func (t *tui) keyAccounts(k string) {
 					return err
 				}
 				t.reload()
-				msg := id + " is signed in to GitHub as " + r.Login + "."
+				msg := id + " is signed in to " + prov + " as " + r.Login + "."
 				if r.HTTPS == "" {
 					msg += " Git uses the token for HTTPS remotes of its repos."
 				}
@@ -906,14 +908,14 @@ func (t *tui) keyAccounts(k string) {
 		if a == nil || !t.apis[strings.ToLower(a.ID)].SignedIn {
 			return
 		}
-		id := a.ID
-		t.confirm = &confirmBox{"Sign " + id + " out of GitHub? Its token is removed from your keychain (delete it on GitHub to revoke it). (y/n)",
+		id, prov := a.ID, hosting.KindOf(a.Host).Name()
+		t.confirm = &confirmBox{"Sign " + id + " out of " + prov + "? Its token is removed from your keychain (delete it on " + prov + " to revoke it). (y/n)",
 			map[string]func() error{"y": func() error {
 				if err := t.app.Hosting.SignOut(id); err != nil {
 					return err
 				}
 				t.reload()
-				t.say(nil, id+" is signed out of GitHub.")
+				t.say(nil, id+" is signed out of "+prov+".")
 				return nil
 			}}}
 	case "t":
@@ -997,18 +999,26 @@ func (t *tui) keyReviews(k string) {
 	switch k {
 	case "r":
 		t.loadReviews(hostingapp.FetchAll)
-		t.say(nil, "Read again from GitHub.")
+		t.say(nil, "Read again from the hosts.")
 	case "enter", "o":
 		if i >= 0 && i < len(t.rvRows) {
 			p := t.rvRows[i]
-			t.say(process.OpenBrowser(p.URL), "Opened "+p.Repo+fmt.Sprintf("#%d", p.Number)+".")
+			t.say(process.OpenBrowser(p.URL), "Opened "+p.Repo+fmt.Sprintf("%s%d", orMark(p.Mark), p.Number)+".")
 		}
 	}
 }
 
+// orMark is the mark that goes before a request's number: # when unknown.
+func orMark(m string) string {
+	if m == "" {
+		return "#"
+	}
+	return m
+}
+
 func (t *tui) drawReviews() ([]string, int) {
 	if len(t.reviews) == 0 {
-		return []string{" No account is signed in to GitHub. Sign one in with g on the Accounts page (1) to see your pull requests here."}, -1
+		return []string{" No account is signed in to GitHub or GitLab. Sign one in with g on the Accounts page (1) to see your pull and merge requests here."}, -1
 	}
 	var l []string
 	selLine, row := -1, 0
@@ -1022,7 +1032,7 @@ func (t *tui) drawReviews() ([]string, int) {
 			if on {
 				selLine = len(l)
 			}
-			meta := p.Repo + fmt.Sprintf("#%d", p.Number)
+			meta := p.Repo + fmt.Sprintf("%s%d", orMark(p.Mark), p.Number)
 			if author {
 				meta += " · " + p.Author
 			}
@@ -1066,7 +1076,7 @@ func (t *tui) drawReviews() ([]string, int) {
 // acct ("automatic" lets rules decide).
 func (t *tui) cloneForm(url, dir, acct string) {
 	t.form = &form{title: "Clone a repo by URL", fields: []field{
-		{label: "URL", value: url, hint: "git@github.com:owner/repo.git or https://..."},
+		{label: "URL", value: url, hint: "git@github.com:owner/repo.git, git@gitlab.com:group/repo.git or https://..."},
 		{label: "Folder", value: dir, hint: "empty = ./<repo name> here"},
 		{label: "Account", value: acct, options: append([]string{"automatic"}, t.cfg.SortedIDs()...), hint: "←/→ · automatic = rules, then ask"},
 	}, submit: func(v []string) error {
@@ -1102,7 +1112,7 @@ func (t *tui) cloneForm(url, dir, acct string) {
 func (t *tui) browseGitHub() {
 	b := t.app.Hosting.Browse(hostingapp.FetchStale)
 	if len(b.Accounts) == 0 {
-		t.say(errors.New("no account is signed in to GitHub; sign one in with g on the Accounts page"), "")
+		t.say(errors.New("no account is signed in to GitHub or GitLab; sign one in with g on the Accounts page"), "")
 		return
 	}
 	for _, a := range b.Accounts {
@@ -1130,10 +1140,10 @@ func (t *tui) browseGitHub() {
 		opts, rs = append(opts, label), append(rs, r)
 	}
 	if len(opts) == 0 {
-		t.say(nil, "Your signed-in accounts see no repos on GitHub.")
+		t.say(nil, "Your signed-in accounts see no repos on their hosts.")
 		return
 	}
-	t.picker = &picker{title: fmt.Sprintf("GitHub: %d repos · type to filter · Enter opens a cloned one or clones it", len(opts)), options: opts,
+	t.picker = &picker{title: fmt.Sprintf("Hosted repos: %d · type to filter · Enter opens a cloned one or clones it", len(opts)), options: opts,
 		pick: func(i int) error {
 			r := rs[i]
 			if len(r.Cloned) > 0 {
@@ -1794,11 +1804,11 @@ func (t *tui) branchPR() {
 	case b.Reason != "":
 		lines = append(lines, b.Reason)
 	case b.Account == "":
-		lines = append(lines, "Nothing to read: this branch has no GitHub remote with a signed-in account.")
+		lines = append(lines, "Nothing to read: this branch has no GitHub or GitLab remote with a signed-in account.")
 	default:
-		lines = append(lines, b.Branch+" has no open pull request in "+b.Repo+".")
+		lines = append(lines, b.Branch+" has no open "+b.Kind.RequestName()+" in "+b.Repo+".")
 	}
-	t.view = &viewer{title: "Pull request of " + b.Branch, lines: lines}
+	t.view = &viewer{title: "Pull or merge request of " + b.Branch, lines: lines}
 }
 
 func (t *tui) compare() {
@@ -2518,9 +2528,9 @@ func (t *tui) footer() string {
 	}
 	switch t.tab {
 	case tabAccounts:
-		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g GitHub sign-in · x remove · ? help · q quit"
+		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g sign in to GitHub/GitLab · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · c clone · b GitHub · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
@@ -2573,11 +2583,11 @@ func (t *tui) drawAccounts() ([]string, int) {
 		}
 		switch st := t.apis[strings.ToLower(a.ID)]; {
 		case st.Error != "":
-			user += cRed + "  GitHub token: " + st.Error + cReset
+			user += cRed + "  " + st.Provider + " token: " + st.Error + cReset
 		case st.SignedIn:
-			user += cGreen + "  · signed in to GitHub" + cReset
+			user += cGreen + "  · signed in to " + st.Provider + cReset
 		case st.Supported:
-			user += cDim + "  · not signed in to GitHub (g)" + cReset
+			user += cDim + "  · not signed in to " + st.Provider + " (g)" + cReset
 		}
 		on := i == t.sel[tabAccounts]
 		l = append(l, fmt.Sprintf("%s%s█%s %s%-*s%s%s  %-*s %-*s %s%s", mark(on), t.color(a.ID), cReset, boldIf(on), wID, a.ID, cReset, def, wEmail, a.Email, wHost, a.Host, key, user))

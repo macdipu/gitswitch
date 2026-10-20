@@ -46,7 +46,7 @@ func TestParseRequest(t *testing.T) {
 	if r != (Request{Protocol: "https", Host: "github.com", Path: "acme/api.git", Username: "dipu"}) {
 		t.Errorf("ParseRequest = %+v", r)
 	}
-	if TokenUser("") != "x-access-token" || TokenUser("dipu") != "dipu" {
+	if TokenUser("github.com", "") != "x-access-token" || TokenUser("github.com", "dipu") != "dipu" || TokenUser("gitlab.com", "") != "oauth2" || TokenUser("gitlab.com", "ana") != "ana" {
 		t.Error("TokenUser")
 	}
 }

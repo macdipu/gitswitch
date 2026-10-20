@@ -51,9 +51,9 @@ internal/
       application/            commit the staged files or every change, as the repo's account
       infrastructure/         Git: add --all, commit (Head through the refs infrastructure)
     hosting/
-      domain/                 the API address for a host (GitHub and GitHub Enterprise), token checks, the token's user must be the account's; git's credential helper protocol and the helper section per host; RemoteRepo, merging accounts' lists, filters, which are cloned; PullRequest, Inbox and the status chips of a pull request; ports Secrets, API, Accounts, HelperConfig, Repos, Cache
+      domain/                 the kind of a host (GitHub or GitLab, guessed from its name) with its words (pull or merge request), the API address for a host, token help per host, token checks, the token's user must be the account's; git's credential helper protocol and the helper section per host; RemoteRepo, merging accounts' lists, filters, which are cloned; PullRequest, Inbox and the status chips of a pull request; ports Secrets, API, Accounts, HelperConfig, Repos, Cache
       application/            sign in with a token, sign out, which accounts are signed in, check a token; keep the credential helper section while an account on the host is signed in; answer git's HTTPS credential requests; Browse (cached, stale lists read again); Reviews (each account's inbox, cached for 5 minutes); BranchPR (the current branch's open pull request, not cached)
-      infrastructure/         the OS keychain (security on macOS, Credential Manager on Windows, secret-tool elsewhere; a file under tests), Tokens (follows an account's rename and removal), GitHub (GET /user, GET /user/repos page by page, the inbox in one GraphQL request), Cache (repo lists and inboxes, JSON per account in the cache folder), HelperConfig (credential.https://<host>/ in the global config), HelperRepos (GIT_DIR or the current folder)
+      infrastructure/         the OS keychain (security on macOS, Credential Manager on Windows, secret-tool elsewhere; a file under tests), Tokens (follows an account's rename and removal), Hosts (hands each call to the client for the host's kind), GitHub (GET /user, GET /user/repos page by page, the inbox in one GraphQL request), GitLab (GET /user, /projects, /merge_requests, one project's merge requests with approvals and pipeline), Cache (repo lists and inboxes, JSON per account in the cache folder), HelperConfig (credential.https://<host>/ in the global config), HelperRepos (GIT_DIR or the current folder)
     undo/
       domain/                 Record of the last change, when it may be undone (Check); ports Store, Git, Recorder
       application/            Recorder for the history, refs and workspace use cases (Before, Done, Pruned); Last, Undo
@@ -215,7 +215,7 @@ does not change.
 | Diff viewer, blame | A `diff` feature over git parsers. Render only the visible rows. |
 | Branches, checkout, stash, tags | The `refs` feature (branches, switch and update exist; stash and tags go there too). |
 | Merge, rebase, conflict editor | A `merge` feature (3-way conflict model in its domain). New changes report to the `undo` feature's Recorder, as history and refs do. |
-| Pull requests and issues | A `hosting` feature (GitHub/GitLab APIs in its infrastructure) that uses the account domain so each repo talks to its host as the right account. |
+| Pull requests and issues | A `hosting` feature (GitHub and GitLab APIs in its infrastructure, picked by the kind of host) that uses the account domain so each repo talks to its host as the right account. |
 | File watching (live refresh) | File events in `platform` + a `watch` feature that tells the front ends what changed. |
 
 Performance rule for the client: never load or render a whole history or

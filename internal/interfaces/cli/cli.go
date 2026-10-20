@@ -37,16 +37,17 @@ Accounts
   gitswitch key show <id> [--open]
   gitswitch key agent <id>          load the key into the OS agent / Keychain once
   gitswitch test [<id>]             check each key logs in, and as whom
-  gitswitch signin <id>             sign in to GitHub with a token, kept in your keychain
-  gitswitch signin [--check]        which accounts are signed in (--check asks GitHub)
+  gitswitch signin <id>             sign in to GitHub or GitLab with a token, kept in your keychain
+  gitswitch signin [--check]        which accounts are signed in (--check asks the host)
   gitswitch signout <id>            remove the account's token from your keychain
   gitswitch github list [words] [--account ID] [--owner O] [--lang L] [--private|--public]
                                     [--cloned|--not-cloned] [--archived] [--refresh] [--json]
-                                    repos your signed-in accounts can see on GitHub, and where each is cloned
+                                    repos your signed-in accounts can see on GitHub or GitLab, and where each is cloned
   gitswitch github clone <owner/name> [folder]clone one of them with the account that sees it
   gitswitch prs [--account ID] [--refresh] [--json]
-                                              pull requests waiting for your review, yours with what stands out,
-                                              and ones you reviewed lately, for each signed-in account
+                                              pull requests (merge requests on GitLab) waiting for your review,
+                                              yours with what stands out, and ones you reviewed lately, for each
+                                              signed-in account
   gitswitch default <id>            optional: account used when nobody answers (or Enter)
   gitswitch default --none          remove the default: repos with nothing saved always ask
 
@@ -83,7 +84,7 @@ History and branches
   gitswitch branch new <name> --move   committed on the wrong branch: start <name> here with the
                                     commits not pushed yet, and take them off the current branch
   gitswitch branch compare [--json]   the commits you would push to and pull from the remote branch
-  gitswitch branch pr [--json]      the branch's open pull request: approvals, checks, conflicts
+  gitswitch branch pr [--json]      the branch's open pull or merge request: approvals, checks, conflicts
   gitswitch branch prune [-y]       delete the local branches merged into the remote's default
                                     branch (never the current one, main or master); asks first
   gitswitch commit -m <message> [--all]   commit the staged changes as the repo's account;

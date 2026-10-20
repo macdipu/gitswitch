@@ -75,7 +75,7 @@ func (x *CLI) cmdGithub(args []string) error {
 		f.Account, f.Text = accountID, strings.Join(pos, " ")
 		b := x.app.Hosting.Browse(fetch)
 		if len(b.Accounts) == 0 {
-			return errors.New("no account is signed in to GitHub; sign one in first: gitswitch signin <account>")
+			return errors.New("no account is signed in to GitHub or GitLab; sign one in first: gitswitch signin <account>")
 		}
 		list := f.Apply(b.Repos)
 		if asJSON {

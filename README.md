@@ -39,7 +39,7 @@ gitswitch: work saved for this repo
 - [IDE notes](#ide-notes)
 - [Commit history and branches](#commit-history-and-branches)
 - [Repo list](#repo-list)
-- [Sign in to GitHub](#sign-in-to-github)
+- [Sign in to GitHub or GitLab](#sign-in-to-github-or-gitlab)
 - [Health check](#health-check)
 - [Command reference](#command-reference)
 - [How it works](#how-it-works)
@@ -351,11 +351,11 @@ GitSwitch remembers the last 10 repos you opened: with `repo open`, or by showin
 
 Adding or removing a repo changes only GitSwitch's list. The repo's files, remotes, branches and git settings are never touched. In the desktop app, "Add an existing repo…" uses the system folder picker.
 
-## Sign in to GitHub
+## Sign in to GitHub or GitLab
 
-**GitHub only.** The key-based account switching works with any host (GitHub, GitLab, Bitbucket, your own server). The sign-in, the repo browser, Reviews and a branch's pull request work with GitHub and GitHub Enterprise only; GitLab and Bitbucket accounts show them as not available.
+**Which hosts.** The key-based account switching works with any host (GitHub, GitLab, Bitbucket, your own server). The sign-in, the repo browser, Reviews and a branch's pull or merge request work with **GitHub** (github.com and GitHub Enterprise) and **GitLab** (gitlab.com), with a token and nothing else: no OAuth, no browser sign-in. GitSwitch tells which one an account is from its host name (github.com, gitlab.com, or a host that starts with `gitlab.`; any other host is treated as GitHub Enterprise). Bitbucket accounts show them as not available. The wording below says GitHub and pull requests; on GitLab read merge requests.
 
-GitSwitch works over ssh keys and needs no sign-in. Signing an account in to GitHub with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to GitHub as that account: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata, Contents and Pull requests is enough.
+GitSwitch works over ssh keys and needs no sign-in. Signing an account in with a token is optional: it adds a browser of every repo your accounts can see, and HTTPS remotes that use the right account. Create the token while signed in to the host as that account. On GitHub: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with "All repositories" and read access to Metadata, Contents and Pull requests is enough. On GitLab: a [personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) with the scopes `read_api`, `read_repository` and `write_repository`.
 
 ```sh
 gitswitch signin work                    # asks for the token; it is not shown as you paste it
@@ -364,9 +364,9 @@ gitswitch signin --check                 # which accounts are signed in, and whe
 gitswitch signout work                   # remove the token from your keychain
 ```
 
-The desktop app has "Sign in to GitHub…" in each account's More menu, and the terminal app uses `g` (sign in) and `G` (sign out) on the Accounts page.
+The desktop app has "Sign in to GitHub…" (or GitLab) in each account's More menu, and the terminal app uses `g` (sign in) and `G` (sign out) on the Accounts page.
 
-**Browse your GitHub repos.** Every repo your signed-in accounts can see, your own, ones you collaborate on and your organizations', private included, with where each is cloned already:
+**Browse your hosted repos.** Every repo your signed-in accounts can see (`gitswitch github …` works for GitLab accounts too), your own, ones you collaborate on and your organizations' or groups', private included, with where each is cloned already:
 
 ```sh
 gitswitch github list                    # every repo, and where it is cloned
@@ -374,15 +374,15 @@ gitswitch github list billing --private --not-cloned --account work
 gitswitch github clone acme/api          # clone it with the account that sees it, over ssh
 ```
 
-Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same under the accounts on its Accounts page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If GitHub cannot be reached, the last list is shown and says so.
+Filters: words in the name or description, `--account`, `--owner`, `--lang`, `--private` or `--public`, `--cloned` or `--not-cloned`, `--archived` (hidden otherwise). The desktop app has the same under the accounts on its Accounts page (Clone… opens the clone form, History opens a cloned one), and the terminal app on the Repos page with `b` (type to filter, Enter clones or opens). Lists are kept for an hour in GitSwitch's cache folder, so the apps show them at once; `--refresh` or the Refresh button reads them now. If the host cannot be reached, the last list is shown and says so. GitLab does not say a repo's language, so `--lang` finds nothing there.
 
-**Reviews.** The Reviews page (and tab 6 in the terminal app, `gitswitch prs` in a terminal) lists, for each signed-in account, the pull requests waiting for its review, its own open pull requests with what stands out about each (conflicts, checks failing or running, changes requested, approved and ready to merge, draft), and open ones it reviewed lately. Click one to open it on GitHub. It is read when you open the page and again every 5 minutes while it stays open, never in the background; `gitswitch prs --refresh` reads it now and `--json` gives it to scripts. The token needs read access to Pull requests.
+**Reviews.** The Reviews page (and tab 6 in the terminal app, `gitswitch prs` in a terminal) lists, for each signed-in account, the pull requests waiting for its review, its own open pull requests with what stands out about each (conflicts, checks failing or running, changes requested, approved and ready to merge, draft), and open ones it reviewed lately. Click one to open it on the host. On GitLab these are merge requests, and what stands out comes from GitLab's own merge status (draft, conflicts, pipeline, not approved, ready to merge), so "approved" is less exact than on GitHub. It is read when you open the page and again every 5 minutes while it stays open, never in the background; `gitswitch prs --refresh` reads it now and `--json` gives it to scripts. The token needs read access to pull requests (`read_api` on GitLab).
 
-**Pull request of the current branch.** The History toolbar shows the branch's open pull request next to the sync status, e.g. `PR #42 · 1 approval · checks passing`; click it to open it on GitHub (red when something needs you, green when it is ready to merge, the hover says what to do). It is read with the repo's own account when History is shown, one small request, and stays quiet when the branch has no pull request, the remote is not on GitHub or no account is signed in. In the terminal app press `K` on the History page; `gitswitch branch pr [--json]` prints it.
+**Pull request of the current branch.** The History toolbar shows the branch's open pull request next to the sync status, e.g. `PR #42 · 1 approval · checks passing` (`MR !42 · …` on GitLab); click it to open it on the host (red when something needs you, green when it is ready to merge, the hover says what to do). It is read with the repo's own account when History is shown, one small request, and stays quiet when the branch has no pull request, the remote is not on GitHub or GitLab or no account is signed in. In the terminal app press `K` on the History page; `gitswitch branch pr [--json]` prints it.
 
 **HTTPS remotes.** While an account is signed in, git gets its token for the HTTPS remotes of that account's repos, so `git clone https://…`, `fetch` and `push` work as the right account too, with no password prompt. GitSwitch adds itself as a credential helper for that host only (a `credential.https://github.com/` section in your global git config) ahead of your own helpers, and answers only when it is sure which signed-in account a repo uses. Everything else (other accounts' repos, other hosts, a folder that is not a repo) goes to your own helpers exactly as before. Signing out the last account on a host, or `gitswitch uninstall`, removes the section. To push over HTTPS, give the token **Contents: read and write**; read-only is enough to clone and fetch.
 
-GitSwitch checks the token with GitHub before keeping it, and refuses a token of another GitHub user than the one the account's key logs in as. The token is kept in your OS keychain (macOS Keychain, Windows Credential Manager, or the Secret Service through `secret-tool` on Linux), never in git config or a file, and never on a command line. Renaming an account takes its token along; removing an account removes it. Signing out only removes it from your computer: delete it on GitHub to revoke it. GitHub Enterprise servers work too; GitLab and Bitbucket are not supported yet.
+GitSwitch checks the token with the host before keeping it, and refuses a token of another user than the one the account's key logs in as. The token is kept in your OS keychain (macOS Keychain, Windows Credential Manager, or the Secret Service through `secret-tool` on Linux), never in git config or a file, and never on a command line. Renaming an account takes its token along; removing an account removes it. Signing out only removes it from your computer: delete it on the host to revoke it. GitHub Enterprise servers work too; Bitbucket is not supported yet.
 
 ## Health check
 

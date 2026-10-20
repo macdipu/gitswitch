@@ -343,7 +343,7 @@ func (in *Installer) Uninstall(purge bool, report func(string)) error {
 		secrets := hostinginfra.NewSecrets()
 		for _, a := range in.Store.Load().Accounts {
 			_, _ = in.Git.Global("--remove-section", "gitswitch-account."+a.ID)
-			if !in.FS.Dry("remove the GitHub token of " + a.ID + " from the keychain") {
+			if !in.FS.Dry("remove the token of " + a.ID + " from the keychain") {
 				_ = secrets.Delete(a.ID) // none saved is fine
 			}
 		}

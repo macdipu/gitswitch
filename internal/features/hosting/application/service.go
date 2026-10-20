@@ -39,7 +39,7 @@ func (s *Service) SignIn(accountID, token string) (hosting.SignedIn, error) {
 	if token, err = hosting.CheckToken(token); err != nil {
 		return hosting.SignedIn{}, err
 	}
-	u, g, err := s.API.Whoami(base, token)
+	u, g, err := s.API.Whoami(hosting.KindOf(a.Host), base, token)
 	if err != nil {
 		return hosting.SignedIn{}, err
 	}
@@ -80,7 +80,8 @@ func (s *Service) SignOut(accountID string) error {
 func (s *Service) Status() []hosting.Status {
 	out := []hosting.Status{}
 	for _, a := range s.Accounts.Load().Accounts {
-		st := hosting.Status{Account: a.ID, Host: a.Host}
+		st := hosting.Status{Account: a.ID, Host: a.Host, Provider: hosting.KindOf(a.Host).Name()}
+		st.TokenPage, st.TokenNeeds = hosting.TokenHelp(a.Host)
 		if _, err := hosting.APIBase(a.Host); err == nil {
 			st.Supported = true
 			switch _, err := s.Secrets.Get(a.ID); {
@@ -111,7 +112,7 @@ func (s *Service) Check(accountID string) (hosting.SignedIn, error) {
 	} else if err != nil {
 		return hosting.SignedIn{}, err
 	}
-	u, g, err := s.API.Whoami(base, token)
+	u, g, err := s.API.Whoami(hosting.KindOf(a.Host), base, token)
 	if err != nil {
 		return hosting.SignedIn{}, err
 	}
@@ -172,14 +173,14 @@ func (s *Service) Credential(r hosting.Request) (user, password string, ok bool)
 	if a == nil || !remote.SameHost(a.Host, r.Host) {
 		return "", "", false
 	}
-	if r.Username != "" && !strings.EqualFold(r.Username, hosting.TokenUser(a.User)) {
+	if r.Username != "" && !strings.EqualFold(r.Username, hosting.TokenUser(a.Host, a.User)) {
 		return "", "", false // the URL names another user
 	}
 	tok, err := s.Secrets.Get(a.ID)
 	if err != nil {
 		return "", "", false
 	}
-	return hosting.TokenUser(a.User), tok, true
+	return hosting.TokenUser(a.Host, a.User), tok, true
 }
 
 // Fetch says when Browse reads repo lists from the host.
@@ -242,7 +243,7 @@ func (s *Service) fetch(accountID, host string) (hosting.RepoList, error) {
 	if err != nil {
 		return hosting.RepoList{}, err
 	}
-	rs, err := s.API.Repos(base, tok)
+	rs, err := s.API.Repos(hosting.KindOf(host), base, tok)
 	if err != nil {
 		return hosting.RepoList{}, err
 	}
@@ -285,6 +286,7 @@ func (s *Service) Reviews(fetch Fetch) []hosting.Inbox {
 }
 
 func (s *Service) fetchInbox(accountID, host, login string) (hosting.Inbox, error) {
+	kind := hosting.KindOf(host)
 	base, err := hosting.APIBase(host)
 	if err != nil {
 		return hosting.Inbox{}, err
@@ -293,20 +295,21 @@ func (s *Service) fetchInbox(accountID, host, login string) (hosting.Inbox, erro
 	if err != nil {
 		return hosting.Inbox{}, err
 	}
-	if login == "" { // signed in before GitSwitch kept the user: ask GitHub
-		u, _, err := s.API.Whoami(base, tok)
+	if login == "" { // signed in before GitSwitch kept the user: ask the host
+		u, _, err := s.API.Whoami(kind, base, tok)
 		if err != nil {
 			return hosting.Inbox{}, err
 		}
 		login = u.Login
 		_ = s.Accounts.SetUser(accountID, login)
 	}
-	toReview, mine, reviewed, err := s.API.Inbox(base, tok, login)
+	toReview, mine, reviewed, err := s.API.Inbox(kind, base, tok, login)
 	if err != nil {
 		return hosting.Inbox{}, err
 	}
 	for _, l := range [][]hosting.PullRequest{toReview, mine, reviewed} {
 		for i := range l {
+			l[i].Kind, l[i].Mark = kind, kind.Mark()
 			l[i].Chips = hosting.StatusChips(l[i])
 		}
 	}
@@ -345,9 +348,13 @@ func (s *Service) BranchPR(gitDir string) hosting.BranchPR {
 			url = r.URL
 		}
 	}
-	out.Repo = hosting.RepoOf(url)
 	a := c.Account(info.Account)
-	if out.Repo == "" || a == nil {
+	if a == nil {
+		return out
+	}
+	kind := hosting.KindOf(a.Host)
+	out.Kind = kind
+	if out.Repo = hosting.RepoPath(kind, url); out.Repo == "" {
 		return out
 	}
 	host, _ := remote.Parse(url)
@@ -362,11 +369,11 @@ func (s *Service) BranchPR(gitDir string) hosting.BranchPR {
 	tok, err := s.Secrets.Get(a.ID)
 	if err != nil {
 		if errors.Is(err, hosting.ErrNoToken) {
-			out.Reason = "sign " + a.ID + " in to GitHub to see this branch's pull request"
+			out.Reason = "sign " + a.ID + " in to " + kind.Name() + " to see this branch's " + kind.RequestName()
 		}
 		return out
 	}
-	p, err := s.API.BranchPR(base, tok, out.Repo, info.Branch)
+	p, err := s.API.BranchPR(kind, base, tok, out.Repo, info.Branch)
 	if err != nil {
 		out.Reason = err.Error()
 		return out
@@ -374,6 +381,7 @@ func (s *Service) BranchPR(gitDir string) hosting.BranchPR {
 	if p == nil {
 		return out
 	}
+	p.Kind, p.Mark = kind, kind.Mark()
 	p.Chips = hosting.StatusChips(*p)
 	out.Found, out.PR, out.Summary = true, *p, hosting.BranchSummary(*p)
 	return out

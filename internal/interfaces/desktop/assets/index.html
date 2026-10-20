@@ -420,8 +420,8 @@ dialog .row-actions{justify-content:flex-end}
     </form>
     <div class="accounts" id="accounts"></div>
       <section class="gh-sec" id="ghSection" hidden aria-labelledby="ghTitle">
-      <h2 id="ghTitle">Repos on GitHub</h2>
-      <p class="lead">Every repo your signed-in accounts can see on GitHub, private ones and your organizations' included, and where each is cloned. Accounts signed in to GitHub (in their More menu above) show here.</p>
+      <h2 id="ghTitle">Repos on your git hosts</h2>
+      <p class="lead">Every repo your signed-in accounts can see on GitHub or GitLab, private ones and your organizations' or groups' included, and where each is cloned. Accounts signed in (in their More menu above) show here.</p>
       <div class="gh-bar">
         <input id="ghText" type="search" placeholder="Search names and descriptions" aria-label="Search repos" autocomplete="off" spellcheck="false">
         <select id="ghAccount" aria-label="Account"></select>
@@ -464,7 +464,7 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-reviews" hidden>
     <h1 tabindex="-1">Reviews</h1>
-    <p class="lead">Pull requests waiting for your review, yours with what stands out, and ones you reviewed lately, for each account signed in to GitHub.</p>
+    <p class="lead">Pull requests waiting for your review, yours with what stands out, and ones you reviewed lately, for each account signed in to GitHub or GitLab (pull requests, or merge requests on GitLab).</p>
     <div class="rv-bar"><span class="hint" id="rvMeta" aria-live="polite"></span><button class="btn" id="rvRefresh">Refresh</button></div>
     <div id="rvList"></div>
   </section>
@@ -553,7 +553,7 @@ dialog .row-actions{justify-content:flex-end}
     <h1 tabindex="-1">Rules</h1>
     <p class="lead">Rules pick the account automatically, so most repos never ask. A repo's own saved account always wins over rules.</p>
     <form class="card" id="ruleForm">
-      <label>When<select name="kind"><option value="owner">the GitHub owner or org is</option><option value="folder">the repo is inside the folder</option></select></label>
+      <label>When<select name="kind"><option value="owner">the owner or organization is</option><option value="folder">the repo is inside the folder</option></select></label>
       <label id="patLabel">Owner or org<input name="pattern" required placeholder="acme-corp"></label>
       <label>use account<select name="account" id="ruleAcct"></select></label>
       <div style="align-self:end"><button class="btn primary" type="submit">Add rule</button></div>
@@ -907,7 +907,7 @@ function renderAccounts(){
             <button data-act="edit">Edit…</button>
             <button data-act="rename">Rename…</button>
             ${a.id !== c.default ? '<button data-act="default">Make default</button>' : '<button data-act="nodefault">Remove as default</button>'}
-            ${hostingOf(a.id)?.supported ? (hostingOf(a.id).signedIn ? '<button data-act="apicheck">Check GitHub token</button><button data-act="signout">Sign out of GitHub</button>' : '<button data-act="signin">Sign in to GitHub…</button>') : ''}
+            ${hostingOf(a.id)?.supported ? (hostingOf(a.id).signedIn ? '<button data-act="apicheck">Check token</button><button data-act="signout">Sign out of ' + esc(hostingOf(a.id).provider) + '</button>' : '<button data-act="signin">Sign in to ' + esc(hostingOf(a.id).provider) + '…</button>') : ''}
             <hr><button class="danger" data-act="remove">Remove…</button>
           </div>
         </details>
@@ -915,14 +915,14 @@ function renderAccounts(){
       ${openDetail[a.id] ? `<div class="detail">${openDetail[a.id]}</div>` : ''}
     </div>`).join('');
 }
-// GitHub sign-in: a token per account in the keychain, for the GitHub API.
+// Sign-in to the host (GitHub, GitLab): a token per account in the keychain, for its API.
 const hostingOf = id => (S.hosting || []).find(h => h.account === id);
 function apiLine(a){
   const h = hostingOf(a.id);
   if (!h?.supported) return '';
-  if (h.error) return `<div class="meta"><span class="status-bad">GitHub token: ${esc(h.error)}</span></div>`;
-  return h.signedIn ? '<div class="meta"><span class="status-ok">Signed in to GitHub</span> (token in your keychain)</div>'
-    : '<div class="meta">Not signed in to GitHub · <button class="link" data-act="signin">Sign in…</button></div>';
+  if (h.error) return `<div class="meta"><span class="status-bad">${esc(h.provider)} token: ${esc(h.error)}</span></div>`;
+  return h.signedIn ? '<div class="meta"><span class="status-ok">Signed in to ' + esc(h.provider) + '</span> (token in your keychain)</div>'
+    : '<div class="meta">Not signed in to ' + esc(h.provider) + ' · <button class="link" data-act="signin">Sign in…</button></div>';
 }
 $('#accounts').addEventListener('change', async e => {
   if (e.target.id !== 'defSel') return;
@@ -956,20 +956,21 @@ $('#accounts').addEventListener('click', async e => {
   } else if (b.dataset.act === 'close'){
     delete openDetail[id]; renderAccounts();
   } else if (b.dataset.act === 'signin'){
-    const page = 'https://' + (a.host === 'ssh.github.com' ? 'github.com' : a.host) + '/settings/personal-access-tokens/new';
-    openDetail[id] = `To sign <strong>${esc(id)}</strong> in to GitHub, create a token while signed in to GitHub as ${a.user ? '<strong>' + esc(a.user) + '</strong>' : 'this account'}:
-      <a href="${esc(page)}" target="_blank" rel="noopener noreferrer">${esc(page)}</a>. A fine-grained token with “All repositories” and read access to Metadata, Contents and Pull requests is enough. GitSwitch keeps it in your keychain, never in git config.`;
+    const h = hostingOf(id), page = h.tokenPage;
+    openDetail[id] = `To sign <strong>${esc(id)}</strong> in to ${esc(h.provider)}, create a token while signed in to ${esc(h.provider)} as ${a.user ? '<strong>' + esc(a.user) + '</strong>' : 'this account'}:
+      <a href="${esc(page)}" target="_blank" rel="noopener noreferrer">${esc(page)}</a>. ${esc(h.tokenNeeds)} GitSwitch keeps it in your keychain, never in git config.`;
     renderAccounts();
     const token = await ask(`Paste the token for ${id}:`, {input:'', secret:true, ok:'Sign in'});
     if (token === null){ delete openDetail[id]; renderAccounts(); return; }
     const r = await act(() => api('POST', '/api/signin', {id, token}));
-    if (r){ delete openDetail[id]; toast(`Signed in to GitHub as ${r.login}` + (r.expires ? ` · the token expires ${r.expires}` : '') + (r.https ? '' : ` · git uses it for HTTPS remotes of ${id}'s repos`)); refresh(); }
+    if (r){ delete openDetail[id]; toast(`Signed in to ${hostingOf(id).provider} as ${r.login}` + (r.expires ? ` · the token expires ${r.expires}` : '') + (r.https ? '' : ` · git uses it for HTTPS remotes of ${id}'s repos`)); refresh(); }
   } else if (b.dataset.act === 'apicheck'){
     const r = await act(() => api('POST', '/api/signin/check', {id}));
-    if (r){ openDetail[id] = `<span class="status-ok">The token works: GitHub knows it as <strong>${esc(r.login)}</strong>${r.expires ? ', until ' + esc(r.expires) : ''}.</span>`; renderAccounts(); }
+    if (r){ openDetail[id] = `<span class="status-ok">The token works: ${esc(hostingOf(id).provider)} knows it as <strong>${esc(r.login)}</strong>${r.expires ? ', until ' + esc(r.expires) : ''}.</span>`; renderAccounts(); }
   } else if (b.dataset.act === 'signout'){
-    if (!await ask(`Sign ${id} out of GitHub? Its token is removed from your keychain. To revoke it too, delete it on GitHub.`, {ok:'Sign out'})) return;
-    if (await act(() => api('POST', '/api/signout', {id})) !== undefined){ toast(id + ' is signed out of GitHub'); refresh(); }
+    const prov = hostingOf(id).provider;
+    if (!await ask(`Sign ${id} out of ${prov}? Its token is removed from your keychain. To revoke it too, delete it on ${prov}.`, {ok:'Sign out'})) return;
+    if (await act(() => api('POST', '/api/signout', {id})) !== undefined){ toast(id + ' is signed out of ' + prov); refresh(); }
   } else if (b.dataset.act === 'edit'){
     openForm(a);
   } else if (b.dataset.act === 'nodefault'){
@@ -1170,7 +1171,7 @@ async function loadGithub(fetch){
 const ghOpts = (el, list, all) => { const v = el.value; el.innerHTML = `<option value="">${all}</option>` + list.map(x => `<option>${esc(x)}</option>`).join(''); el.value = list.includes(v) ? v : ''; };
 function renderGithub(){
   const g = GH;
-  if (!g.accounts.length){ $('#ghMeta').textContent = ''; $('#ghList').innerHTML = '<div class="empty">No account is signed in to GitHub. Sign one in from its More menu on the Accounts page, to see its repos here. Everything else in GitSwitch works without it.</div>'; return; }
+  if (!g.accounts.length){ $('#ghMeta').textContent = ''; $('#ghList').innerHTML = '<div class="empty">No account is signed in to GitHub or GitLab. Sign one in from its More menu on the Accounts page, to see its repos here. Everything else in GitSwitch works without it.</div>'; return; }
   ghOpts($('#ghAccount'), g.accounts.map(a => a.account), 'Every account');
   ghOpts($('#ghOwner'), g.owners, 'Every owner'); ghOpts($('#ghLang'), g.languages, 'Every language');
   const words = $('#ghText').value.toLowerCase().split(/\s+/).filter(Boolean), f = {account:$('#ghAccount').value, owner:$('#ghOwner').value, lang:$('#ghLang').value, vis:$('#ghVis').value, cloned:$('#ghCloned').value, archived:$('#ghArchived').checked};
@@ -1199,7 +1200,7 @@ $('#ghList').addEventListener('click', async e => {
   } else if (d.ghhist !== undefined){
     const r = GH.shown[d.ghhist];
     if (!repos.length) repos = await act(() => api('GET','/api/repos')) || [];
-    const local = repos.find(x => x.path === r.cloned[0]); if (!local) return toast('That clone is not in the repo list any more; refresh the GitHub page');
+    const local = repos.find(x => x.path === r.cloned[0]); if (!local) return toast('That clone is not in the repo list any more; refresh the repo list');
     show('history'); await fillRepoSelect(); $('#histRepo').value = local.gitDir; loadHistory();
   }
 });
@@ -1224,14 +1225,14 @@ $('#rvRefresh').onclick = () => loadReviews('all');
 function renderReviews(){
   if (!RV.length){
     $('#rvMeta').textContent = '';
-    $('#rvList').innerHTML = '<div class="empty"><strong>No account is signed in to GitHub.</strong><br>Sign one in from its More menu on the Accounts page to see your pull requests here. Everything else in GitSwitch works without it.<div class="acts"><button class="btn primary" data-empty="accounts">Go to Accounts</button></div></div>';
+    $('#rvList').innerHTML = '<div class="empty"><strong>No account is signed in to GitHub or GitLab.</strong><br>Sign one in from its More menu on the Accounts page to see your pull and merge requests here. Everything else in GitSwitch works without it.<div class="acts"><button class="btn primary" data-empty="accounts">Go to Accounts</button></div></div>';
     return;
   }
   const read = i => i.fetched && !i.fetched.startsWith('0001') ? when(Date.parse(i.fetched) / 1000) : 'never';
   $('#rvMeta').textContent = RV.map(i => `${i.account}: read ${read(i)}`).join(' · ');
   const chip = c => `<span class="prchip${c.bad ? ' bad' : c.kind === 'ready' ? ' ready' : ''}"${c.hint ? ` title="${esc(c.hint)}"` : ''}>${esc(c.text)}</span>`;
   const row = (p, author) => `<div class="pr"><a class="prt" href="${esc(p.url)}" title="${esc(p.title)}">${esc(p.title)}</a>
-      <div class="meta">${esc(p.repo)} #${p.number}${author ? ' · ' + esc(p.author) : ''} · updated ${esc(when(Date.parse(p.updatedAt) / 1000))}</div>
+      <div class="meta">${esc(p.repo)} ${esc(p.mark || '#')}${p.number}${author ? ' · ' + esc(p.author) : ''} · updated ${esc(when(Date.parse(p.updatedAt) / 1000))}</div>
       <div class="chips">${(p.chips || []).map(chip).join('')}</div></div>`;
   const group = (title, prs, author, none) => `<div class="rv-group"><h3>${title} (${prs.length})</h3>${prs.length ? prs.map(p => row(p, author)).join('') : `<div class="rv-none">${none}</div>`}</div>`;
   $('#rvList').innerHTML = RV.map(i => `<section class="rv-acct" aria-label="${esc(i.account)}">
@@ -1447,9 +1448,9 @@ async function loadBranchPR(gd){
   if ($('#histRepo').value !== gd) return; // another repo was picked meanwhile
   if (!r?.found){
     if (r?.reason){
-      const signIn = /^sign .* in to GitHub/.test(r.reason);
+      const signIn = /^sign .* in to Git(Hub|Lab)/.test(r.reason), noun = r.kind === 'gitlab' ? 'merge request' : 'pull request';
       el.removeAttribute('href'); el.className = 'prstate'; el.hidden = false;
-      el.textContent = signIn ? 'Sign in to GitHub to see its pull request' : 'Pull request: could not read';
+      el.textContent = signIn ? 'Sign in to see its ' + noun : noun[0].toUpperCase() + noun.slice(1) + ': could not read';
       el.title = r.reason;
     }
     return;
@@ -1457,7 +1458,7 @@ async function loadBranchPR(gd){
   const bad = r.pr.chips.some(c => c.Bad || c.bad), ready = r.pr.chips.some(c => c.kind === 'ready');
   el.href = r.pr.url; el.textContent = r.summary;
   el.className = 'prstate' + (bad ? ' bad' : ready ? ' ok' : '');
-  el.title = (r.pr.title ? r.pr.title + '\n' : '') + (r.pr.chips.filter(c => c.hint).map(c => c.text + ': ' + c.hint).join('\n') || 'Open it on GitHub');
+  el.title = (r.pr.title ? r.pr.title + '\n' : '') + (r.pr.chips.filter(c => c.hint).map(c => c.text + ': ' + c.hint).join('\n') || 'Open it on the web');
   el.hidden = false;
 }
 

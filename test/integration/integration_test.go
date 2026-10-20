@@ -2622,3 +2622,85 @@ func TestSetFetchOnOpen(t *testing.T) {
 	}
 	e.gs("set", "fetch-on-open", "off") // turning it off twice is fine
 }
+
+// A GitLab account signs in with a token and gets the same help as a
+// GitHub one: its merge requests, its repos (nested groups included), the
+// branch's merge request, and the token for HTTPS remotes.
+func TestGitLabAccount(t *testing.T) {
+	e := newEnv(t)
+	e.gs("account", "add", "lab", "--email", "dipu@lab.example", "--key", e.key("work"), "--host", "gitlab.com")
+	e.serverRepo("acme/team/api")
+	e.clone("git@gitlab.com:acme/team/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.gsIn(api, "use", "lab")
+	e.gsIn(api, "branch", "new", "billing")
+
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok-gl" {
+			w.WriteHeader(401)
+			return
+		}
+		q := r.URL.Query()
+		switch path := r.URL.EscapedPath(); {
+		case path == "/user":
+			fmt.Fprint(w, `{"username":"ana","name":"Ana"}`)
+		case path == "/personal_access_tokens/self":
+			fmt.Fprint(w, `{"scopes":["read_api"],"expires_at":"2027-02-03"}`)
+		case path == "/projects":
+			fmt.Fprint(w, `[{"path_with_namespace":"acme/team/api","path":"api","namespace":{"full_path":"acme/team"},"visibility":"private","default_branch":"main",
+			  "ssh_url_to_repo":"git@gitlab.com:acme/team/api.git","http_url_to_repo":"https://gitlab.com/acme/team/api.git","web_url":"https://gitlab.com/acme/team/api"}]`)
+		case path == "/merge_requests":
+			asked = append(asked, q.Get("reviewer_username")+q.Get("author_username"))
+			switch {
+			case q.Get("reviewer_username") == "ana":
+				fmt.Fprint(w, `[{"iid":7,"title":"Add billing","author":{"username":"naser"},"references":{"full":"acme/team/api!7"},"detailed_merge_status":"not_approved"}]`)
+			case q.Get("author_username") == "ana":
+				fmt.Fprint(w, `[{"iid":4,"title":"Ship it","author":{"username":"ana"},"references":{"full":"acme/team/api!4"},"detailed_merge_status":"mergeable"}]`)
+			default:
+				fmt.Fprint(w, `[]`)
+			}
+		case path == "/projects/acme%2Fteam%2Fapi/merge_requests":
+			fmt.Fprint(w, `[{"iid":42,"source_project_id":5,"target_project_id":5}]`)
+		case path == "/projects/acme%2Fteam%2Fapi/merge_requests/42":
+			fmt.Fprint(w, `{"iid":42,"title":"Billing","web_url":"https://gitlab.com/acme/team/api/-/merge_requests/42","author":{"username":"ana"},"references":{"full":"acme/team/api!42"},
+			  "detailed_merge_status":"mergeable","head_pipeline":{"status":"success"}}`)
+		case path == "/projects/acme%2Fteam%2Fapi/merge_requests/42/approvals":
+			fmt.Fprint(w, `{"approved_by":[{"user":{"username":"naser"}},{"user":{"username":"sam"}}]}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITLAB_API="+srv.URL)
+
+	e.gsErr(api, "sign lab in to GitLab", "branch", "pr")
+	cmd := exec.Command(gsBin, "signin", "lab")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-gl\n")
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "Signed in: lab uses ana's token on gitlab.com") {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	if out := e.gs("signin", "--check"); !strings.Contains(out, "signed in as ana, token works") {
+		t.Fatalf("signin --check:\n%s", out)
+	}
+	out := e.gs("prs")
+	for _, want := range []string{"acme/team/api!7  Add billing  · naser", "Waiting for review", "acme/team/api!4  Ship it", "Ready to merge"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("prs lacks %q:\n%s", want, out)
+		}
+	}
+	if out := e.gsIn(api, "branch", "pr"); !strings.Contains(out, "MR !42 · 2 approvals · checks passing") || !strings.Contains(out, "merge_requests/42") {
+		t.Fatalf("branch pr:\n%s", out)
+	}
+	if out := e.gs("github", "list"); !strings.Contains(out, "acme/team/api") {
+		t.Fatalf("repo list:\n%s", out)
+	}
+
+	// git gets the token for an HTTPS remote of this account, as the host's user.
+	fill := exec.Command("git", "credential", "fill")
+	fill.Dir, fill.Env = api, e.vars
+	fill.Stdin = strings.NewReader("protocol=https\nhost=gitlab.com\n\n")
+	if out, err := fill.CombinedOutput(); err != nil || !strings.Contains(string(out), "username=ana") || !strings.Contains(string(out), "password=tok-gl") {
+		t.Fatalf("git credential fill: %v\n%s", err, out)
+	}
+}

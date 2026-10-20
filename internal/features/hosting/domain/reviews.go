@@ -8,9 +8,14 @@ import (
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 )
 
-// PullRequest is an open pull request as the inbox shows it.
+// PullRequest is an open pull request (a merge request on GitLab) as the
+// inbox shows it.
 type PullRequest struct {
-	Repo      string `json:"repo"` // owner/name
+	// Kind is the kind of host it is on, and Mark what goes before its
+	// number there (# or !); both are filled in by the use case.
+	Kind      Kind   `json:"kind"`
+	Mark      string `json:"mark"`
+	Repo      string `json:"repo"` // owner/name (group/subgroup/name on GitLab)
 	Number    int    `json:"number"`
 	Title     string `json:"title"`
 	URL       string `json:"url"`
@@ -26,7 +31,10 @@ type PullRequest struct {
 	Checks string `json:"checks"`
 	// Mergeable is MERGEABLE, CONFLICTING or UNKNOWN (still computing).
 	Mergeable string `json:"mergeable"`
-	Chips     []Chip `json:"chips"`
+	// ReadyToMerge is a host that says so itself (GitLab's "mergeable"):
+	// no conflicts, checks passed and approvals met, whoever approved.
+	ReadyToMerge bool   `json:"readyToMerge"`
+	Chips        []Chip `json:"chips"`
 	// Approvals counts reviewers whose latest opinion is an approval; read
 	// for a branch's pull request only (BranchPR), 0 in the inbox.
 	Approvals int `json:"approvals"`
@@ -46,7 +54,7 @@ func StatusChips(p PullRequest) []Chip {
 	chips := []Chip{}
 	failing := p.Checks == "FAILURE" || p.Checks == "ERROR"
 	if p.Draft {
-		chips = append(chips, Chip{Kind: "draft", Text: "Draft", Hint: "Mark it ready for review on GitHub when it is"})
+		chips = append(chips, Chip{Kind: "draft", Text: "Draft", Hint: "Mark it ready for review when it is"})
 	}
 	if p.Mergeable == "CONFLICTING" {
 		chips = append(chips, Chip{Kind: "conflict", Text: "Conflicts", Hint: "Its branch clashes with the base branch: update it and fix the clashing files", Bad: true})
@@ -55,6 +63,10 @@ func StatusChips(p PullRequest) []Chip {
 		chips = append(chips, Chip{Kind: "failing", Text: "Checks failing", Hint: "Open it to see which check failed", Bad: true})
 	} else if p.Checks == "PENDING" || p.Checks == "EXPECTED" {
 		chips = append(chips, Chip{Kind: "running", Text: "Checks running"})
+	}
+	if p.ReadyToMerge && !p.Draft && p.ReviewDecision != "CHANGES_REQUESTED" {
+		chips = append(chips, Chip{Kind: "ready", Text: "Ready to merge", Hint: "No conflicts, checks passing and approvals met"})
+		return chips
 	}
 	switch p.ReviewDecision {
 	case "CHANGES_REQUESTED":
@@ -113,8 +125,11 @@ func GraphQLURL(restBase string) string {
 type BranchPR struct {
 	Found   bool   `json:"found"`   // the branch has an open pull request
 	Account string `json:"account"` // the account that read it
-	Repo    string `json:"repo"`
-	Branch  string `json:"branch"`
+	// Kind is the kind of host the account is on: it names what is shown
+	// (pull request or merge request); "" when no account decided.
+	Kind   Kind   `json:"kind"`
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
 	// Reason is why nothing is shown when Found is false and something
 	// stands in the way (no account signed in, an unreadable answer); ""
 	// when the branch simply has no pull request.
@@ -126,7 +141,7 @@ type BranchPR struct {
 
 // BranchSummary is a pull request in one line for a toolbar.
 func BranchSummary(p PullRequest) string {
-	parts := []string{"PR #" + strconv.Itoa(p.Number)}
+	parts := []string{p.Kind.Short() + " " + p.Kind.Mark() + strconv.Itoa(p.Number)}
 	if p.Draft {
 		parts = append(parts, "draft")
 	}
@@ -157,10 +172,16 @@ func BranchSummary(p PullRequest) string {
 }
 
 // RepoOf is owner/name for a GitHub remote URL, "" for anything else.
-func RepoOf(remoteURL string) string {
+func RepoOf(remoteURL string) string { return RepoPath(KindGitHub, remoteURL) }
+
+// RepoPath is the repo's path on its host for a remote URL: owner/name on
+// GitHub, and on GitLab group/name or group/subgroup/name. "" for a URL
+// that is not one.
+func RepoPath(kind Kind, remoteURL string) string {
 	_, p := remote.Parse(remoteURL)
 	p = strings.TrimSuffix(strings.Trim(p, "/"), ".git")
-	if strings.Count(p, "/") != 1 {
+	n := strings.Count(p, "/")
+	if (kind == KindGitLab && n < 1) || (kind != KindGitLab && n != 1) {
 		return ""
 	}
 	return p

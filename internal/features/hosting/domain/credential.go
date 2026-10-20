@@ -109,11 +109,14 @@ func ParseRequest(s string) Request {
 	return r
 }
 
-// TokenUser is the username sent with a token: the account's GitHub
-// user, or one GitHub accepts with any token.
-func TokenUser(user string) string {
-	if user == "" {
-		return "x-access-token"
+// TokenUser is the username sent with a token: the account's host user,
+// or one the host accepts with any token.
+func TokenUser(host, user string) string {
+	if user != "" {
+		return user
 	}
-	return user
+	if KindOf(host) == KindGitLab {
+		return "oauth2"
+	}
+	return "x-access-token"
 }

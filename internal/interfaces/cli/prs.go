@@ -38,7 +38,7 @@ func (x *CLI) cmdPrs(args []string) error {
 	}
 	all := x.app.Hosting.Reviews(fetch)
 	if len(all) == 0 {
-		return errors.New("no account is signed in to GitHub; sign one in first: gitswitch signin <account>")
+		return errors.New("no account is signed in to GitHub or GitLab; sign one in first: gitswitch signin <account>")
 	}
 	var inboxes []hosting.Inbox
 	for _, in := range all {
@@ -47,7 +47,7 @@ func (x *CLI) cmdPrs(args []string) error {
 		}
 	}
 	if len(inboxes) == 0 {
-		return fmt.Errorf("%s is not signed in to GitHub", accountID)
+		return fmt.Errorf("%s is not signed in to its git host", accountID)
 	}
 	if asJSON {
 		return json.NewEncoder(x.out).Encode(inboxes)
@@ -74,7 +74,11 @@ func (x *CLI) prSection(title string, prs []hosting.PullRequest, showAuthor bool
 		return
 	}
 	for _, p := range prs {
-		line := fmt.Sprintf("    %s#%d  %s", p.Repo, p.Number, p.Title)
+		mark := p.Mark
+		if mark == "" {
+			mark = "#"
+		}
+		line := fmt.Sprintf("    %s%s%d  %s", p.Repo, mark, p.Number, p.Title)
 		if showAuthor {
 			line += "  · " + p.Author
 		}
@@ -125,9 +129,9 @@ func (x *CLI) cmdBranchPR(args []string) error {
 	case b.Branch == "":
 		x.say("No branch: HEAD is detached.")
 	case b.Account == "":
-		x.sayf("Nothing to read: %s has no GitHub remote with a signed-in account.\n", b.Branch)
+		x.sayf("Nothing to read: %s has no GitHub or GitLab remote with a signed-in account.\n", b.Branch)
 	default:
-		x.sayf("%s has no open pull request in %s.\n", b.Branch, b.Repo)
+		x.sayf("%s has no open %s in %s.\n", b.Branch, b.Kind.RequestName(), b.Repo)
 	}
 	return nil
 }

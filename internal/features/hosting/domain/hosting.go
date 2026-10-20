@@ -1,6 +1,7 @@
 // Package domain describes signing an account in to its host's API with a
 // token, and declares what the hosting use cases need from the outside
-// world (ports). Only GitHub (github.com and GitHub Enterprise) for now.
+// world (ports). GitHub (github.com and GitHub Enterprise) and GitLab
+// (gitlab.com) for now.
 // Import it as hosting.
 package domain
 
@@ -22,9 +23,61 @@ var ErrNoToken = errors.New("not signed in")
 // account is signed in then; signing in says how to get one.
 var ErrNoKeychain = errors.New("no keychain found")
 
+// Kind is the kind of git host a host name belongs to. It is guessed from
+// the name, never configured: github.com is GitHub, gitlab.com (or a host
+// that starts with "gitlab.") is GitLab, and any other host is treated as
+// a GitHub Enterprise server, as before.
+type Kind string
+
+const (
+	KindGitHub Kind = "github"
+	KindGitLab Kind = "gitlab"
+)
+
+// KindOf guesses the kind of host from its name.
+func KindOf(host string) Kind {
+	h := remote.CanonicalHost(host)
+	if h == "gitlab.com" || strings.HasPrefix(h, "gitlab.") {
+		return KindGitLab
+	}
+	return KindGitHub
+}
+
+// Name is how the host is called in messages.
+func (k Kind) Name() string {
+	if k == KindGitLab {
+		return "GitLab"
+	}
+	return "GitHub"
+}
+
+// RequestName is what the host calls a change under review.
+func (k Kind) RequestName() string {
+	if k == KindGitLab {
+		return "merge request"
+	}
+	return "pull request"
+}
+
+// Short is the short form that goes before a number: PR #42, MR !7.
+func (k Kind) Short() string {
+	if k == KindGitLab {
+		return "MR"
+	}
+	return "PR"
+}
+
+// Mark goes before a number: #42 on GitHub, !7 on GitLab.
+func (k Kind) Mark() string {
+	if k == KindGitLab {
+		return "!"
+	}
+	return "#"
+}
+
 // APIBase is the REST API address for a host: api.github.com for
-// github.com, and <host>/api/v3 for a GitHub Enterprise server. GitLab and
-// Bitbucket are not supported yet.
+// github.com, <host>/api/v3 for a GitHub Enterprise server, and
+// <host>/api/v4 for GitLab. Bitbucket is not supported yet.
 func APIBase(host string) (string, error) {
 	h := remote.CanonicalHost(host)
 	switch {
@@ -32,19 +85,32 @@ func APIBase(host string) (string, error) {
 		return "", errors.New("the account has no host")
 	case h == "github.com":
 		return "https://api.github.com", nil
-	case h == "gitlab.com" || h == "bitbucket.org":
-		return "", fmt.Errorf("GitSwitch can sign in to GitHub only for now, not %s", h)
+	case h == "bitbucket.org":
+		return "", fmt.Errorf("GitSwitch can sign in to GitHub and GitLab only for now, not %s", h)
+	case KindOf(h) == KindGitLab:
+		return "https://" + h + "/api/v4", nil
 	}
 	return "https://" + h + "/api/v3", nil
 }
 
-// TokenPage is where to create a token for a host.
-func TokenPage(host string) string {
+// TokenHelp says where to create a token for a host and what it needs.
+func TokenHelp(host string) (page, needs string) {
 	h := remote.CanonicalHost(host)
 	if h == "" {
 		h = "github.com"
 	}
-	return "https://" + h + "/settings/personal-access-tokens/new"
+	if KindOf(h) == KindGitLab {
+		return "https://" + h + "/-/user_settings/personal_access_tokens",
+			`A personal access token with the scopes read_api, read_repository and write_repository is enough.`
+	}
+	return "https://" + h + "/settings/personal-access-tokens/new",
+		`A fine-grained token with "All repositories" and read access to Metadata, Contents and Pull requests is enough.`
+}
+
+// TokenPage is where to create a token for a host.
+func TokenPage(host string) string {
+	page, _ := TokenHelp(host)
+	return page
 }
 
 // CheckToken cleans a pasted token. It may not hold spaces, quotes or
@@ -106,6 +172,11 @@ type Status struct {
 	Supported bool   `json:"supported"` // the host has an API GitSwitch can use
 	SignedIn  bool   `json:"signedIn"`
 	Error     string `json:"error"` // the keychain could not be read
+	// Provider is what the host is called (GitHub, GitLab); TokenPage and
+	// TokenNeeds say where to create a token and what it needs.
+	Provider   string `json:"provider"`
+	TokenPage  string `json:"tokenPage"`
+	TokenNeeds string `json:"tokenNeeds"`
 }
 
 // Secrets keeps one token per account in the OS keychain.
@@ -119,17 +190,19 @@ type Secrets interface {
 
 // API talks to a host's REST API.
 type API interface {
-	// Whoami returns who the token signs in as.
-	Whoami(base, token string) (User, Grant, error)
+	// Whoami returns who the token signs in as. Every call says which
+	// kind of host it is for; base is its API address (see APIBase).
+	Whoami(kind Kind, base, token string) (User, Grant, error)
 	// Repos lists every repo the token's user can see: their own, ones
 	// they collaborate on and their organizations', private ones included.
-	Repos(base, token string) ([]RemoteRepo, error)
-	// Inbox reads the open pull requests of login's inbox: waiting for its
-	// review, its own, and ones it reviewed (see InboxQueries).
-	Inbox(base, token, login string) (toReview, mine, reviewed []PullRequest, err error)
+	Repos(kind Kind, base, token string) ([]RemoteRepo, error)
+	// Inbox reads the open pull requests (merge requests) of login's
+	// inbox: waiting for its review, its own, and ones it reviewed.
+	Inbox(kind Kind, base, token, login string) (toReview, mine, reviewed []PullRequest, err error)
 	// BranchPR reads the open pull request headed by branch of repo
-	// (owner/name), with its approvals; nil when there is none.
-	BranchPR(base, token, repo, branch string) (*PullRequest, error)
+	// (owner/name, or group/subgroup/name), with its approvals; nil when
+	// there is none.
+	BranchPR(kind Kind, base, token, repo, branch string) (*PullRequest, error)
 }
 
 // InboxCache keeps each account's last inbox on disk.

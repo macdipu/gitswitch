@@ -83,8 +83,9 @@ func (x *CLI) readToken(id, host string) (string, error) {
 		return line, nil
 	}
 	defer terminal.RestoreTTY(st)
-	fmt.Fprintf(x.out, "Create a token for %s while signed in to %s as that account:\r\n  %s\r\n", id, host, hosting.TokenPage(host))
-	fmt.Fprint(x.out, "A fine-grained token with \"All repositories\" and read access to Metadata, Contents and Pull requests is enough.\r\n")
+	page, needs := hosting.TokenHelp(host)
+	fmt.Fprintf(x.out, "Create a token for %s while signed in to %s as that account:\r\n  %s\r\n", id, host, page)
+	fmt.Fprint(x.out, needs+"\r\n")
 	fmt.Fprint(x.out, "Paste the token (it is not shown) and press Enter: ")
 	var b []byte
 	one := make([]byte, 1)
@@ -171,9 +172,13 @@ func (x *CLI) cmdSignout(args []string) error {
 		x.say("would remove the token of", args[0])
 		return nil
 	}
+	page := ""
+	if a, err := x.app.Accounts.Config().Lookup(args[0]); err == nil {
+		page = hosting.TokenPage(a.Host)
+	}
 	if err := x.app.Hosting.SignOut(args[0]); err != nil {
 		return err
 	}
-	x.say("Signed out: the token is removed from your keychain. To revoke it too, delete it on GitHub (Settings → Developer settings → Personal access tokens).")
+	x.say("Signed out: the token is removed from your keychain. To revoke it too, delete it on the host, in your personal access tokens (" + page + ").")
 	return nil
 }

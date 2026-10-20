@@ -12,7 +12,10 @@ func TestAPIBase(t *testing.T) {
 		"github.com":           "https://api.github.com",
 		"SSH.GitHub.com":       "https://api.github.com",
 		"github.acme.corp":     "https://github.acme.corp/api/v3",
-		"gitlab.com":           "",
+		"gitlab.com":           "https://gitlab.com/api/v4",
+		"altssh.gitlab.com":    "https://gitlab.com/api/v4",
+		"gitlab.acme.corp":     "https://gitlab.acme.corp/api/v4",
+		"bitbucket.org":        "",
 		"altssh.bitbucket.org": "",
 		"":                     "",
 	}
@@ -124,6 +127,54 @@ func TestBranchSummaryAndRepoOf(t *testing.T) {
 	} {
 		if got := RepoOf(in); got != want {
 			t.Errorf("RepoOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestKindOfAndWords(t *testing.T) {
+	for host, want := range map[string]Kind{"github.com": KindGitHub, "ssh.github.com": KindGitHub, "github.acme.corp": KindGitHub, "gitlab.com": KindGitLab,
+		"altssh.gitlab.com": KindGitLab, "gitlab.acme.corp": KindGitLab, "git.acme.corp": KindGitHub, "": KindGitHub} {
+		if got := KindOf(host); got != want {
+			t.Errorf("KindOf(%q) = %q, want %q", host, got, want)
+		}
+	}
+	if KindGitLab.Name() != "GitLab" || KindGitLab.RequestName() != "merge request" || KindGitLab.Short() != "MR" || KindGitLab.Mark() != "!" ||
+		KindGitHub.Name() != "GitHub" || KindGitHub.RequestName() != "pull request" || KindGitHub.Short() != "PR" || KindGitHub.Mark() != "#" {
+		t.Error("the words for each kind of host")
+	}
+	page, needs := TokenHelp("gitlab.com")
+	if page != "https://gitlab.com/-/user_settings/personal_access_tokens" || !strings.Contains(needs, "read_api") {
+		t.Errorf("GitLab token help: %q %q", page, needs)
+	}
+	if page, needs := TokenHelp("ssh.github.com"); page != "https://github.com/settings/personal-access-tokens/new" || !strings.Contains(needs, "Pull requests") {
+		t.Errorf("GitHub token help: %q %q", page, needs)
+	}
+}
+
+func TestRepoPathAndSummaryOnGitLab(t *testing.T) {
+	for in, want := range map[string]string{
+		"git@gitlab.com:acme/api.git":          "acme/api",
+		"https://gitlab.com/acme/team/api.git": "acme/team/api",
+		"https://gitlab.com/solo":              "",
+	} {
+		if got := RepoPath(KindGitLab, in); got != want {
+			t.Errorf("RepoPath(gitlab, %q) = %q, want %q", in, got, want)
+		}
+	}
+	if RepoPath(KindGitHub, "https://github.com/acme/team/api") != "" {
+		t.Error("GitHub has only owner/name")
+	}
+	p := PullRequest{Kind: KindGitLab, Number: 7, Approvals: 2, Checks: "SUCCESS"}
+	if got := BranchSummary(p); got != "MR !7 · 2 approvals · checks passing" {
+		t.Errorf("BranchSummary = %q", got)
+	}
+	chips := StatusChips(PullRequest{Kind: KindGitLab, ReadyToMerge: true, Mergeable: "MERGEABLE", Checks: "SUCCESS"})
+	if len(chips) != 1 || chips[0].Kind != "ready" || chips[0].Text != "Ready to merge" {
+		t.Errorf("ready to merge: %+v", chips)
+	}
+	for _, c := range StatusChips(PullRequest{ReadyToMerge: true, ReviewDecision: "CHANGES_REQUESTED"}) {
+		if c.Kind == "ready" {
+			t.Error("changes requested is never ready")
 		}
 	}
 }
