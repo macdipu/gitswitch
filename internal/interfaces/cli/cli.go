@@ -97,6 +97,8 @@ History and branches
                                     (<n> from the list; else the newest parked on this branch)
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
+  gitswitch fetch [--json]          read the remote's new commits with the repo's account, so "to pull"
+                                    and compare are up to date; no branch or file changes
   gitswitch update [--rebase]       pull the current branch with the repo's account: fast-forward only,
                                     or with --rebase put your not-pushed commits on top of the new ones
   gitswitch push [--open] [-y]      push the current branch with the repo's account, never forced
@@ -290,6 +292,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdCommit(rest)
 	case "switch":
 		return x.cmdSwitch(rest)
+	case "fetch":
+		return x.cmdFetch(rest)
 	case "update", "pull":
 		return x.cmdUpdate(rest)
 	case "push":

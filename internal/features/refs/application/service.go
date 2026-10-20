@@ -691,6 +691,35 @@ func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error
 	return s.UpdateWith(gitDir, "", progress)
 }
 
+// Fetch reads the remote's new commits, through the repo's account, so
+// "to pull" and Compare are up to date. It changes no local branch and no
+// file, never prunes, and is safe in the middle of anything. Git's progress
+// lines go to progress.
+func (s *Service) Fetch(gitDir string, progress func(string)) (refs.Fetched, error) {
+	before, err := s.Refs.Head(gitDir)
+	if err != nil {
+		return refs.Fetched{}, err
+	}
+	if len(s.Refs.RemoteNames(gitDir)) == 0 {
+		return refs.Fetched{Head: before}, errors.New("this repo has no remote to fetch from")
+	}
+	if s.FS.Dry("fetch the remote's new commits (git fetch)") {
+		return refs.Fetched{Head: before}, nil
+	}
+	if err := s.Refs.Fetch(s.Locator.WorktreeOf(gitDir), progress); err != nil {
+		return refs.Fetched{Head: before}, err
+	}
+	after, err := s.Refs.Head(gitDir)
+	if err != nil {
+		return refs.Fetched{}, err
+	}
+	f := refs.Fetched{Head: after}
+	if before.Upstream != "" && before.Upstream == after.Upstream && after.Behind > before.Behind {
+		f.Gained = after.Behind - before.Behind
+	}
+	return f, nil
+}
+
 // PullSetting is how Update brings a repo's branches up to date.
 func (s *Service) PullSetting(gitDir string) refs.PullSetting {
 	return refs.NewPullSetting(s.Refs.PullModes(gitDir))

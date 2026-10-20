@@ -479,6 +479,7 @@ dialog .row-actions{justify-content:flex-end}
       <a class="prstate" id="prState" hidden></a>
       <button class="btn ghost" id="compareBtn" hidden title="List the commits you would push and pull">Compare</button>
       <button class="btn" id="commitBtn">Commit…</button>
+      <button class="btn ghost" id="fetchBtn" title="Read the remote's new commits, so “to pull” is up to date. Nothing in your branches or files changes">Fetch</button>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
       <button class="btn" id="pushBtn">Push</button>
       <span class="spacer"></span>
@@ -1383,6 +1384,7 @@ function renderToolbar(){
   $('#syncState').innerHTML = sync;
   $('#compareBtn').hidden = !(h?.upstream && (h.ahead || h.behind));
   $('#syncState').title = work.length ? 'Files not committed yet. Staged: added to the next commit. Changed: edited but not staged. New: not tracked by git yet.' : '';
+  $('#fetchBtn').disabled = !h;
   const canUpdate = !!(h && h.branch && h.upstream);
   ub.disabled = !canUpdate; ub.title = canUpdate ? 'Pull new commits from ' + h.upstream + ' (fast-forward only)'
     : h?.gone ? h.gone + ' was deleted on the server, or this is a single-branch clone; fetch it or push the branch again'
@@ -1421,6 +1423,16 @@ async function undoLast(gd){
 // undoable is the toast action that undoes the change just made.
 const undoable = gd => ({label:'Undo', run: () => undoLast(gd)});
 $('#undoBtn').onclick = () => undoLast($('#histRepo').value);
+$('#fetchBtn').onclick = async e => {
+  const gd = $('#histRepo').value, b = e.currentTarget;
+  b.disabled = true; b.textContent = 'Fetching…';
+  const r = await act(() => api('POST','/api/repo/fetch',{gitDir:gd}));
+  b.disabled = false; b.textContent = 'Fetch';
+  if (!r) return;
+  toast(r.gained ? `${r.gained} new commit${r.gained > 1 ? 's' : ''} on ${r.head.upstream}` : 'Fetched: nothing new',
+    false, null, r.gained ? {label:'Update', run: () => $('#updateBtn').click()} : null);
+  loadHistory();
+};
 $('#updateBtn').onclick = async e => {
   const gd = $('#histRepo').value, b = e.currentTarget;
   b.disabled = true; b.textContent = 'Updating…';

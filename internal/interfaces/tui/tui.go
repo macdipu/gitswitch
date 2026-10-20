@@ -686,7 +686,7 @@ Repos
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
-  b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
+  b switch branch   F fetch (read new commits from the remote)   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   K the branch's pull request   / filter by author, message, date or account
   U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
@@ -1551,6 +1551,8 @@ func (t *tui) keyHistory(k string) {
 			}}}
 	case "b":
 		t.pickBranch()
+	case "F":
+		t.fetch()
 	case "u":
 		t.update()
 	case "p":
@@ -2113,6 +2115,33 @@ func (t *tui) undoLast() {
 
 // update pulls the current branch. It leaves the TUI while git runs, so
 // git's progress and any account question show in the terminal.
+// fetch reads the remote's new commits, so "to pull" is up to date.
+func (t *tui) fetch() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	var f refs.Fetched
+	var err error
+	t.suspend(func() {
+		fmt.Println("Fetching from the remote ...")
+		f, err = t.app.Refs.Fetch(gd, func(l string) { fmt.Print("\r\x1b[K  " + l) })
+		fmt.Println()
+		if err != nil {
+			fmt.Println("gitswitch:", err)
+		}
+	})
+	t.loadHistory()
+	switch {
+	case err != nil:
+		t.say(err, "")
+	case f.Gained > 0:
+		t.say(nil, fmt.Sprintf("Fetched: %d new commit(s) on %s. Press u to get them.", f.Gained, f.Head.Upstream))
+	default:
+		t.say(nil, "Fetched: nothing new.")
+	}
+}
+
 func (t *tui) update() { t.updateWith("") }
 
 // updateWith updates with a mode for this once ("" for the setting). When

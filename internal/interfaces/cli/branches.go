@@ -707,6 +707,48 @@ func (x *CLI) cmdUpdate(args []string) error {
 	return nil
 }
 
+// cmdFetch reads the remote's new commits and says what is waiting.
+func (x *CLI) cmdFetch(args []string) error {
+	asJSON := false
+	for _, a := range args {
+		if a != "--json" {
+			return usageErr("gitswitch fetch [--json]")
+		}
+		asJSON = true
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	logLine := func(l string) {
+		if !asJSON {
+			x.say(" ", l)
+		}
+	}
+	f, err := x.app.Refs.Fetch(gd, logLine)
+	if err != nil {
+		return err
+	}
+	if x.app.DryRun() {
+		return nil
+	}
+	if asJSON {
+		return json.NewEncoder(x.out).Encode(f)
+	}
+	h := f.Head
+	switch {
+	case h.Upstream == "":
+		x.say("Fetched. This branch is not on a remote, so there is nothing to compare.")
+	case h.Behind > 0 && f.Gained > 0:
+		x.sayf("Fetched: %d new commit(s) on %s; %d to pull in all. Get them with: gitswitch update\n", f.Gained, h.Upstream, h.Behind)
+	case h.Behind > 0:
+		x.sayf("Fetched: nothing new. %d commit(s) on %s still to pull: gitswitch update\n", h.Behind, h.Upstream)
+	default:
+		x.say("Fetched: nothing new on", h.Upstream+".")
+	}
+	return nil
+}
+
 func (x *CLI) cmdRevert(args []string) error {
 	if len(args) != 1 {
 		return usageErr("gitswitch revert <commit>")

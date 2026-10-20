@@ -390,6 +390,10 @@ func (s *server) routes() map[string]handler {
 		"POST /api/repo/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.UpdateWith(gd, str(b, "mode"), func(string) {})
 		}),
+		// fetch reads the remote's new commits; no branch or file changes.
+		"POST /api/repo/fetch": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.Fetch(gd, func(string) {})
+		}),
 		// all commits every change, new files too; otherwise what is staged.
 		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			all, _ := b["all"].(bool)

@@ -2549,3 +2549,50 @@ func TestBranchPullRequest(t *testing.T) {
 		t.Fatalf("a branch without one:\n%s", out)
 	}
 }
+
+// gitswitch fetch reads the remote's new commits with the repo's account,
+// so "to pull" is right, and changes no branch or file.
+func TestFetch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+
+	if out := e.gsIn(api, "fetch"); !strings.Contains(out, "nothing new") {
+		t.Fatalf("nothing waiting:\n%s", out)
+	}
+	e.clone("git@github.com:acme-corp/api.git", "other")
+	other := filepath.Join(e.root, "other")
+	e.commitFile(other, "o.txt", "o\n", "from other")
+	e.commitFile(other, "p.txt", "p\n", "from other 2")
+	e.gitIn(other, "push", "-q")
+
+	head := e.gitIn(api, "rev-parse", "HEAD")
+	if b := e.gsIn(api, "status", "--json"); strings.Contains(b, `"behind":2`) {
+		t.Fatalf("behind is known before the fetch: %s", b)
+	}
+	e.resetLog()
+	out := e.gsIn(api, "fetch")
+	if !strings.Contains(out, "2 new commit(s) on origin/main") || !strings.Contains(out, "gitswitch update") {
+		t.Fatalf("fetch:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("fetched with keys %v, want the repo's account", k)
+	}
+	if e.gitIn(api, "rev-parse", "HEAD") != head || e.gitIn(api, "status", "--porcelain") != "" {
+		t.Fatal("fetch moved the branch or touched files")
+	}
+	var f struct {
+		Gained int
+		Head   struct{ Behind int }
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "fetch", "--json")), &f))
+	if f.Head.Behind != 2 || f.Gained != 0 {
+		t.Fatalf("--json after a second fetch: %+v (still 2 to pull, none newly gained)", f)
+	}
+	if out := e.gsIn(api, "--dry-run", "fetch"); strings.Contains(out, "Fetched") {
+		t.Fatalf("dry run fetched:\n%s", out)
+	}
+}

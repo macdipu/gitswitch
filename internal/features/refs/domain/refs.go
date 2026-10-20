@@ -237,6 +237,13 @@ func (s SwitchSetting) Describe() string {
 	return string(s.Mode) + " (every repo)"
 }
 
+// Fetched is the result of a fetch: where the repo is now, and how many
+// commits the current branch's upstream gained.
+type Fetched struct {
+	Head   Head `json:"head"`
+	Gained int  `json:"gained"` // new commits to pull; 0: nothing new (or no upstream)
+}
+
 // Pushed is the result of a push.
 type Pushed struct {
 	Branch   string `json:"branch"`
@@ -473,6 +480,9 @@ type Refs interface {
 	// Pull fast-forwards the current branch from its upstream, through the
 	// repo's account. Each progress line goes to progress.
 	Pull(worktree string, progress func(string)) error
+	// Fetch reads the remote's new commits into the remote branches, through
+	// the repo's account, changing no local branch or file.
+	Fetch(worktree string, progress func(string)) error
 	// PullRebase fetches the upstream and puts the branch's own commits on
 	// top of it. When that fails it aborts the rebase, so nothing changes.
 	PullRebase(worktree string, progress func(string)) error

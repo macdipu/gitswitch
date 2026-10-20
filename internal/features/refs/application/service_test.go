@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -40,6 +41,18 @@ type fakeRefs struct {
 	pullModes  map[string]string      // gitDir ("" for every repo) -> saved pull mode
 	rebaseErr  error
 	merges     int
+	fetchErr   error
+	fetchNew   int // commits the next fetch brings
+}
+
+func (f *fakeRefs) Fetch(_ string, progress func(string)) error {
+	progress("From origin")
+	f.ran = append(f.ran, "fetch")
+	if f.fetchErr != nil {
+		return f.fetchErr
+	}
+	f.head.Behind += f.fetchNew
+	return nil
 }
 
 func (f *fakeRefs) PullRebase(_ string, progress func(string)) error {
@@ -787,5 +800,35 @@ func TestUpdateWithRebase(t *testing.T) {
 	}
 	if err := s.SetPullSetting("/r/.git", ""); err != nil || s.PullSetting("/r/.git").Repo != "" {
 		t.Errorf("follow every repo's again: %v", err)
+	}
+}
+
+func TestFetch(t *testing.T) {
+	s, r := newService()
+	r.remotes = []string{"origin"}
+	r.head = refs.Head{Branch: "main", Hash: "abc", Upstream: "origin/main", Behind: 2}
+	r.fetchNew = 3
+	var lines []string
+	f, err := s.Fetch("/r/.git", func(l string) { lines = append(lines, l) })
+	if err != nil || f.Gained != 3 || f.Head.Behind != 5 || len(lines) != 1 || !reflect.DeepEqual(r.ran, []string{"fetch"}) {
+		t.Fatalf("Fetch = %+v, %v; lines %v ran %v", f, err, lines, r.ran)
+	}
+	r.fetchNew = 0
+	if f, err := s.Fetch("/r/.git", func(string) {}); err != nil || f.Gained != 0 {
+		t.Errorf("nothing new: %+v, %v", f, err)
+	}
+	// A detached HEAD or a branch without an upstream can fetch too, and gains nothing to report.
+	r.head, r.fetchNew = refs.Head{Hash: "abc"}, 4
+	if f, err := s.Fetch("/r/.git", func(string) {}); err != nil || f.Gained != 0 {
+		t.Errorf("detached: %+v, %v", f, err)
+	}
+	r.fetchErr = errors.New("ssh: connect to host github.com port 22: Operation timed out")
+	if _, err := s.Fetch("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("a failed fetch says why: %v", err)
+	}
+	r.remotes = nil
+	r.ran = nil
+	if _, err := s.Fetch("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), "no remote") || len(r.ran) != 0 {
+		t.Errorf("no remote: %v ran %v", err, r.ran)
 	}
 }

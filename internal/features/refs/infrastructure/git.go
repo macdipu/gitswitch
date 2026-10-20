@@ -240,6 +240,10 @@ func (g *Git) Pull(wt string, progress func(string)) error {
 	return g.Git.Stream(wt, progress, "pull", "--ff-only", "--progress")
 }
 
+func (g *Git) Fetch(wt string, progress func(string)) error {
+	return g.Git.Stream(wt, progress, "fetch", "--progress")
+}
+
 func (g *Git) PullRebase(wt string, progress func(string)) error {
 	// --rebase=true: your merge commits are refused before this, never
 	// flattened; --no-autostash: uncommitted changes are refused before
