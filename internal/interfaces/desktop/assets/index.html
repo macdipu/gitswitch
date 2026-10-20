@@ -1448,7 +1448,7 @@ async function loadBranchPR(gd){
   if ($('#histRepo').value !== gd) return; // another repo was picked meanwhile
   if (!r?.found){
     if (r?.reason){
-      const signIn = /^sign .* in to Git(Hub|Lab)/.test(r.reason), noun = r.kind === 'gitlab' ? 'merge request' : 'pull request';
+      const signIn = /^sign .* in to /.test(r.reason), noun = r.kind === 'gitlab' ? 'merge request' : 'pull request';
       el.removeAttribute('href'); el.className = 'prstate'; el.hidden = false;
       el.textContent = signIn ? 'Sign in to see its ' + noun : noun[0].toUpperCase() + noun.slice(1) + ': could not read';
       el.title = r.reason;

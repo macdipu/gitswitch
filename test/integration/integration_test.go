@@ -2704,3 +2704,65 @@ func TestGitLabAccount(t *testing.T) {
 		t.Fatalf("git credential fill: %v\n%s", err, out)
 	}
 }
+
+// A Codeberg (Gitea or Forgejo) account: token sign-in, its pull requests,
+// the branch's pull request and the token for HTTPS remotes.
+func TestCodebergAccount(t *testing.T) {
+	e := newEnv(t)
+	e.gs("account", "add", "cb", "--email", "dipu@cb.example", "--key", e.key("work"), "--host", "codeberg.org")
+	e.serverRepo("ana/notes")
+	e.clone("git@codeberg.org:ana/notes.git", "notes")
+	notes := filepath.Join(e.root, "notes")
+	e.gsIn(notes, "use", "cb")
+	e.gsIn(notes, "branch", "new", "billing")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "token tok-cb" {
+			w.WriteHeader(401)
+			return
+		}
+		q := r.URL.Query()
+		switch p := r.URL.Path; {
+		case p == "/user":
+			fmt.Fprint(w, `{"login":"ana","full_name":"Ana"}`)
+		case p == "/user/repos":
+			fmt.Fprint(w, `[{"full_name":"ana/notes","name":"notes","owner":{"login":"ana"},"private":true,"ssh_url":"git@codeberg.org:ana/notes.git","clone_url":"https://codeberg.org/ana/notes.git","html_url":"https://codeberg.org/ana/notes"}]`)
+		case p == "/repos/issues/search" && q.Get("review_requested") == "true":
+			fmt.Fprint(w, `[{"number":7,"title":"Add billing","user":{"login":"naser"},"repository":{"full_name":"acme/api"},"pull_request":{}}]`)
+		case p == "/repos/issues/search":
+			fmt.Fprint(w, `[]`)
+		case p == "/repos/ana/notes/pulls":
+			fmt.Fprint(w, `[{"number":42,"title":"Billing","html_url":"https://codeberg.org/ana/notes/pulls/42","user":{"login":"ana"},"mergeable":true,"head":{"ref":"billing","sha":"cafe","repo":{"full_name":"ana/notes"}}}]`)
+		case p == "/repos/ana/notes/pulls/42/reviews":
+			fmt.Fprint(w, `[{"state":"APPROVED","user":{"login":"naser"}}]`)
+		case p == "/repos/ana/notes/commits/cafe/status":
+			fmt.Fprint(w, `{"state":"success","total_count":1}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITEA_API="+srv.URL)
+
+	e.gsErr(notes, "sign cb in to Codeberg", "branch", "pr")
+	cmd := exec.Command(gsBin, "signin", "cb")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-cb\n")
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "Signed in: cb uses ana's token on codeberg.org") {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	if out := e.gs("prs"); !strings.Contains(out, "acme/api#7  Add billing  · naser") || !strings.Contains(out, "Waiting for review") {
+		t.Fatalf("prs:\n%s", out)
+	}
+	if out := e.gsIn(notes, "branch", "pr"); !strings.Contains(out, "PR #42 · 1 approval · checks passing") {
+		t.Fatalf("branch pr:\n%s", out)
+	}
+	if out := e.gs("github", "list"); !strings.Contains(out, "ana/notes") {
+		t.Fatalf("repo list:\n%s", out)
+	}
+	fill := exec.Command("git", "credential", "fill")
+	fill.Dir, fill.Env = notes, e.vars
+	fill.Stdin = strings.NewReader("protocol=https\nhost=codeberg.org\n\n")
+	if out, err := fill.CombinedOutput(); err != nil || !strings.Contains(string(out), "username=ana") || !strings.Contains(string(out), "password=tok-cb") {
+		t.Fatalf("git credential fill: %v\n%s", err, out)
+	}
+}

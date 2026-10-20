@@ -1,7 +1,7 @@
 // Package domain describes signing an account in to its host's API with a
 // token, and declares what the hosting use cases need from the outside
-// world (ports). GitHub (github.com and GitHub Enterprise) and GitLab
-// (gitlab.com) for now.
+// world (ports). GitHub (github.com and GitHub Enterprise), GitLab
+// (gitlab.com) and Gitea or Forgejo (codeberg.org) for now.
 // Import it as hosting.
 package domain
 
@@ -25,28 +25,45 @@ var ErrNoKeychain = errors.New("no keychain found")
 
 // Kind is the kind of git host a host name belongs to. It is guessed from
 // the name, never configured: github.com is GitHub, gitlab.com (or a host
-// that starts with "gitlab.") is GitLab, and any other host is treated as
-// a GitHub Enterprise server, as before.
+// that starts with "gitlab.") is GitLab, codeberg.org (or a host that
+// starts with "gitea." or "forgejo.") is Gitea or Forgejo, and any other
+// host is treated as a GitHub Enterprise server, as before.
 type Kind string
 
 const (
 	KindGitHub Kind = "github"
 	KindGitLab Kind = "gitlab"
+	KindGitea  Kind = "gitea" // Gitea and Forgejo, which share one API
 )
 
 // KindOf guesses the kind of host from its name.
 func KindOf(host string) Kind {
 	h := remote.CanonicalHost(host)
-	if h == "gitlab.com" || strings.HasPrefix(h, "gitlab.") {
+	switch {
+	case h == "gitlab.com" || strings.HasPrefix(h, "gitlab."):
 		return KindGitLab
+	case h == "codeberg.org" || strings.HasPrefix(h, "gitea.") || strings.HasPrefix(h, "forgejo."):
+		return KindGitea
 	}
 	return KindGitHub
 }
 
+// ProviderName is how a host is called in messages: Codeberg, or the name
+// of its kind of host.
+func ProviderName(host string) string {
+	if remote.CanonicalHost(host) == "codeberg.org" {
+		return "Codeberg"
+	}
+	return KindOf(host).Name()
+}
+
 // Name is how the host is called in messages.
 func (k Kind) Name() string {
-	if k == KindGitLab {
+	switch k {
+	case KindGitLab:
 		return "GitLab"
+	case KindGitea:
+		return "Gitea"
 	}
 	return "GitHub"
 }
@@ -77,7 +94,8 @@ func (k Kind) Mark() string {
 
 // APIBase is the REST API address for a host: api.github.com for
 // github.com, <host>/api/v3 for a GitHub Enterprise server, and
-// <host>/api/v4 for GitLab. Bitbucket is not supported yet.
+// <host>/api/v4 for GitLab and <host>/api/v1 for Gitea and Forgejo.
+// Bitbucket is not supported yet.
 func APIBase(host string) (string, error) {
 	h := remote.CanonicalHost(host)
 	switch {
@@ -86,9 +104,11 @@ func APIBase(host string) (string, error) {
 	case h == "github.com":
 		return "https://api.github.com", nil
 	case h == "bitbucket.org":
-		return "", fmt.Errorf("GitSwitch can sign in to GitHub and GitLab only for now, not %s", h)
+		return "", fmt.Errorf("GitSwitch can sign in to GitHub, GitLab and Gitea or Forgejo (Codeberg) only for now, not %s", h)
 	case KindOf(h) == KindGitLab:
 		return "https://" + h + "/api/v4", nil
+	case KindOf(h) == KindGitea:
+		return "https://" + h + "/api/v1", nil
 	}
 	return "https://" + h + "/api/v3", nil
 }
@@ -99,9 +119,13 @@ func TokenHelp(host string) (page, needs string) {
 	if h == "" {
 		h = "github.com"
 	}
-	if KindOf(h) == KindGitLab {
+	switch KindOf(h) {
+	case KindGitLab:
 		return "https://" + h + "/-/user_settings/personal_access_tokens",
 			`A personal access token with the scopes read_api, read_repository and write_repository is enough.`
+	case KindGitea:
+		return "https://" + h + "/user/settings/applications",
+			`An access token with read access to user, repository and issue (and write access to repository, to push over HTTPS) is enough.`
 	}
 	return "https://" + h + "/settings/personal-access-tokens/new",
 		`A fine-grained token with "All repositories" and read access to Metadata, Contents and Pull requests is enough.`

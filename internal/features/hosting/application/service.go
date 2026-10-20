@@ -80,7 +80,7 @@ func (s *Service) SignOut(accountID string) error {
 func (s *Service) Status() []hosting.Status {
 	out := []hosting.Status{}
 	for _, a := range s.Accounts.Load().Accounts {
-		st := hosting.Status{Account: a.ID, Host: a.Host, Provider: hosting.KindOf(a.Host).Name()}
+		st := hosting.Status{Account: a.ID, Host: a.Host, Provider: hosting.ProviderName(a.Host)}
 		st.TokenPage, st.TokenNeeds = hosting.TokenHelp(a.Host)
 		if _, err := hosting.APIBase(a.Host); err == nil {
 			st.Supported = true
@@ -369,7 +369,7 @@ func (s *Service) BranchPR(gitDir string) hosting.BranchPR {
 	tok, err := s.Secrets.Get(a.ID)
 	if err != nil {
 		if errors.Is(err, hosting.ErrNoToken) {
-			out.Reason = "sign " + a.ID + " in to " + kind.Name() + " to see this branch's " + kind.RequestName()
+			out.Reason = "sign " + a.ID + " in to " + hosting.ProviderName(a.Host) + " to see this branch's " + kind.RequestName()
 		}
 		return out
 	}

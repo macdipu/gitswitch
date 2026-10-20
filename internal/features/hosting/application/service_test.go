@@ -124,7 +124,7 @@ func TestSignIn(t *testing.T) {
 	if api.bases[len(api.bases)-1] != "https://api.github.com" {
 		t.Errorf("ssh.github.com must use api.github.com, got %v", api.bases)
 	}
-	if _, err := s.SignIn("lab", "tok-work"); err == nil || !strings.Contains(err.Error(), "GitHub and GitLab only") {
+	if _, err := s.SignIn("lab", "tok-work"); err == nil || !strings.Contains(err.Error(), "only for now, not bitbucket.org") {
 		t.Errorf("Bitbucket: %v", err)
 	}
 	if _, err := s.SignIn("gl", "tok-gl"); err != nil || api.bases[len(api.bases)-1] != "https://gitlab.com/api/v4" || api.kinds[len(api.kinds)-1] != hosting.KindGitLab {

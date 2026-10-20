@@ -888,7 +888,7 @@ func (t *tui) keyAccounts(k string) {
 			return
 		}
 		page, needs := hosting.TokenHelp(host)
-		prov := hosting.KindOf(host).Name()
+		prov := hosting.ProviderName(host)
 		t.form = &form{title: "Sign " + id + " in to " + prov + ": create a token at " + page + " (" + strings.TrimSuffix(needs, " is enough.") + " is enough)",
 			fields: []field{{label: "Token", secret: true, hint: "kept in your keychain, never in git config"}},
 			submit: func(v []string) error {
@@ -908,7 +908,7 @@ func (t *tui) keyAccounts(k string) {
 		if a == nil || !t.apis[strings.ToLower(a.ID)].SignedIn {
 			return
 		}
-		id, prov := a.ID, hosting.KindOf(a.Host).Name()
+		id, prov := a.ID, hosting.ProviderName(a.Host)
 		t.confirm = &confirmBox{"Sign " + id + " out of " + prov + "? Its token is removed from your keychain (delete it on " + prov + " to revoke it). (y/n)",
 			map[string]func() error{"y": func() error {
 				if err := t.app.Hosting.SignOut(id); err != nil {

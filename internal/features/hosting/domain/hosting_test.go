@@ -15,6 +15,8 @@ func TestAPIBase(t *testing.T) {
 		"gitlab.com":           "https://gitlab.com/api/v4",
 		"altssh.gitlab.com":    "https://gitlab.com/api/v4",
 		"gitlab.acme.corp":     "https://gitlab.acme.corp/api/v4",
+		"codeberg.org":         "https://codeberg.org/api/v1",
+		"gitea.acme.corp":      "https://gitea.acme.corp/api/v1",
 		"bitbucket.org":        "",
 		"altssh.bitbucket.org": "",
 		"":                     "",
@@ -133,7 +135,8 @@ func TestBranchSummaryAndRepoOf(t *testing.T) {
 
 func TestKindOfAndWords(t *testing.T) {
 	for host, want := range map[string]Kind{"github.com": KindGitHub, "ssh.github.com": KindGitHub, "github.acme.corp": KindGitHub, "gitlab.com": KindGitLab,
-		"altssh.gitlab.com": KindGitLab, "gitlab.acme.corp": KindGitLab, "git.acme.corp": KindGitHub, "": KindGitHub} {
+		"altssh.gitlab.com": KindGitLab, "gitlab.acme.corp": KindGitLab, "git.acme.corp": KindGitHub, "": KindGitHub,
+		"codeberg.org": KindGitea, "gitea.acme.corp": KindGitea, "forgejo.acme.corp": KindGitea} {
 		if got := KindOf(host); got != want {
 			t.Errorf("KindOf(%q) = %q, want %q", host, got, want)
 		}
@@ -141,6 +144,12 @@ func TestKindOfAndWords(t *testing.T) {
 	if KindGitLab.Name() != "GitLab" || KindGitLab.RequestName() != "merge request" || KindGitLab.Short() != "MR" || KindGitLab.Mark() != "!" ||
 		KindGitHub.Name() != "GitHub" || KindGitHub.RequestName() != "pull request" || KindGitHub.Short() != "PR" || KindGitHub.Mark() != "#" {
 		t.Error("the words for each kind of host")
+	}
+	if ProviderName("codeberg.org") != "Codeberg" || ProviderName("gitlab.com") != "GitLab" || ProviderName("gitea.acme.corp") != "Gitea" || ProviderName("ssh.github.com") != "GitHub" {
+		t.Error("ProviderName")
+	}
+	if page, needs := TokenHelp("codeberg.org"); page != "https://codeberg.org/user/settings/applications" || !strings.Contains(needs, "repository") {
+		t.Errorf("Codeberg token help: %q %q", page, needs)
 	}
 	page, needs := TokenHelp("gitlab.com")
 	if page != "https://gitlab.com/-/user_settings/personal_access_tokens" || !strings.Contains(needs, "read_api") {
