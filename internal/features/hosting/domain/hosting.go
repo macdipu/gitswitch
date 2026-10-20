@@ -127,6 +127,9 @@ type API interface {
 	// Inbox reads the open pull requests of login's inbox: waiting for its
 	// review, its own, and ones it reviewed (see InboxQueries).
 	Inbox(base, token, login string) (toReview, mine, reviewed []PullRequest, err error)
+	// BranchPR reads the open pull request headed by branch of repo
+	// (owner/name), with its approvals; nil when there is none.
+	BranchPR(base, token, repo, branch string) (*PullRequest, error)
 }
 
 // InboxCache keeps each account's last inbox on disk.
@@ -165,6 +168,8 @@ type Repos interface {
 	AccountFor(c *account.Config, gitDir string) *account.Account
 	// List is the local repo list, to see what is cloned already.
 	List(c *account.Config) []repo.Info
+	// Info reads one repo, listed or not.
+	Info(c *account.Config, gitDir string) repo.Info
 }
 
 // Accounts reads the accounts and records a learned username.

@@ -166,6 +166,42 @@ func TestInbox(t *testing.T) {
 	}
 }
 
+func TestBranchPR(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Variables map[string]string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if r.URL.Path != "/graphql" || body.Variables["owner"] != "acme" || body.Variables["name"] != "api" {
+			_, _ = w.Write([]byte(`{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","message":"Could not resolve"}]}`))
+			return
+		}
+		if body.Variables["branch"] == "none" {
+			_, _ = w.Write([]byte(`{"data":{"repository":{"pullRequests":{"nodes":[]}}}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"repository":{"pullRequests":{"nodes":[
+		  {"number":9,"title":"From a fork","headRepository":{"nameWithOwner":"fork/api"},"repository":{"nameWithOwner":"acme/api"}},
+		  {"number":42,"title":"Billing","url":"https://github.com/acme/api/pull/42","author":{"login":"dipu"},"repository":{"nameWithOwner":"acme/api"},
+		   "headRepository":{"nameWithOwner":"Acme/API"},"reviewDecision":"APPROVED","mergeable":"MERGEABLE",
+		   "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]},
+		   "latestOpinionatedReviews":{"nodes":[{"state":"APPROVED"},{"state":"CHANGES_REQUESTED"},{"state":"APPROVED"}]}}]}}}}`))
+	}))
+	defer srv.Close()
+	g := &GitHub{Version: "test"}
+	p, err := g.BranchPR(srv.URL, "good", "acme/api", "billing")
+	if err != nil || p == nil || p.Number != 42 || p.Approvals != 2 || p.Checks != "SUCCESS" || p.Author != "dipu" {
+		t.Fatalf("BranchPR = %+v, %v (a fork's pull request must be skipped)", p, err)
+	}
+	if p, err := g.BranchPR(srv.URL, "good", "acme/api", "none"); p != nil || err != nil {
+		t.Errorf("no pull request: %+v, %v", p, err)
+	}
+	if p, err := g.BranchPR(srv.URL, "good", "acme/other", "x"); p != nil || err != nil {
+		t.Errorf("a repo the token cannot see: %+v, %v", p, err)
+	}
+	if _, err := g.BranchPR(srv.URL, "good", "acme", "x"); err == nil {
+		t.Error("repo must be owner/name")
+	}
+}
+
 func TestInboxCache(t *testing.T) {
 	c := Cache{Dir: t.TempDir()}
 	if _, ok := c.LoadInbox("work"); ok {

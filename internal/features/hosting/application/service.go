@@ -322,3 +322,59 @@ func nonNil(l []hosting.PullRequest) []hosting.PullRequest {
 	}
 	return l
 }
+
+// BranchPR reads the open pull request of the repo's current branch, with
+// the repo's own account: nothing is cached, it is one small request made
+// when the History toolbar is shown. Why nothing is shown (no account
+// signed in, a remote that is not on the account's host, a failed read)
+// goes in Reason, never as an error: the toolbar just stays quiet.
+func (s *Service) BranchPR(gitDir string) hosting.BranchPR {
+	out := hosting.BranchPR{}
+	if s.Repos == nil {
+		return out
+	}
+	c := s.Accounts.Load()
+	info := s.Repos.Info(c, gitDir)
+	if info.Branch == "" {
+		return out
+	}
+	out.Branch = info.Branch
+	url := ""
+	for _, r := range info.Remotes {
+		if url == "" || r.Name == "origin" {
+			url = r.URL
+		}
+	}
+	out.Repo = hosting.RepoOf(url)
+	a := c.Account(info.Account)
+	if out.Repo == "" || a == nil {
+		return out
+	}
+	host, _ := remote.Parse(url)
+	if !remote.SameHost(host, a.Host) {
+		return out
+	}
+	out.Account = a.ID
+	base, err := hosting.APIBase(a.Host)
+	if err != nil {
+		return out
+	}
+	tok, err := s.Secrets.Get(a.ID)
+	if err != nil {
+		if errors.Is(err, hosting.ErrNoToken) {
+			out.Reason = "sign " + a.ID + " in to GitHub to see this branch's pull request"
+		}
+		return out
+	}
+	p, err := s.API.BranchPR(base, tok, out.Repo, info.Branch)
+	if err != nil {
+		out.Reason = err.Error()
+		return out
+	}
+	if p == nil {
+		return out
+	}
+	p.Chips = hosting.StatusChips(*p)
+	out.Found, out.PR, out.Summary = true, *p, hosting.BranchSummary(*p)
+	return out
+}

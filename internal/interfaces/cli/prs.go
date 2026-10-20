@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 )
@@ -91,4 +92,42 @@ func (x *CLI) prSection(title string, prs []hosting.PullRequest, showAuthor bool
 		x.say(line)
 		x.say("      " + p.URL)
 	}
+}
+
+// cmdBranchPR says what the open pull request of the current branch
+// looks like, read with the repo's account.
+func (x *CLI) cmdBranchPR(args []string) error {
+	asJSON := false
+	for _, a := range args {
+		if a != "--json" {
+			return usageErr("gitswitch branch pr [--json]")
+		}
+		asJSON = true
+	}
+	gd, err := x.requireRepo()
+	if err != nil {
+		return err
+	}
+	b := x.app.Hosting.BranchPR(gd)
+	if asJSON {
+		return json.NewEncoder(x.out).Encode(b)
+	}
+	switch {
+	case b.Found:
+		x.sayf("%s  %s\n  %s\n", b.Summary, history.CleanText(b.PR.Title), b.PR.URL)
+		for _, c := range b.PR.Chips {
+			if c.Hint != "" {
+				x.sayf("  %s: %s\n", c.Text, c.Hint)
+			}
+		}
+	case b.Reason != "":
+		return errors.New(b.Reason)
+	case b.Branch == "":
+		x.say("No branch: HEAD is detached.")
+	case b.Account == "":
+		x.sayf("Nothing to read: %s has no GitHub remote with a signed-in account.\n", b.Branch)
+	default:
+		x.sayf("%s has no open pull request in %s.\n", b.Branch, b.Repo)
+	}
+	return nil
 }

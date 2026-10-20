@@ -687,7 +687,7 @@ History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
   b switch branch   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
-  i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   / filter by author, message, date or account
+  i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   K the branch's pull request   / filter by author, message, date or account
   U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
@@ -1585,6 +1585,8 @@ func (t *tui) keyHistory(k string) {
 		t.commit()
 	case "S":
 		t.compare()
+	case "K":
+		t.branchPR()
 	case "v", "d", "z":
 		t.commitAction(k)
 	case " ":
@@ -1761,6 +1763,32 @@ func (t *tui) newBranch(from string) {
 }
 
 // compare shows the commits the branch would push and pull.
+// branchPR shows the open pull request of the current branch, read with
+// the repo's account.
+func (t *tui) branchPR() {
+	if t.histDir == "" {
+		return
+	}
+	b := t.app.Hosting.BranchPR(t.histDir)
+	var lines []string
+	switch {
+	case b.Found:
+		lines = append(lines, b.Summary, "", history.CleanText(b.PR.Title), b.PR.URL, "")
+		for _, c := range b.PR.Chips {
+			if c.Hint != "" {
+				lines = append(lines, c.Text+": "+c.Hint)
+			}
+		}
+	case b.Reason != "":
+		lines = append(lines, b.Reason)
+	case b.Account == "":
+		lines = append(lines, "Nothing to read: this branch has no GitHub remote with a signed-in account.")
+	default:
+		lines = append(lines, b.Branch+" has no open pull request in "+b.Repo+".")
+	}
+	t.view = &viewer{title: "Pull request of " + b.Branch, lines: lines}
+}
+
 func (t *tui) compare() {
 	if t.histDir == "" {
 		return

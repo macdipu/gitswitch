@@ -328,6 +328,15 @@ func (s *server) routes() map[string]handler {
 		"POST /api/branch/move": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.MoveToNewBranch(gd, str(b, "name"))
 		}),
+		// pr is the open pull request of the repo's current branch, read
+		// with the repo's account; quiet (found: false) when there is none.
+		"GET /api/repo/pr": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Hosting.BranchPR(gd), nil
+		},
 		"POST /api/branch/compare": s.withRepo(func(gd string, _ map[string]any) (any, error) {
 			return a.Refs.Compare(gd)
 		}),

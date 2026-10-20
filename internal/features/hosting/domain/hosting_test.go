@@ -98,3 +98,32 @@ func TestInboxQueriesAndGraphQLURL(t *testing.T) {
 		}
 	}
 }
+
+func TestBranchSummaryAndRepoOf(t *testing.T) {
+	for _, c := range []struct {
+		pr   PullRequest
+		want string
+	}{
+		{PullRequest{Number: 42, Approvals: 1, Checks: "SUCCESS"}, "PR #42 · 1 approval · checks passing"},
+		{PullRequest{Number: 5, Approvals: 2, Checks: "FAILURE", Mergeable: "CONFLICTING"}, "PR #5 · 2 approvals · checks failing · conflicts"},
+		{PullRequest{Number: 6, Draft: true, ReviewDecision: "REVIEW_REQUIRED", Checks: "PENDING"}, "PR #6 · draft · waiting for review · checks running"},
+		{PullRequest{Number: 7, ReviewDecision: "CHANGES_REQUESTED", Approvals: 1}, "PR #7 · changes requested"},
+		{PullRequest{Number: 8}, "PR #8 · no approvals"},
+	} {
+		if got := BranchSummary(c.pr); got != c.want {
+			t.Errorf("BranchSummary = %q, want %q", got, c.want)
+		}
+	}
+	for in, want := range map[string]string{
+		"git@github.com:acme/api.git":      "acme/api",
+		"https://github.com/acme/api":      "acme/api",
+		"https://github.com/acme/api.git/": "acme/api",
+		"https://gitlab.com/a/b/c.git":     "",
+		"/home/me/repo":                    "",
+		"":                                 "",
+	} {
+		if got := RepoOf(in); got != want {
+			t.Errorf("RepoOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

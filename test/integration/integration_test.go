@@ -2485,3 +2485,67 @@ func TestReviewInbox(t *testing.T) {
 		t.Fatalf("a failed refresh keeps the inbox: %v\n%s", err, out)
 	}
 }
+
+// gitswitch branch pr reads the open pull request of the current branch
+// with the repo's account, and is quiet when there is none.
+func TestBranchPullRequest(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	e.gsIn(api, "branch", "new", "feature/x")
+
+	var asked string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok-client" {
+			w.WriteHeader(401)
+			return
+		}
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"dipu-client"}`)
+		case "/graphql":
+			var body struct{ Variables map[string]string }
+			must(t, json.NewDecoder(r.Body).Decode(&body))
+			asked = body.Variables["owner"] + "/" + body.Variables["name"] + "@" + body.Variables["branch"]
+			if body.Variables["branch"] != "feature/x" {
+				fmt.Fprint(w, `{"data":{"repository":{"pullRequests":{"nodes":[]}}}}`)
+				return
+			}
+			fmt.Fprint(w, `{"data":{"repository":{"pullRequests":{"nodes":[{"number":42,"title":"Billing","url":"https://github.com/acme-corp/api/pull/42",
+			  "author":{"login":"dipu-client"},"repository":{"nameWithOwner":"acme-corp/api"},"headRepository":{"nameWithOwner":"acme-corp/api"},
+			  "reviewDecision":"APPROVED","mergeable":"MERGEABLE","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]},
+			  "latestOpinionatedReviews":{"nodes":[{"state":"APPROVED"}]}}]}}}}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	e.vars = append(e.vars, "GITSWITCH_TEST_GITHUB_API="+srv.URL)
+
+	e.gsErr(api, "sign client in", "branch", "pr")
+	cmd := exec.Command(gsBin, "signin", "client")
+	cmd.Dir, cmd.Env, cmd.Stdin = e.root, e.vars, strings.NewReader("tok-client\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("signin: %v\n%s", err, out)
+	}
+	out := e.gsIn(api, "branch", "pr")
+	if !strings.Contains(out, "PR #42 · 1 approval · checks passing") || !strings.Contains(out, "https://github.com/acme-corp/api/pull/42") || asked != "acme-corp/api@feature/x" {
+		t.Fatalf("branch pr (asked %q):\n%s", asked, out)
+	}
+	var got struct {
+		Found   bool
+		Account string
+		Summary string
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "branch", "pr", "--json")), &got))
+	if !got.Found || got.Account != "client" || got.Summary == "" {
+		t.Fatalf("--json = %+v", got)
+	}
+	e.gitIn(api, "switch", "-q", "main")
+	if out := e.gsIn(api, "branch", "pr"); !strings.Contains(out, "main has no open pull request in acme-corp/api") {
+		t.Fatalf("a branch without one:\n%s", out)
+	}
+}

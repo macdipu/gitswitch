@@ -195,26 +195,25 @@ func (p ghPR) domain() hosting.PullRequest {
 	return out
 }
 
-// Inbox runs the three inbox searches in one GraphQL request.
-func (g *GitHub) Inbox(base, token, login string) (toReview, mine, reviewed []hosting.PullRequest, err error) {
-	q1, q2, q3 := hosting.InboxQueries(login)
-	body, _ := json.Marshal(map[string]any{"query": inboxQuery, "variables": map[string]string{"toReview": q1, "mine": q2, "reviewed": q3}})
+// graphql runs one GraphQL request and returns its data, explaining a
+// refused token, a missing permission and an unreachable host in plain
+// words.
+func (g *GitHub) graphql(base, token, query string, vars map[string]string) (json.RawMessage, error) {
+	body, _ := json.Marshal(map[string]any{"query": query, "variables": vars})
 	req, err := http.NewRequest("POST", hosting.GraphQLURL(baseFor(base)), bytes.NewReader(body))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "gitswitch/"+g.Version)
 	res, err := g.client().Do(req)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("could not reach %s: %v. Check your network connection", req.URL.Host, err)
+		return nil, fmt.Errorf("could not reach %s: %v. Check your network connection", req.URL.Host, err)
 	}
 	defer res.Body.Close()
 	var r struct {
-		Data map[string]struct {
-			Nodes []ghPR `json:"nodes"`
-		} `json:"data"`
+		Data   json.RawMessage `json:"data"`
 		Errors []struct {
 			Type    string `json:"type"`
 			Message string `json:"message"`
@@ -223,22 +222,38 @@ func (g *GitHub) Inbox(base, token, login string) (toReview, mine, reviewed []ho
 	decErr := json.NewDecoder(res.Body).Decode(&r)
 	switch {
 	case res.StatusCode == http.StatusUnauthorized:
-		return nil, nil, nil, errors.New("GitHub refused the token: it is wrong, expired or revoked. Sign in again")
+		return nil, errors.New("GitHub refused the token: it is wrong, expired or revoked. Sign in again")
 	case res.StatusCode != http.StatusOK:
-		return nil, nil, nil, fmt.Errorf("GitHub answered %s", res.Status)
+		return nil, fmt.Errorf("GitHub answered %s", res.Status)
 	case decErr != nil:
-		return nil, nil, nil, errors.New("GitHub's answer could not be read")
+		return nil, errors.New("GitHub's answer could not be read")
 	}
-	if len(r.Errors) > 0 && r.Data == nil {
+	if len(r.Errors) > 0 && (len(r.Data) == 0 || string(r.Data) == "null") {
 		msg := r.Errors[0].Message
 		if r.Errors[0].Type == "FORBIDDEN" || strings.Contains(msg, "not accessible") {
-			return nil, nil, nil, errors.New("the token cannot read pull requests: give it \"Pull requests: read\" on GitHub (Settings → Developer settings → Personal access tokens), then sign in again")
+			return nil, errors.New("the token cannot read pull requests: give it \"Pull requests: read\" on GitHub (Settings → Developer settings → Personal access tokens), then sign in again")
 		}
-		return nil, nil, nil, fmt.Errorf("GitHub: %s", msg)
+		return nil, fmt.Errorf("GitHub: %s", msg)
+	}
+	return r.Data, nil
+}
+
+// Inbox runs the three inbox searches in one GraphQL request.
+func (g *GitHub) Inbox(base, token, login string) (toReview, mine, reviewed []hosting.PullRequest, err error) {
+	q1, q2, q3 := hosting.InboxQueries(login)
+	data, err := g.graphql(base, token, inboxQuery, map[string]string{"toReview": q1, "mine": q2, "reviewed": q3})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var r map[string]struct {
+		Nodes []ghPR `json:"nodes"`
+	}
+	if json.Unmarshal(data, &r) != nil {
+		return nil, nil, nil, errors.New("GitHub's answer could not be read")
 	}
 	conv := func(key string) []hosting.PullRequest {
 		out := []hosting.PullRequest{}
-		for _, n := range r.Data[key].Nodes {
+		for _, n := range r[key].Nodes {
 			if n.Number != 0 { // search hits that are not pull requests come back empty
 				out = append(out, n.domain())
 			}
@@ -246,4 +261,66 @@ func (g *GitHub) Inbox(base, token, login string) (toReview, mine, reviewed []ho
 		return out
 	}
 	return conv("toReview"), conv("mine"), conv("reviewed"), nil
+}
+
+// branchQuery reads the open pull requests whose head branch has a name.
+const branchQuery = `query($owner: String!, $name: String!, $branch: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(headRefName: $branch, states: OPEN, first: 10, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes { number title url isDraft createdAt updatedAt author { login }
+        repository { nameWithOwner } reviewDecision mergeable
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+        headRepository { nameWithOwner }
+        latestOpinionatedReviews(first: 50) { nodes { state } } }
+    }
+  }
+}`
+
+// BranchPR reads the open pull request whose head is branch of the repo
+// itself (not of a fork); nil when there is none.
+func (g *GitHub) BranchPR(base, token, repo, branch string) (*hosting.PullRequest, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok {
+		return nil, fmt.Errorf("%q is not owner/name", repo)
+	}
+	data, err := g.graphql(base, token, branchQuery, map[string]string{"owner": owner, "name": name, "branch": branch})
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Repository *struct {
+			PullRequests struct {
+				Nodes []struct {
+					ghPR
+					HeadRepository *struct {
+						NameWithOwner string `json:"nameWithOwner"`
+					} `json:"headRepository"`
+					Reviews struct {
+						Nodes []struct {
+							State string `json:"state"`
+						} `json:"nodes"`
+					} `json:"latestOpinionatedReviews"`
+				} `json:"nodes"`
+			} `json:"pullRequests"`
+		} `json:"repository"`
+	}
+	if json.Unmarshal(data, &r) != nil {
+		return nil, errors.New("GitHub's answer could not be read")
+	}
+	if r.Repository == nil {
+		return nil, nil // not visible to this token
+	}
+	for _, n := range r.Repository.PullRequests.Nodes {
+		if n.HeadRepository == nil || !strings.EqualFold(n.HeadRepository.NameWithOwner, repo) {
+			continue // from a fork that happens to use the same branch name
+		}
+		p := n.domain()
+		for _, rv := range n.Reviews.Nodes {
+			if rv.State == "APPROVED" {
+				p.Approvals++
+			}
+		}
+		return &p, nil
+	}
+	return nil, nil
 }

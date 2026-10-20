@@ -1,8 +1,11 @@
 package domain
 
 import (
+	"strconv"
 	"strings"
 	"time"
+
+	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
 )
 
 // PullRequest is an open pull request as the inbox shows it.
@@ -24,6 +27,9 @@ type PullRequest struct {
 	// Mergeable is MERGEABLE, CONFLICTING or UNKNOWN (still computing).
 	Mergeable string `json:"mergeable"`
 	Chips     []Chip `json:"chips"`
+	// Approvals counts reviewers whose latest opinion is an approval; read
+	// for a branch's pull request only (BranchPR), 0 in the inbox.
+	Approvals int `json:"approvals"`
 }
 
 // Chip is one thing to know about a pull request, in plain words.
@@ -100,4 +106,62 @@ func GraphQLURL(restBase string) string {
 		return b + "/api/graphql"
 	}
 	return strings.TrimSuffix(restBase, "/") + "/graphql"
+}
+
+// BranchPR is what the History toolbar says about the current branch's
+// open pull request.
+type BranchPR struct {
+	Found   bool   `json:"found"`   // the branch has an open pull request
+	Account string `json:"account"` // the account that read it
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch"`
+	// Reason is why nothing is shown when Found is false and something
+	// stands in the way (no account signed in, an unreadable answer); ""
+	// when the branch simply has no pull request.
+	Reason string      `json:"reason"`
+	PR     PullRequest `json:"pr"`
+	// Summary is "PR #42 · 1 approval · checks passing".
+	Summary string `json:"summary"`
+}
+
+// BranchSummary is a pull request in one line for a toolbar.
+func BranchSummary(p PullRequest) string {
+	parts := []string{"PR #" + strconv.Itoa(p.Number)}
+	if p.Draft {
+		parts = append(parts, "draft")
+	}
+	switch {
+	case p.ReviewDecision == "CHANGES_REQUESTED":
+		parts = append(parts, "changes requested")
+	case p.Approvals == 1:
+		parts = append(parts, "1 approval")
+	case p.Approvals > 1:
+		parts = append(parts, strconv.Itoa(p.Approvals)+" approvals")
+	case p.ReviewDecision == "REVIEW_REQUIRED":
+		parts = append(parts, "waiting for review")
+	default:
+		parts = append(parts, "no approvals")
+	}
+	switch p.Checks {
+	case "SUCCESS":
+		parts = append(parts, "checks passing")
+	case "FAILURE", "ERROR":
+		parts = append(parts, "checks failing")
+	case "PENDING", "EXPECTED":
+		parts = append(parts, "checks running")
+	}
+	if p.Mergeable == "CONFLICTING" {
+		parts = append(parts, "conflicts")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// RepoOf is owner/name for a GitHub remote URL, "" for anything else.
+func RepoOf(remoteURL string) string {
+	_, p := remote.Parse(remoteURL)
+	p = strings.TrimSuffix(strings.Trim(p, "/"), ".git")
+	if strings.Count(p, "/") != 1 {
+		return ""
+	}
+	return p
 }

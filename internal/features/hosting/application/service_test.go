@@ -50,6 +50,16 @@ type fakeAPI struct {
 	calls  int
 	err    error // Repos and Inbox fail with it
 	logins []string
+	pr     *hosting.PullRequest // BranchPR answers with it
+	asked  []string             // repo@branch of each BranchPR
+}
+
+func (f *fakeAPI) BranchPR(base, token, repo, branch string) (*hosting.PullRequest, error) {
+	f.asked = append(f.asked, repo+"@"+branch)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.pr, nil
 }
 
 func (f *fakeAPI) Inbox(base, token, login string) ([]hosting.PullRequest, []hosting.PullRequest, []hosting.PullRequest, error) {
@@ -168,6 +178,7 @@ func (f *fakeRepos) Current() string { return f.current }
 func (f *fakeRepos) List(*account.Config) []repo.Info {
 	return []repo.Info{{Path: "/src/api", Remote: "https://github.com/Acme/api"}}
 }
+func (f *fakeRepos) Info(*account.Config, string) repo.Info { return repo.Info{} }
 func (f *fakeRepos) AccountFor(c *account.Config, gd string) *account.Account {
 	return c.Account(f.account[gd])
 }
@@ -275,5 +286,66 @@ func TestBrowse(t *testing.T) {
 	}
 	if err := s.SignOut("home"); err != nil || len(cache) != 1 {
 		t.Errorf("signing out forgets what the account saw: %v %v", err, cache)
+	}
+}
+
+type listRepos struct {
+	fakeRepos
+	infos []repo.Info
+}
+
+func (l *listRepos) Info(_ *account.Config, gd string) repo.Info {
+	for _, i := range l.infos {
+		if i.GitDir == gd {
+			return i
+		}
+	}
+	return repo.Info{}
+}
+
+func TestBranchPR(t *testing.T) {
+	s, _, sec, api := newService()
+	info := repo.Info{GitDir: "/src/api/.git", Account: "work", Branch: "billing",
+		Remotes: []repo.Remote{{Name: "up", URL: "git@github.com:other/api.git"}, {Name: "origin", URL: "git@github.com:acme/api.git"}}}
+	l := &listRepos{infos: []repo.Info{info}}
+	s.Repos = l
+	api.pr = &hosting.PullRequest{Number: 42, Approvals: 1, Checks: "SUCCESS", ReviewDecision: "REVIEW_REQUIRED", URL: "https://github.com/acme/api/pull/42"}
+
+	if got := s.BranchPR("/src/api/.git"); got.Found || !strings.Contains(got.Reason, "sign work in") || len(api.asked) != 0 {
+		t.Fatalf("not signed in: %+v asked %v", got, api.asked)
+	}
+	sec.m["work"] = "tok-work"
+	got := s.BranchPR("/src/api/.git")
+	if !got.Found || got.Summary != "PR #42 · 1 approval · checks passing" || got.Account != "work" || got.Repo != "acme/api" || !reflect.DeepEqual(api.asked, []string{"acme/api@billing"}) {
+		t.Fatalf("BranchPR = %+v asked %v (origin's repo, the branch)", got, api.asked)
+	}
+	if len(got.PR.Chips) == 0 {
+		t.Error("the pull request carries its status chips")
+	}
+	api.pr = nil
+	if got := s.BranchPR("/src/api/.git"); got.Found || got.Reason != "" {
+		t.Errorf("a branch without a pull request is quiet: %+v", got)
+	}
+	api.err = errors.New("GitHub answered 502")
+	if got := s.BranchPR("/src/api/.git"); got.Found || got.Reason != "GitHub answered 502" {
+		t.Errorf("a failed read says why: %+v", got)
+	}
+	api.err, api.asked = nil, nil
+	for name, mod := range map[string]func(*repo.Info){
+		"detached":       func(i *repo.Info) { i.Branch = "" },
+		"another host":   func(i *repo.Info) { i.Remotes = []repo.Remote{{Name: "origin", URL: "git@gitlab.com:acme/api.git"}} },
+		"not a repo url": func(i *repo.Info) { i.Remotes = []repo.Remote{{Name: "origin", URL: "/srv/git/api"}} },
+		"no remote":      func(i *repo.Info) { i.Remotes = nil },
+		"no account":     func(i *repo.Info) { i.Account = "" },
+	} {
+		i := info
+		mod(&i)
+		l.infos = []repo.Info{i}
+		if got := s.BranchPR("/src/api/.git"); got.Found || len(api.asked) != 0 {
+			t.Errorf("%s: nothing to ask, got %+v asked %v", name, got, api.asked)
+		}
+	}
+	if got := s.BranchPR("/elsewhere/.git"); got.Found {
+		t.Errorf("unknown repo: %+v", got)
 	}
 }

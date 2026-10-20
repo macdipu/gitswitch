@@ -141,6 +141,10 @@ td .row-actions{flex-wrap:nowrap;justify-content:flex-end}
 .sync{font-size:13px;color:var(--muted);white-space:nowrap}
 .sync b{color:var(--ink);font-weight:600}
 .sync b.bad{color:var(--bad)}
+a.prstate{font-size:13px;color:var(--muted);white-space:nowrap;text-decoration:none;border:1px solid var(--rule);border-radius:999px;padding:2px 10px}
+a.prstate:hover{color:var(--ink)}
+a.prstate.bad{color:var(--bad)}
+a.prstate.ok{color:var(--ok)}
 .pop-wrap{position:relative}
 .popover{position:absolute;top:calc(100% + 6px);left:0;z-index:5;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:0 8px 24px rgb(0 0 0 / .14);padding:10px;width:320px;max-width:calc(100vw - 32px)}
 .popover input{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);margin-bottom:8px}
@@ -472,6 +476,7 @@ dialog .row-actions{justify-content:flex-end}
         </div>
       </div>
       <span class="sync" id="syncState" aria-live="polite"></span>
+      <a class="prstate" id="prState" hidden></a>
       <button class="btn ghost" id="compareBtn" hidden title="List the commits you would push and pull">Compare</button>
       <button class="btn" id="commitBtn">Commit…</button>
       <button class="btn" id="updateBtn" title="Pull new commits from the remote (fast-forward only)">Update</button>
@@ -1338,6 +1343,26 @@ async function loadHistory(more){
   H = h; R = r;
   if (H) for (const x of [...picked]) if (!H.commits.some(c => c.hash === x)) picked.delete(x);
   renderToolbar(); renderHistory(); renderRefTree();
+  loadBranchPR(gd);
+}
+
+// loadBranchPR shows the current branch's open pull request next to the
+// sync state. It is read after the page is drawn and stays quiet when
+// there is none, or when nothing can be read.
+async function loadBranchPR(gd){
+  const el = $('#prState'); el.hidden = true;
+  let r;
+  try { r = await api('GET', '/api/repo/pr?gitDir=' + encodeURIComponent(gd)); } catch { return; }
+  if ($('#histRepo').value !== gd) return; // another repo was picked meanwhile
+  if (!r?.found){
+    if (r?.reason){ el.removeAttribute('href'); el.textContent = 'Pull request: not shown'; el.title = r.reason; el.className = 'prstate'; el.hidden = false; }
+    return;
+  }
+  const bad = r.pr.chips.some(c => c.Bad || c.bad), ready = r.pr.chips.some(c => c.kind === 'ready');
+  el.href = r.pr.url; el.textContent = r.summary;
+  el.className = 'prstate' + (bad ? ' bad' : ready ? ' ok' : '');
+  el.title = (r.pr.title ? r.pr.title + '\n' : '') + (r.pr.chips.filter(c => c.hint).map(c => c.text + ': ' + c.hint).join('\n') || 'Open it on GitHub');
+  el.hidden = false;
 }
 
 // ---- toolbar: branch, sync, update ----

@@ -105,6 +105,10 @@ func (h *HelperRepos) Current() string {
 	return h.Git.GitDirFor(wd)
 }
 
+func (h *HelperRepos) Info(c *account.Config, gitDir string) repo.Info {
+	return h.Reader.InfoFor(c, gitDir)
+}
+
 func (h *HelperRepos) List(c *account.Config) []repo.Info { return h.Reader.List(c) }
 
 func (h *HelperRepos) AccountFor(c *account.Config, gitDir string) *account.Account {
