@@ -42,6 +42,7 @@ type fakeRefs struct {
 	rebaseErr  error
 	merges     int
 	fetchErr   error
+	fetchOpen  bool
 	fetchNew   int // commits the next fetch brings
 }
 
@@ -181,6 +182,8 @@ func (f *fakeRefs) MoveBranch(_, b, to, was, _ string) error {
 	f.ran = append(f.ran, "move "+b+" "+was+"→"+to)
 	return nil
 }
+func (f *fakeRefs) FetchOnOpen() bool               { return f.fetchOpen }
+func (f *fakeRefs) SaveFetchOnOpen(on bool) error   { f.fetchOpen = on; return nil }
 func (f *fakeRefs) BranchPrefix() string            { return f.prefix }
 func (f *fakeRefs) SaveBranchPrefix(p string) error { f.prefix = p; return nil }
 func (f *fakeRefs) SwitchModes(gitDir string) (string, string) {
@@ -830,5 +833,20 @@ func TestFetch(t *testing.T) {
 	r.ran = nil
 	if _, err := s.Fetch("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), "no remote") || len(r.ran) != 0 {
 		t.Errorf("no remote: %v ran %v", err, r.ran)
+	}
+}
+
+func TestFetchOnOpenSetting(t *testing.T) {
+	s, r := newService()
+	if s.FetchOnOpen() {
+		t.Fatal("off until you turn it on")
+	}
+	if err := s.SetFetchOnOpen(true); err != nil || !s.FetchOnOpen() {
+		t.Fatalf("on: %v %v", err, s.FetchOnOpen())
+	}
+	var out bytes.Buffer
+	s.FS = &filesystem.FS{DryRun: true, Out: &out}
+	if err := s.SetFetchOnOpen(false); err != nil || !r.fetchOpen || !strings.Contains(out.String(), "fetch when History is opened") {
+		t.Errorf("a dry run only says what it would do: %v saved=%v %q", err, r.fetchOpen, out.String())
 	}
 }

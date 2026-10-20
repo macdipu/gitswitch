@@ -220,6 +220,22 @@ func (g *Git) MoveBranch(gitDir, branch, to, was, why string) error {
 	return err
 }
 
+// fetchOnOpenKey is "true" when opening a repo's History fetches first.
+const fetchOnOpenKey = "gitswitch.fetchOnOpen"
+
+func (g *Git) FetchOnOpen() bool { return g.Git.GlobalGet(fetchOnOpenKey) == "true" }
+
+func (g *Git) SaveFetchOnOpen(on bool) error {
+	if on {
+		_, err := g.Git.Global(fetchOnOpenKey, "true")
+		return err
+	}
+	if _, err := g.Git.Global("--unset", fetchOnOpenKey); gitinfra.ExitCode(err) != 5 { // 5: was not set
+		return err
+	}
+	return nil
+}
+
 // prefixKey holds the prefix of new branch names, in the global config.
 const prefixKey = "gitswitch.branchPrefix"
 

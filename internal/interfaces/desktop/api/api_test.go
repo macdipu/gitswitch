@@ -401,6 +401,17 @@ func TestNewBranch(t *testing.T) {
 	if _, m := call(t, h, "GET", "/api/state", ""); fmt.Sprint(m["data"].(map[string]any)["branchPrefix"]) != "feature/" {
 		t.Fatalf("state branchPrefix = %v", m)
 	}
+	if _, m := call(t, h, "GET", "/api/state", ""); m["data"].(map[string]any)["fetchOnOpen"] != false {
+		t.Fatalf("fetchOnOpen is off by default: %v", m)
+	}
+	call(t, h, "POST", "/api/settings", `{"fetchOnOpen":true}`)
+	if _, m := call(t, h, "GET", "/api/state", ""); m["data"].(map[string]any)["fetchOnOpen"] != true {
+		t.Fatalf("state fetchOnOpen = %v", m)
+	}
+	call(t, h, "POST", "/api/settings", `{"fetchOnOpen":false}`)
+	if _, m := call(t, h, "GET", "/api/state", ""); m["data"].(map[string]any)["fetchOnOpen"] != false {
+		t.Fatalf("state fetchOnOpen after off = %v", m)
+	}
 	w, m := call(t, h, "POST", "/api/branch/new", `{`+gd+`,"name":"feature/login"}`)
 	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["branch"] != "feature/login" || d["carried"] != true {
 		t.Fatalf("new branch = %d %v", w.Code, m)

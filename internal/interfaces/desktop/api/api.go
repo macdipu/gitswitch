@@ -462,6 +462,7 @@ func (s *server) state(r *http.Request) (any, error) {
 		"switchChanges": s.app.Refs.SwitchSetting("").Global,
 		"pull":          s.app.Refs.PullSetting("").Global, // how Update works in every repo
 		"branchPrefix":  s.app.Refs.BranchPrefix(),
+		"fetchOnOpen":   s.app.Refs.FetchOnOpen(), // History reads the remote's new commits when a repo opens
 		"home":          filesystem.HomeDir(),
 		"hosting":       s.app.Hosting.Status(), // signed in to GitHub, from the keychain
 	}, nil
@@ -549,6 +550,11 @@ func (s *server) settings(r *http.Request) (any, error) {
 	}
 	if v, ok := b["repoGroups"].(string); ok {
 		if err := s.app.Repos.SetGroupBy(v); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := b["fetchOnOpen"].(bool); ok && v != s.app.Refs.FetchOnOpen() {
+		if err := s.app.Refs.SetFetchOnOpen(v); err != nil {
 			return nil, err
 		}
 	}

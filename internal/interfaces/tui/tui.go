@@ -94,6 +94,7 @@ type viewer struct {
 }
 
 type tui struct {
+	fetched map[string]bool // repos fetched on open since the app started
 	tab     int
 	sel     [6]int
 	off     [6]int
@@ -1150,6 +1151,15 @@ func (t *tui) browseGitHub() {
 // openHistory shows a repo's history and records it as recently opened.
 func (t *tui) openHistory(gitDir string) {
 	t.histDir = gitDir
+	// The fetch-on-open setting: once per repo while the app runs. A failed
+	// fetch (offline) is not an error here; F says why when asked.
+	if t.app.Refs.FetchOnOpen() && !t.fetched[gitDir] {
+		if t.fetched == nil {
+			t.fetched = map[string]bool{}
+		}
+		t.fetched[gitDir] = true
+		_, _ = t.app.Refs.Fetch(gitDir, func(string) {})
+	}
 	_ = t.app.Repos.Opened(gitDir) // only the order of the recent list depends on it
 	// Move it to the front of the recent ones here too, without reading
 	// every repo again.
@@ -2359,6 +2369,9 @@ func (t *tui) keySettings(k string) {
 				t.say(err, "Saved.")
 				return nil
 			}}
+	case i == 5:
+		on := !t.app.Refs.FetchOnOpen()
+		t.say(t.app.Refs.SetFetchOnOpen(on), map[bool]string{true: "History now fetches when a repo opens.", false: "History opens without fetching."}[on])
 	case i == 4:
 		next := map[refs.PullMode]string{refs.FFOnly: "rebase", refs.Rebase: "ff-only"}[t.app.Refs.PullSetting("").Global]
 		t.say(t.app.Refs.SetPullSetting("", next), "Saved.")
@@ -2702,7 +2715,7 @@ func (t *tui) drawRules() ([]string, int) {
 
 // settingRows is how many settings come before the health checks on the
 // Settings page.
-const settingRows = 5
+const settingRows = 6
 
 func (t *tui) drawSettings() ([]string, int) {
 	s := t.sel[tabSettings]
@@ -2715,6 +2728,7 @@ func (t *tui) drawSettings() ([]string, int) {
 		fmt.Sprintf("%sNew branch names start with: %s%s", mark(s == 3), map[bool]string{true: cDim + "nothing (Enter to set, e.g. feature/)", false: cBold + t.app.Refs.BranchPrefix()}[t.app.Refs.BranchPrefix() == ""], cReset),
 		fmt.Sprintf("%sWhen update finds new commits on both sides, in every repo: %s%s %s(Enter switches; a repo's own choice comes first)%s", mark(s == 4), cBold,
 			map[refs.PullMode]string{refs.FFOnly: "stop and explain (fast-forward only)", refs.Rebase: "put my commits on top (rebase)"}[t.app.Refs.PullSetting("").Global], cReset+cDim, cReset),
+		fmt.Sprintf("%sRead the remote's new commits when a repo's History opens (fetch): %s%s", mark(s == 5), onoff[t.app.Refs.FetchOnOpen()], cReset),
 	}
 	for i, c := range t.checks {
 		st := cGreen + "ok " + cReset

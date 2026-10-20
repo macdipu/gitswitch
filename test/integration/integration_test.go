@@ -2596,3 +2596,29 @@ func TestFetch(t *testing.T) {
 		t.Fatalf("dry run fetched:\n%s", out)
 	}
 }
+
+// gitswitch set fetch-on-open turns reading the remote's new commits when
+// History opens on or off, in every repo; off by default.
+func TestSetFetchOnOpen(t *testing.T) {
+	e := newEnv(t)
+	if v, err := e.gitMay(e.root, "config", "--global", "--get", "gitswitch.fetchOnOpen"); err == nil {
+		t.Fatalf("on by default: %q", v)
+	}
+	e.gsErr(e.root, "fetch-on-open on|off", "set", "fetch-on-open", "maybe")
+	if out := e.gs("--dry-run", "set", "fetch-on-open", "on"); strings.Contains(out, "History will read") {
+		t.Fatalf("dry run says it did it:\n%s", out)
+	}
+	if _, err := e.gitMay(e.root, "config", "--global", "--get", "gitswitch.fetchOnOpen"); err == nil {
+		t.Fatal("a dry run saved it")
+	}
+	if out := e.gs("set", "fetch-on-open", "on"); !strings.Contains(out, "History will read the remote's new commits") || e.cfg(e.root, "gitswitch.fetchOnOpen") != "true" {
+		t.Fatalf("on:\n%s", out)
+	}
+	if out := e.gs("set", "fetch-on-open", "off"); !strings.Contains(out, "without fetching") {
+		t.Fatalf("off:\n%s", out)
+	}
+	if v, err := e.gitMay(e.root, "config", "--global", "--get", "gitswitch.fetchOnOpen"); err == nil {
+		t.Fatalf("off leaves the key behind: %q", v)
+	}
+	e.gs("set", "fetch-on-open", "off") // turning it off twice is fine
+}

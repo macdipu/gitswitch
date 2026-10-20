@@ -25,6 +25,8 @@
 //	                             uncommitted changes (kept by the refs feature)
 //	gitswitch.branchPrefix       optional: put in front of new branch names, e.g. feature/
 //	                             (kept by the refs feature)
+//	gitswitch.fetchOnOpen        true: History reads the remote's new commits when a repo is opened
+//	                             (kept by the refs feature; absent: off)
 //	gitswitch.pull               ff-only | rebase: how update brings a branch up to date
 //	                             (kept by the refs feature)
 //	gitswitch-account.<id>.host|name|email|key|user

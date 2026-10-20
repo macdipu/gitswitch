@@ -121,6 +121,7 @@ Settings
   gitswitch set repo-groups <how>   group the repo list: none, account, owner, folder or group
   gitswitch set repo-sort <how>     sort it: folder, name, recent or account (pinned first)
   gitswitch set pull <how> [--repo] how update works: ff-only (the default) or rebase
+  gitswitch set fetch-on-open on|off   read the remote's new commits when History opens a repo (default: off)
   gitswitch set branch-prefix <prefix>   put e.g. feature/ in front of new branch names ("" for none)
   gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
                                     uncommitted changes, in every repo or this one (default: ask;

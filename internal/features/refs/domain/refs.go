@@ -473,6 +473,10 @@ type Refs interface {
 	// ("" deletes it), only while it is still at was; why goes in the
 	// reflog.
 	MoveBranch(gitDir, branch, to, was, why string) error
+	// FetchOnOpen and SaveFetchOnOpen keep whether History reads the
+	// remote's new commits when a repo is opened, for every repo.
+	FetchOnOpen() bool
+	SaveFetchOnOpen(on bool) error
 	// BranchPrefix and SaveBranchPrefix keep the prefix of new branch
 	// names, for every repo ("" for none).
 	BranchPrefix() string

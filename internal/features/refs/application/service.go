@@ -720,6 +720,18 @@ func (s *Service) Fetch(gitDir string, progress func(string)) (refs.Fetched, err
 	return f, nil
 }
 
+// FetchOnOpen is whether the apps read the remote's new commits when a
+// repo's History is opened (off unless you turn it on).
+func (s *Service) FetchOnOpen() bool { return s.Refs.FetchOnOpen() }
+
+// SetFetchOnOpen saves it, for every repo.
+func (s *Service) SetFetchOnOpen(on bool) error {
+	if s.FS.Dry(fmt.Sprintf("fetch when History is opened: %v", on)) {
+		return nil
+	}
+	return s.Refs.SaveFetchOnOpen(on)
+}
+
 // PullSetting is how Update brings a repo's branches up to date.
 func (s *Service) PullSetting(gitDir string) refs.PullSetting {
 	return refs.NewPullSetting(s.Refs.PullModes(gitDir))

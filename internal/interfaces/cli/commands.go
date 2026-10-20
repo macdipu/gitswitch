@@ -516,7 +516,22 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.setPull(args[1:])
 	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | fetch-on-open on|off | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo]")
+	}
+	if args[0] == "fetch-on-open" {
+		if args[1] != "on" && args[1] != "off" {
+			return usageErr("gitswitch set fetch-on-open on|off")
+		}
+		on := args[1] == "on"
+		if err := x.app.Refs.SetFetchOnOpen(on); err != nil || x.app.DryRun() {
+			return err
+		}
+		if on {
+			x.say("History will read the remote's new commits when you open a repo (once per repo each time the app starts).")
+		} else {
+			x.say("History opens without fetching. Fetch yourself with: gitswitch fetch")
+		}
+		return nil
 	}
 	if args[0] == "branch-prefix" {
 		if err := x.app.Refs.SetBranchPrefix(args[1]); err != nil || x.app.DryRun() {
