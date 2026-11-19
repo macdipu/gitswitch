@@ -7,6 +7,16 @@ people don't build the same thing.
 Status: **done**, **partly** (some of it exists), **planned** (not started),
 **later**.
 
+**Next release (v2): a full git client.** Past v1.5, GitSwitch grew from the
+account switcher into a git client: the [changes panel and commit
+box](#a-full-git-client-v2), merge and a conflict editor, stashes, blame,
+compare, reflog and bisect, remotes and force push with lease, rebase and
+reword, signing, worktrees, submodules, live refresh, a command palette,
+tabs and themes. The core of every item below is built and tested against
+real git; what is left is mostly screens (desktop and terminal app) for the
+newest items, then release work. Hosting writes (creating pull requests,
+Bitbucket, a team review report) are not planned.
+
 **Latest release (v1.5)**: a [History screen](#history-screen) like an
 IDE's git log, a tidier [repo list](#repository-management) (recent repos,
 groups, sorting, clones), optional GitHub sign-in with a browser of every

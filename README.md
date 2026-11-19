@@ -22,7 +22,7 @@ gitswitch: work saved for this repo
 - **One-time install.** One command installs the terminal program and the desktop app on Windows, macOS and Linux. Keeps working after restarts and updates.
 - **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (a few milliseconds and about 6 MB of memory, measured on Linux), then it exits.
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
-- **History you can act on:** the account behind every commit, its full message and changed files; revert, drop, roll back and cherry-pick with each step explained; switch branches and pull; search by message, author, account or date. Pushed history is never rewritten.
+- **A full git client, with the right account behind every action:** the changes panel and commit box (stage whole files, hunks or single lines; amend; sign off), the commit graph with the account behind every commit, merge with a conflict editor, stashes and parked changes, blame, compare, reflog and bisect, remotes, rebase and reword, worktrees and submodules. Everything that rewrites history asks first, never touches commits that are already pushed, and can be undone.
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
 
 <picture>
@@ -36,6 +36,7 @@ gitswitch: work saved for this repo
 - [Quick start](#quick-start)
 - [How an account is chosen](#how-an-account-is-chosen)
 - [Terminal app and desktop app](#terminal-app-and-desktop-app)
+- [A full git client at a glance](#a-full-git-client-at-a-glance)
 - [IDE notes](#ide-notes)
 - [Commit history and branches](#commit-history-and-branches)
 - [Repo list](#repo-list)
@@ -228,6 +229,24 @@ Questions answer only to the keys they name; `n` or Esc cancels. Lists that pop 
 When the terminal app creates a key or tests a login, it steps aside so `ssh-keygen` and `ssh` can ask for your passphrase, then comes back.
 
 </details>
+
+## A full git client at a glance
+
+Everything below works for the account the repo uses. The desktop app has the screens, the CLI has a command for each (add `--json` where a script might want it, `--dry-run` to see what a command would change), and the terminal app has the daily ones. Details for each are in [Commit history and branches](#commit-history-and-branches).
+
+| | Desktop app | CLI |
+| --- | --- | --- |
+| **Changes and commits** | The *Uncommitted changes* row opens a panel beside the log: stage, unstage and discard files, hunks or single lines; a commit box with summary, description, recent messages, sign-off, co-authors and amend | `changes`, `diff`, `stage`, `unstage`, `discard`, `hunks`, `commit [--amend] [--signoff] [--co-author]` |
+| **Branches and tags** | Branch menu and pills on the log (switch, new, rename, delete, upstream, merged), tags, check out a commit and come back | `branch`, `switch`, `checkout`, `back`, `tag`, `push` |
+| **Merge and conflicts** | *Merge into…*; a banner for a stopped merge, rebase or cherry-pick; a conflict dialog with yours, theirs and an editable result | `merge`, `conflict`, `continue`, `skip`, `abort` |
+| **Rewrite history** | Reword and amend; Undo and Redo | `rebase <onto>`, `rebase -i`, `reword`, `fixup-into`, `undo`, `redo` |
+| **Stashes** | *Stashes…* (every stash, parked changes included), parked changes above the log | `stash`, `parked` |
+| **Look into history** | Blame, file history, *Compare two refs…*, Reflog, bisect, code search in Filters, a diff view with side by side, word changes and syntax colours | `blame`, `log --file`, `log --code`, `compare`, `reflog`, `bisect` |
+| **Remotes** | *Remotes…*, delete a branch on the server, fetch and forget deleted branches, force push with lease (after listing what it overwrites) | `remote`, `branch delete-remote`, `fetch --prune`, `push --force-with-lease` |
+| **Accounts and signing** | The account behind every commit, sign commits per account with verified badges in the log | `account`, `use`, `account edit --signing-format` |
+| **Repos** | Repo tabs, a command palette (Ctrl/⌘+K), *New repo…*, themes (System, Light, Dark, Dim), live refresh when files change | `init`, `repo`, `worktree`, `submodule` |
+
+The terminal app (`gitswitch`) has the History page with a Changes view (`s`), commit and amend (`C`), branches (`B`), tags (`t`, `T`), stashes (`h`), ignore (`i`), push, fetch, update, Undo and the parked-changes and smart-switch questions. Rebase, worktrees and submodules are CLI-only for now, and the desktop screens for them are still to come: see the [roadmap](ROADMAP.md).
 
 ## IDE notes
 
