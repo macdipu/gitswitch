@@ -20,13 +20,19 @@ import (
 	inspectinfra "github.com/macdipu/gitswitch/internal/features/inspect/infrastructure"
 	mergeapp "github.com/macdipu/gitswitch/internal/features/merge/application"
 	mergeinfra "github.com/macdipu/gitswitch/internal/features/merge/infrastructure"
+	rebaseapp "github.com/macdipu/gitswitch/internal/features/rebase/application"
+	rebaseinfra "github.com/macdipu/gitswitch/internal/features/rebase/infrastructure"
 	refsapp "github.com/macdipu/gitswitch/internal/features/refs/application"
 	refsinfra "github.com/macdipu/gitswitch/internal/features/refs/infrastructure"
 	repoapp "github.com/macdipu/gitswitch/internal/features/repository/application"
 	repoinfra "github.com/macdipu/gitswitch/internal/features/repository/infrastructure"
+	rewriteapp "github.com/macdipu/gitswitch/internal/features/rewrite/application"
+	rewriteinfra "github.com/macdipu/gitswitch/internal/features/rewrite/infrastructure"
 	"github.com/macdipu/gitswitch/internal/features/setup"
 	sshapp "github.com/macdipu/gitswitch/internal/features/ssh/application"
 	sshinfra "github.com/macdipu/gitswitch/internal/features/ssh/infrastructure"
+	submoduleapp "github.com/macdipu/gitswitch/internal/features/submodule/application"
+	submoduleinfra "github.com/macdipu/gitswitch/internal/features/submodule/infrastructure"
 	undoapp "github.com/macdipu/gitswitch/internal/features/undo/application"
 	undoinfra "github.com/macdipu/gitswitch/internal/features/undo/infrastructure"
 	watchapp "github.com/macdipu/gitswitch/internal/features/watch/application"
@@ -53,11 +59,15 @@ type App struct {
 	Undo      *undoapp.Service
 	Workspace *workspaceapp.Service
 	Merge     *mergeapp.Service
+	Rewrite   *rewriteapp.Service // interactive rebase: reorder, squash, fixup, reword, drop; reword an older commit
+	Rebase    *rebaseapp.Service  // rebase the current branch onto another; finished stops are recorded for undo
 	Inspect   *inspectapp.Service // compare, reflog, bisect
 	Hosting   *hostingapp.Service
 	Setup     *setup.Installer
 	Doctor    *doctor.Doctor
 	Watch     *watchapp.Service // live refresh: file watchers, started on demand
+
+	Submodules *submoduleapp.Service // submodules: list, init, update, sync, add, remove
 
 	dryRun bool
 }
@@ -81,23 +91,38 @@ func New(dryRun bool, out io.Writer) *App {
 	wsGit := &workspaceinfra.Git{Git: git}
 	undos := &undoapp.Service{Store: undoGit, Git: undoGit, FS: fs}
 	secrets := hostinginfra.NewSecrets()
+	rebaseGit := &rebaseinfra.Git{Git: git}
+	rewriteGit := &rewriteinfra.Git{Git: git}
+	rewrites := &rewriteapp.Service{Git: rewriteGit, Locator: git, FS: fs, Undo: undos}
+	rebases := &rebaseapp.Service{Git: rebaseGit, Store: rebaseGit, Locator: git, FS: fs, Undo: undos}
 	return &App{
 		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader, Tokens: hostinginfra.Tokens{Secrets: secrets}},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
 		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git}, Initializer: &repoinfra.Initializer{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
-		History:   &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
-		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
-		Undo:      undos,
-		Inspect:   &inspectapp.Service{Git: &inspectinfra.Git{Git: git}, Locator: git, FS: fs},
-		Merge:     &mergeapp.Service{Git: &mergeinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos},
+		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
+		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Undo:    undos,
+		Inspect: &inspectapp.Service{Git: &inspectinfra.Git{Git: git}, Locator: git, FS: fs},
+		Merge: &mergeapp.Service{Git: &mergeinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos,
+			// A rebase that stopped on clashes is recorded for undo once it is finished or aborted.
+			OnFinished: func(gitDir, kind, _ string) {
+				if kind == "rebase" {
+					_, _ = rebases.Finish(gitDir)
+					_, _ = rewrites.Finish(gitDir) // a stopped rewrite, if that is what it was
+				}
+			}},
+		Rebase:    rebases,
+		Rewrite:   rewrites,
 		Workspace: &workspaceapp.Service{Git: wsGit, Changes: wsGit, Ignorer: wsGit, Messages: wsGit, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Hosting: &hostingapp.Service{Accounts: store, Secrets: secrets, API: hostinginfra.NewHosts(Version),
 			Helper: &hostinginfra.HelperConfig{Git: git}, Repos: &hostinginfra.HelperRepos{Git: git, Reader: reader}, Cache: hostinginfra.Cache{}, Inboxes: hostinginfra.Cache{}},
 		Setup:  installer,
 		Doctor: &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
 		Watch:  &watchapp.Service{Source: &watchinfra.Source{Git: git}},
-		dryRun: dryRun,
+
+		Submodules: &submoduleapp.Service{Git: &submoduleinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs},
+		dryRun:     dryRun,
 	}
 }
 

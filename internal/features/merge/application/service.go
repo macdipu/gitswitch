@@ -23,6 +23,10 @@ type Service struct {
 	Locator repo.Locator
 	FS      *filesystem.FS // dry-run: changes are only printed
 	Undo    merge.Recorder // remembers each merge so it can be undone; may be nil
+	// OnFinished, when set, is told (kind, action) after a stopped
+	// operation ended for good: continued to the end, skipped to the end or
+	// aborted. The rebase feature uses it to record a rebase for undo.
+	OnFinished func(gitDir, kind, action string)
 }
 
 // Plan says what merging from into the current branch will do, without
@@ -265,6 +269,9 @@ func (s *Service) Act(gitDir, action string) (merge.Operation, error) {
 		}
 		h, _ := s.Git.Head(gitDir)
 		s.Undo.Merged(gitDir, m, theirs, name, merge.Label(merge.Merged{Into: h.Branch, From: name, Outcome: merge.MergeCommit}))
+	}
+	if after.Kind == "" && s.OnFinished != nil {
+		s.OnFinished(gitDir, kind, action)
 	}
 	return after, nil
 }

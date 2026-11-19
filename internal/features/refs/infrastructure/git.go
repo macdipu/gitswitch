@@ -26,7 +26,7 @@ func (g *Git) Head(gitDir string) (refs.Head, error) {
 	}
 	out, err := g.Git.Run("--git-dir="+gitDir, "log", "-1", "--format=%H%x1f%s", "HEAD", "--")
 	if err != nil {
-		if strings.Contains(err.Error(), "does not have any commits") || strings.Contains(err.Error(), "unknown revision") {
+		if gitinfra.NoCommits(err) {
 			return h, nil
 		}
 		return h, err

@@ -106,7 +106,7 @@ func (l *Log) FileHistory(gitDir, path string, n, skip int) ([]history.FileCommi
 	args = append(args, "--end-of-options", "HEAD", "--", path)
 	out, err := l.Git.Run(args...)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not have any commits") {
+		if gitinfra.NoCommits(err) {
 			return []history.FileCommit{}, false, nil
 		}
 		return nil, false, err

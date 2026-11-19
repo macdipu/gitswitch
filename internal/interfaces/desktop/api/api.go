@@ -23,8 +23,10 @@ import (
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
 	inspect "github.com/macdipu/gitswitch/internal/features/inspect/domain"
 	merge "github.com/macdipu/gitswitch/internal/features/merge/domain"
+	rebase "github.com/macdipu/gitswitch/internal/features/rebase/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
+	rewrite "github.com/macdipu/gitswitch/internal/features/rewrite/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
 	workspace "github.com/macdipu/gitswitch/internal/features/workspace/domain"
 	"github.com/macdipu/gitswitch/internal/interfaces/desktop/assets"
@@ -753,6 +755,127 @@ func (s *server) routes() map[string]handler {
 			}
 			return a.Merge.Merge(gd, str(b, "branch"), mode)
 		}),
+		// Submodules. GET /api/submodules?gitDir= lists them: [{name, path,
+		// url, branch, recorded, checkedOut, state ("not initialized" | "up
+		// to date" | "checked out at another commit" | "has merge
+		// conflicts"), initialized, dirty (changed files inside, -1 unknown),
+		// upstream, ahead, behind, account, accountReason,
+		// hasRepoConfigAccount}]. POST /api/submodule/init {gitDir, path?},
+		// /update {gitDir, path?, remote?, recursive?}, /sync {gitDir}
+		// answer {changed: [{path, from, to}], message, recordedChanged};
+		// /add {gitDir, url, path, branch?} answers {path, url, branch,
+		// account, note, message}; /remove {gitDir, path, force?} answers
+		// {path, deleted: [what is deleted], message}. A path left out means
+		// every submodule. Each runs as the account its own URL maps to.
+		"GET /api/submodules": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Submodules.List(gd)
+		},
+		"POST /api/submodule/init": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Submodules.Init(gd, str(b, "path"))
+		}),
+		"POST /api/submodule/update": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			rem, _ := b["remote"].(bool)
+			recursive, _ := b["recursive"].(bool)
+			return a.Submodules.Update(gd, str(b, "path"), rem, recursive)
+		}),
+		"POST /api/submodule/sync": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Submodules.Sync(gd)
+		}),
+		"POST /api/submodule/add": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Submodules.Add(gd, str(b, "url"), str(b, "path"), str(b, "branch"))
+		}),
+		"POST /api/submodule/remove": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			force, _ := b["force"].(bool)
+			return a.Submodules.Remove(gd, str(b, "path"), force)
+		}),
+		// Rebase the current branch onto another branch, tag or commit.
+		// plan: {branch, onto, hash, head, base, upToDate, fastForward,
+		// replayed[] (oldest first), replayedCount, incoming[], incomingCount,
+		// bothChanged[] (an estimate of likely clashes), blocked, summary}.
+		// POST: {outcome: done|fast-forward|up-to-date|conflicts, branch, onto,
+		// hash, short, replayed, conflicts[], message}; a clash stops the rebase
+		// (never aborts): continue, skip or abort it through /api/operation.
+		// finish records a rebase that was stopped and has ended since for
+		// undo: {recorded}.
+		"GET /api/rebase/plan": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			p, err := a.Rebase.Plan(gd, q.Get("onto"))
+			if p.Replayed == nil {
+				p.Replayed = []rebase.CommitInfo{}
+			}
+			if p.Incoming == nil {
+				p.Incoming = []rebase.CommitInfo{}
+			}
+			if p.BothChanged == nil {
+				p.BothChanged = []string{}
+			}
+			return p, err
+		},
+		"POST /api/rebase": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			r, err := a.Rebase.Run(gd, str(b, "onto"))
+			if r.Conflicts == nil {
+				r.Conflicts = []string{}
+			}
+			return r, err
+		}),
+		"POST /api/rebase/finish": s.withRepo(func(gd string, _ map[string]any) (any, error) {
+			rec, err := a.Rebase.Finish(gd)
+			return map[string]bool{"recorded": rec}, err
+		}),
+		// Rewrite history (interactive rebase). GET todo: {base, branch,
+		// commits[] (oldest first: hash, short, subject, message, author, email,
+		// time, files, merge, parents), blocked, note, pending}; since (a
+		// commit or ref) lists from it to HEAD, else the commits not pushed.
+		// POST /api/rewrite {since, steps:[{hash, action: pick|reword|squash|
+		// fixup|drop, message}]} (the order is the new order) -> {outcome:
+		// done|conflicts, hash, short, before, after, conflicts[], summary[],
+		// message}; a clash stops the rebase (continue, skip or abort through
+		// /api/operation). reword {hash, message}; fixup-into {hash} folds the
+		// staged changes into an older commit; finish {gitDir} records a
+		// stopped rewrite that has ended since for undo: {pending, recorded,
+		// message}.
+		"GET /api/rewrite/todo": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Rewrite.Todo(gd, q.Get("since"))
+		},
+		"POST /api/rewrite": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			var steps []rewrite.Step
+			list, _ := b["steps"].([]any)
+			for _, it := range list {
+				m, _ := it.(map[string]any)
+				msg, _ := m["message"].(string) // as typed: tidied by the rewrite
+				steps = append(steps, rewrite.Step{Hash: str(m, "hash"), Action: rewrite.Action(str(m, "action")), Message: msg})
+			}
+			if len(steps) == 0 {
+				return nil, errors.New("steps is empty: list every commit with what to do with it")
+			}
+			r, err := a.Rewrite.Run(gd, str(b, "since"), steps)
+			return rewriteResult(r), err
+		}),
+		"POST /api/rewrite/reword": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			msg, _ := b["message"].(string)
+			r, err := a.Rewrite.Reword(gd, str(b, "hash"), msg)
+			return rewriteResult(r), err
+		}),
+		"POST /api/rewrite/fixup-into": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			r, err := a.Rewrite.FixupInto(gd, str(b, "hash"))
+			return rewriteResult(r), err
+		}),
+		"POST /api/rewrite/finish": s.withRepo(func(gd string, _ map[string]any) (any, error) {
+			return a.Rewrite.Finish(gd)
+		}),
 		// Stash manager: every stash, parked and discarded ones too. A stash
 		// is named by its commit hash (indexes shift); a hash no longer in
 		// the list is refused with "the stash list changed; reload".
@@ -805,6 +928,67 @@ func (s *server) routes() map[string]handler {
 		}),
 		"POST /api/stash/branch": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return nil, a.Refs.StashBranch(gd, str(b, "hash"), str(b, "name"))
+		}),
+		// Worktrees: every working folder of the repo (gitDir may be any of
+		// them), the main one first. add takes branch | newBranch (+ from) |
+		// detach, and register:true also puts the folder in the repo list.
+		"GET /api/worktrees": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			all, err := a.Refs.Worktrees(gd)
+			if all == nil {
+				all = []refs.Worktree{}
+			}
+			return all, err
+		},
+		"POST /api/worktree/add": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			res, err := a.Refs.WorktreeAdd(gd, str(b, "path"), refs.WorktreeAddOptions{
+				Branch: str(b, "branch"), NewBranch: str(b, "newBranch"), From: str(b, "from"), Detach: str(b, "detach")})
+			if err != nil {
+				return nil, err
+			}
+			if res.Warnings == nil {
+				res.Warnings = []string{}
+			}
+			out := struct {
+				refs.WorktreeAdded
+				Registered bool `json:"registered"`
+			}{WorktreeAdded: res}
+			if reg, _ := b["register"].(bool); reg {
+				if _, err := a.Repos.Add(res.Path); err != nil {
+					out.Warnings = append(out.Warnings, "the worktree was added, but not to the repo list: "+err.Error())
+				} else {
+					out.Registered = true
+				}
+			}
+			return out, nil
+		}),
+		"POST /api/worktree/remove": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			force, _ := b["force"].(bool)
+			return nil, a.Refs.WorktreeRemove(gd, str(b, "path"), force)
+		}),
+		// dryRun:true only lists what would be forgotten.
+		"POST /api/worktree/prune": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			dry, _ := b["dryRun"].(bool)
+			var list []refs.Worktree
+			var err error
+			if dry {
+				list, err = a.Refs.WorktreePrunePlan(gd)
+			} else {
+				list, err = a.Refs.WorktreePrune(gd)
+			}
+			if list == nil {
+				list = []refs.Worktree{}
+			}
+			return map[string]any{"pruned": list, "dryRun": dry}, err
+		}),
+		"POST /api/worktree/lock": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.WorktreeLock(gd, str(b, "path"), str(b, "reason"))
+		}),
+		"POST /api/worktree/unlock": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.WorktreeUnlock(gd, str(b, "path"))
 		}),
 		"GET /api/operation": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
@@ -932,7 +1116,8 @@ func (s *server) state(r *http.Request) (any, error) {
 		"switchChanges": s.app.Refs.SwitchSetting("").Global,
 		"pull":          s.app.Refs.PullSetting("").Global, // how Update works in every repo
 		"branchPrefix":  s.app.Refs.BranchPrefix(),
-		"fetchOnOpen":   s.app.Refs.FetchOnOpen(), // History reads the remote's new commits when a repo opens
+		"fetchOnOpen":   s.app.Refs.FetchOnOpen(),    // History reads the remote's new commits when a repo opens
+		"fetchPrune":    s.app.Refs.PruneSetting(""), // fetching also forgets branches deleted on the server
 		"home":          filesystem.HomeDir(),
 		"hosting":       s.app.Hosting.Status(), // signed in to GitHub, from the keychain
 	}, nil
@@ -1152,4 +1337,15 @@ func hunkSelection(b map[string]any) workspace.Selection {
 		}
 	}
 	return sel
+}
+
+// rewriteResult makes a rewrite's lists JSON arrays, never null.
+func rewriteResult(r rewrite.Rewritten) rewrite.Rewritten {
+	if r.Conflicts == nil {
+		r.Conflicts = []string{}
+	}
+	if r.Summary == nil {
+		r.Summary = []string{}
+	}
+	return r
 }

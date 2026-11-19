@@ -36,7 +36,7 @@ func (h *HookRepos) SaveAccount(gitDir, id string) error {
 	return h.Git.RepoSet(gitDir, "gitswitch.account", id)
 }
 
-func (h *HookRepos) Worktree(gitDir string) string { return h.Git.WorktreeOf(gitDir) }
+func (h *HookRepos) Worktree(gitDir string) string { return h.Git.RuleFolderOf(gitDir) }
 
 // Transport runs the real ssh program. It implements the ssh domain's
 // Transport.

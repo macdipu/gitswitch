@@ -45,7 +45,7 @@ func (l *Log) Commits(gitDir string, limit int, f history.Filter) ([]history.Com
 	}
 	out, err := git.Run(args...)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not have any commits") {
+		if gitinfra.NoCommits(err) {
 			return nil, nil
 		}
 		if f.Ref != "" && (strings.Contains(err.Error(), "unknown revision") || strings.Contains(err.Error(), "bad revision")) {
@@ -147,7 +147,7 @@ func (l *Log) Graph(gitDir string, n int, color bool) (string, error) {
 		gargs = append(gargs, "--color=always")
 	}
 	out, err := l.Git.Run(gargs...)
-	if err != nil && strings.Contains(err.Error(), "does not have any commits") {
+	if err != nil && gitinfra.NoCommits(err) {
 		return "", history.ErrNoCommits
 	}
 	return out, err

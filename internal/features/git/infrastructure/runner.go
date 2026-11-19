@@ -166,6 +166,24 @@ func (r *Runner) WorktreeOf(gitDir string) string {
 	return gitDir
 }
 
+// RuleFolderOf is the folder that folder rules and the account lookup use
+// for a git dir: the repo's own working folder, so a linked worktree
+// (git worktree add) resolves the same account as the repo it belongs to,
+// wherever it was put. It is WorktreeOf for everything else.
+func (r *Runner) RuleFolderOf(gitDir string) string {
+	if filepath.Base(filepath.Dir(gitDir)) == "worktrees" {
+		if b, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+			if c := strings.TrimSpace(string(b)); c != "" {
+				if !filepath.IsAbs(c) {
+					c = filepath.Join(gitDir, c)
+				}
+				return r.WorktreeOf(filepath.Clean(c))
+			}
+		}
+	}
+	return r.WorktreeOf(gitDir)
+}
+
 // ConfigArgs returns the arguments after "config" in a git command line,
 // or nil when the command is not `git config`.
 func ConfigArgs(args []string) []string {

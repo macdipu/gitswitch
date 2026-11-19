@@ -1525,3 +1525,23 @@ func TestRemotesForceLeaseAndDetached(t *testing.T) {
 		t.Errorf("back again = %d %v", code, d)
 	}
 }
+
+// The fetch-prune setting is part of /api/state, so Settings can show it.
+func TestStateHasFetchPrune(t *testing.T) {
+	testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	_, m := call(t, h, "GET", "/api/state", "")
+	d, _ := m["data"].(map[string]any)
+	fp, ok := d["fetchPrune"].(map[string]any)
+	if !ok || fp["on"] != false {
+		t.Fatalf("state fetchPrune = %v", d["fetchPrune"])
+	}
+	if w, m := call(t, h, "POST", "/api/fetch-prune-setting", `{"value":"on"}`); w.Code != 200 {
+		t.Fatalf("set = %d %v", w.Code, m)
+	}
+	_, m = call(t, h, "GET", "/api/state", "")
+	d, _ = m["data"].(map[string]any)
+	if fp, _ := d["fetchPrune"].(map[string]any); fp["on"] != true || fp["global"] != "on" {
+		t.Fatalf("after setting on: %v", d["fetchPrune"])
+	}
+}

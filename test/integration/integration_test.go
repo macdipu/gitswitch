@@ -3876,3 +3876,181 @@ func TestCheckoutDetachedAndBack(t *testing.T) {
 		t.Fatalf("dry run:\n%s", out)
 	}
 }
+
+// Rebase onto a branch with real git: the plan, a clean rebase and its undo,
+// a clash that stops it (continue, then undo; or abort), and the refusals
+// (pushed commits, merge commits, uncommitted changes, nothing to do).
+func TestRebaseOntoBranch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	head := func() string { return e.gitIn(api, "rev-parse", "HEAD") }
+	e.commitFile(api, "a.txt", "base\n", "base")
+	e.gitIn(api, "switch", "-q", "-c", "feature")
+	e.commitFile(api, "f1.txt", "1\n", "f1")
+	e.commitFile(api, "f2.txt", "2\n", "f2")
+	orig := e.commitFile(api, "f3.txt", "3\n", "f3")
+	e.gitIn(api, "switch", "-q", "main")
+	e.commitFile(api, "m1.txt", "m\n", "m1")
+	e.gitIn(api, "switch", "-q", "feature")
+
+	// The plan lists what is replayed (oldest first) and what comes in.
+	out := e.gsIn(api, "rebase", "--plan", "main")
+	if !strings.Contains(out, "3 commits are replayed") || strings.Index(out, "f1") > strings.Index(out, "f3") || !strings.Contains(out, "m1") {
+		t.Fatalf("plan:\n%s", out)
+	}
+	var plan map[string]any
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "rebase", "--plan", "main", "--json")), &plan))
+	if plan["replayedCount"] != float64(3) || plan["incomingCount"] != float64(1) || plan["blocked"] != "" || head() != orig {
+		t.Fatalf("plan --json: %v", plan)
+	}
+	e.gsErr(api, "add -y", "rebase", "main")
+	e.gsErr(api, "usage:", "rebase")
+	e.gsErr(api, "usage:", "rebase", "--force")
+	if head() != orig {
+		t.Fatal("a refused rebase moved HEAD")
+	}
+
+	// Clean: three commits on top of main; undo puts them back with their hashes.
+	if out := e.gsIn(api, "rebase", "main", "-y"); !strings.Contains(out, "Rebased feature onto main") || !strings.Contains(out, "gitswitch undo") {
+		t.Fatalf("rebase:\n%s", out)
+	}
+	if e.subjects(api, "HEAD", 5) != "f3,f2,f1,m1,base" || status() != "" {
+		t.Fatalf("log: %s", e.subjects(api, "HEAD", 5))
+	}
+	if out := e.gsIn(api, "rebase", "main", "-y"); !strings.Contains(out, "nothing to rebase") {
+		t.Fatalf("again:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if head() != orig || status() != "" {
+		t.Fatalf("undo: %s %q", head(), status())
+	}
+
+	// A clash stops the rebase (never aborts): fix, continue, undo.
+	e.gitIn(api, "reset", "-q", "--hard", "feature~3")
+	e.commitFile(api, "a.txt", "feature\n", "feature edits a")
+	e.commitFile(api, "f3.txt", "3\n", "f3")
+	orig = head()
+	e.gitIn(api, "switch", "-q", "main")
+	e.commitFile(api, "a.txt", "main\n", "main edits a")
+	e.gitIn(api, "switch", "-q", "feature")
+	e.gsErr(api, "the rebase stopped: 1 file(s) have conflicts", "rebase", "main", "-y")
+	if out := e.gsIn(api, "conflict"); !strings.Contains(out, "rebase") || !strings.Contains(out, "a.txt") {
+		t.Fatalf("conflict list:\n%s", out)
+	}
+	e.gsErr(api, "in the middle of a rebase", "rebase", "main", "-y")
+	e.gsErr(api, "still have conflicts", "continue")
+	e.gsIn(api, "conflict", "a.txt", "--theirs")
+	if out := e.gsIn(api, "continue"); !strings.Contains(out, "rebase is finished") {
+		t.Fatalf("continue:\n%s", out)
+	}
+	if e.subjects(api, "HEAD", 3) != "f3,feature edits a,main edits a" || status() != "" {
+		t.Fatalf("log: %s", e.subjects(api, "HEAD", 3))
+	}
+	if out := e.gsIn(api, "undo", "--show"); !strings.Contains(out, "rebase") {
+		t.Fatalf("undo --show:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if head() != orig || status() != "" {
+		t.Fatalf("undo after continue: %s %q", head(), status())
+	}
+
+	// Abort goes back exactly and records nothing.
+	e.gsErr(api, "the rebase stopped", "rebase", "main", "-y")
+	if out := e.gsIn(api, "abort", "-y"); !strings.Contains(out, "Aborted the rebase") || head() != orig || status() != "" {
+		t.Fatalf("abort: %s %q\n%s", head(), status(), out)
+	}
+	e.gsErr(api, "nothing to undo", "undo", "-y")
+
+	// Refusals, all before anything runs.
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("dirty\n"), 0o644))
+	e.gsErr(api, "commit, park or discard them first", "rebase", "main", "-y")
+	e.gitIn(api, "checkout", "--", "a.txt")
+	e.gitIn(api, "update-ref", "refs/remotes/origin/feature", orig)
+	e.gsErr(api, "rewrite pushed commits", "rebase", "main", "-y")
+	e.gitIn(api, "update-ref", "-d", "refs/remotes/origin/feature")
+	e.gitIn(api, "switch", "-q", "-c", "side", "main~1")
+	e.commitFile(api, "s.txt", "s\n", "s1")
+	e.gitIn(api, "switch", "-q", "feature")
+	e.gitIn(api, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+	e.gsErr(api, "merge commit", "rebase", "main", "-y")
+	if status() != "" || e.gitIn(api, "symbolic-ref", "--short", "HEAD") != "feature" {
+		t.Fatalf("refusals changed the repo: %q", status())
+	}
+}
+
+// Each submodule is fetched as the account its own URL's owner maps to,
+// not the superproject's: init, update and update --remote through the
+// real ssh hook, and the list says which account each one uses.
+func TestSubmoduleCommandsUseEachOwnersAccount(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.gs("rule", "add", "owner:dipu", "me")
+	seed := filepath.Join(e.root, "subseed")
+	must(t, os.MkdirAll(seed, 0o755))
+	e.gitIn(seed, "init", "-q", "-b", "main")
+	e.gitIn(seed, "config", "user.email", "s@x.example")
+	e.gitIn(seed, "submodule", "add", "-q", "git@github.com:dipu/notes.git", "notes")
+	e.gitIn(seed, "submodule", "add", "-q", "git@github.com:acme-corp/web.git", "web")
+	e.gitIn(seed, "commit", "-q", "-m", "with submodules")
+	e.serverRepo("acme-corp/sup")
+	e.gitIn(seed, "push", "-q", "-f", filepath.Join(e.server, "acme-corp", "sup.git"), "HEAD:refs/heads/main")
+	e.clone("git@github.com:acme-corp/sup.git", "sup")
+	sup := filepath.Join(e.root, "sup")
+
+	list := e.gsIn(sup, "submodule")
+	if !strings.Contains(list, "not initialized") || !strings.Contains(list, "account me") || !strings.Contains(list, "account client") {
+		t.Fatalf("list before init:\n%s", list)
+	}
+	e.resetLog()
+	e.gsIn(sup, "submodule", "init")
+	used := map[string]bool{}
+	for _, k := range e.keysUsed() {
+		used[k] = true
+	}
+	if !used["me"] || !used["client"] || len(used) != 2 {
+		t.Fatalf("init used keys %v, want exactly me and client", e.keysUsed())
+	}
+	if got := e.cfg(filepath.Join(sup, "notes"), "user.email"); got != "dipu@me.example" {
+		t.Fatalf("notes email %q", got)
+	}
+	if got := e.cfg(filepath.Join(sup, "web"), "user.email"); got != "dipu@client.example" {
+		t.Fatalf("web email %q", got)
+	}
+
+	// New commits on both servers; --remote moves each, as its own account.
+	for _, r := range []string{"dipu/notes", "acme-corp/web"} {
+		w := filepath.Join(e.root, "w-"+strings.ReplaceAll(r, "/", "-"))
+		e.git("clone", "-q", filepath.Join(e.server, filepath.FromSlash(r)+".git"), w)
+		e.gitIn(w, "-c", "user.email=a@b.example", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "news")
+		e.gitIn(w, "push", "-q", "origin", "main")
+	}
+	e.resetLog()
+	out := e.gsIn(sup, "submodule", "update", "--remote", "-y")
+	if !strings.Contains(out, "commit that change") {
+		t.Fatalf("update --remote should say it changes the recorded commits:\n%s", out)
+	}
+	used = map[string]bool{}
+	for _, k := range e.keysUsed() {
+		used[k] = true
+	}
+	if !used["me"] || !used["client"] || len(used) != 2 {
+		t.Fatalf("update --remote used keys %v, want exactly me and client", e.keysUsed())
+	}
+	if got := e.gitIn(filepath.Join(sup, "notes"), "log", "-1", "--format=%s"); got != "news" {
+		t.Fatalf("notes at %q", got)
+	}
+	// A plain update puts them back at the recorded commits; changes inside block it.
+	e.gsIn(sup, "submodule", "update")
+	if got := e.gitIn(filepath.Join(sup, "notes"), "log", "-1", "--format=%s"); got == "news" {
+		t.Fatal("plain update kept the remote's commit")
+	}
+	must(t, os.WriteFile(filepath.Join(sup, "notes", "scratch.txt"), []byte("x"), 0o644))
+	e.gsErr(sup, "force", "submodule", "remove", "notes", "-y")
+	e.gsIn(sup, "submodule", "remove", "notes", "--force", "-y")
+	if _, err := os.Stat(filepath.Join(sup, "notes")); !os.IsNotExist(err) {
+		t.Fatal("notes still there")
+	}
+}

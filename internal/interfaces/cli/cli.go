@@ -141,13 +141,45 @@ History and branches
   gitswitch stash apply|pop <n|hash>   put a stash back (pop: and remove it); needs no uncommitted
                                     changes, and a clash changes nothing
   gitswitch stash drop <n|hash> [-y]   delete a stash; undo brings it back
+  gitswitch worktree [list] [--json]   the repo's worktrees (more working folders, each on its own
+                                    branch), with changes, locks and the account they share
+  gitswitch worktree add <path> [<branch>] [-b <new> [--from <rev>]] [--detach [<rev>]] [--register]
+                                    add one beside the repo; refused when the branch is checked out
+                                    elsewhere or the folder is inside the repo; --register lists it
+  gitswitch worktree remove <path|branch> [--force] [-y]   delete a worktree's folder (the branch
+                                    stays); refused with uncommitted changes unless --force
+  gitswitch worktree prune [-y]     forget worktrees whose folder is gone
+  gitswitch worktree lock|unlock <path|branch> [--reason <text>]   protect one from prune and remove
+  gitswitch worktree repair [<path>...]   fix the links after moving a worktree by hand
   gitswitch stash branch <n|hash> <name>   a new branch from a stash, with its changes
+  gitswitch submodule [list] [--json]   the repo's submodules: path, commit, state (not initialized,
+                                    up to date, another commit), changes inside, tracked branch and the
+                                    account each one's URL uses
+  gitswitch submodule init [<path>]   download the submodules not initialized yet, each as its own account
+  gitswitch submodule update [<path>] [--remote] [--recursive] [-y]   bring them to the commits the repo
+                                    records; refused where changes inside would be overwritten. --remote
+                                    moves to the tip of the tracked branch (the repo then records a new commit)
+  gitswitch submodule sync          copy the URLs in .gitmodules to the submodules' own settings
+  gitswitch submodule add <url> <path> [-b <branch>]   add one; says which account its URL uses
+  gitswitch submodule remove <path> [--force] [-y]   remove one and its downloaded copy; refused with
+                                    changes or commits inside that exist nowhere else unless --force
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
   gitswitch merge <branch> [--ff-only|--no-ff|--squash] [-y]   merge a branch into the current one
                                     after showing what will happen (fast-forward, merge commit, clashes
                                     likely); --squash stages the changes without committing; undo takes
                                     the merge back off while it is not pushed. --plan [--json]: only show
+  gitswitch rebase <onto> [-y]      put your commits on top of a branch, tag or commit, after showing them
+                                    and the likely clashes; refused for pushed commits and merge commits;
+                                    a clash stops it (continue, skip or abort); undo puts it back.
+                                    rebase --plan <onto> [--json]: only show
+  gitswitch rebase -i [--since <commit>] [--todo <file>] [--messages <file.json>] [--plan] [-y]
+                                    rewrite the commits not pushed yet: reorder, squash, fixup, reword,
+                                    drop. Opens git's todo in your editor (or --todo <file>; rewords take
+                                    their messages from the editor or --messages); shows before and after;
+                                    a clash stops it (continue, skip, abort); undo puts the old ones back
+  gitswitch reword <commit> [-m <message>] [-y]   a new message for an older, not-pushed commit
+  gitswitch fixup-into <commit> [-y]   fold the staged changes into an older, not-pushed commit
   gitswitch compare <A> [<B>] [--since-fork|--direct] [--working] [--json]   how B (default HEAD) differs
                                     from A: the commits only on each side and the changed files; the
                                     default is what B changed since they went apart, --direct is the
@@ -450,6 +482,14 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdInit(rest)
 	case "merge":
 		return x.cmdMerge(rest)
+	case "reword":
+		return x.cmdReword(rest)
+	case "fixup-into":
+		return x.cmdFixupInto(rest)
+	case "rebase":
+		return x.cmdRebase(rest)
+	case "submodule", "submodules":
+		return x.cmdSubmodule(rest)
 	case "compare":
 		return x.cmdCompare(rest)
 	case "reflog":
@@ -466,6 +506,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdParked(rest)
 	case "stash":
 		return x.cmdStash(rest)
+	case "worktree":
+		return x.cmdWorktree(rest)
 	case "browse":
 		return x.cmdBrowse(rest)
 	case "show":

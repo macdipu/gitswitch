@@ -54,7 +54,7 @@ func (r Record) Mixed() bool {
 // RedoUnsupported says why this action cannot be done again; "" when it can.
 func (r Record) RedoUnsupported() string {
 	switch r.Action {
-	case Revert, Drop, Rollback, CherryPick, FixAuthor, Switch, Move, Commit, Amend, Prune, Update, Rename, Merge, StashDrop:
+	case Revert, Drop, Rollback, CherryPick, FixAuthor, Switch, Move, Commit, Amend, Prune, Update, Rename, Merge, StashDrop, Rebase, Rewrite:
 		return ""
 	case StashSave:
 		return "a stash is saved with options (which files, whether staged changes stay) that are not remembered, so it cannot be repeated exactly. Stash again with `gitswitch stash save`"
@@ -96,6 +96,10 @@ func (r Record) RedoEffect() string {
 		return "Puts the new commit(s) back on " + r.Branch + "."
 	case Update, FixAuthor:
 		return "Puts " + r.Branch + " back as it was after the change."
+	case Rebase:
+		return "Puts the rebased " + r.Branch + " back."
+	case Rewrite:
+		return "Puts the rewritten " + r.Branch + " back."
 	}
 	return "Does the change again."
 }

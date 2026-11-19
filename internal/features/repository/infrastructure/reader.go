@@ -34,7 +34,7 @@ func (r *Reader) AccountFor(c *account.Config, gitDir string) (*account.Account,
 	d := resolve.Decide(c, cands, resolve.Input{
 		SavedID:  saved,
 		RepoPath: path,
-		Worktree: func() string { return r.Git.WorktreeOf(gitDir) },
+		Worktree: func() string { return r.Git.RuleFolderOf(gitDir) },
 		RealPath: filesystem.RealPath,
 		FoldCase: filesystem.CaseInsensitiveFS(),
 	})

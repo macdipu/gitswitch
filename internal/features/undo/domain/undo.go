@@ -45,6 +45,13 @@ const (
 	// StashDrop: a stash entry was dropped (same fields); its commit stays
 	// reachable through the undo ref until the next action.
 	StashDrop Action = "stash-drop"
+	// Rebase: the branch was rebased onto another commit (Record.Base):
+	// Before is the branch as it was, After the rebased branch.
+	Rebase Action = "rebase"
+	// Rewrite: commits of the branch were reordered, squashed, reworded or
+	// dropped (interactive rebase): Before is the branch as it was, After the
+	// rewritten branch.
+	Rewrite Action = "rewrite"
 )
 
 // Deleted is a branch an action deleted: enough to bring it back.
@@ -129,6 +136,10 @@ func (r Record) Effect() string {
 		return "Puts the commit on " + r.Branch + " back as it was before the amend. What the amend added stays in your files, uncommitted."
 	case Update:
 		return "Puts " + r.Branch + " back as it was before the update: your commits as they were, without the new ones from the remote (they stay there)."
+	case Rebase:
+		return "Puts " + r.Branch + " back exactly as it was before the rebase: your commits as they were, with their old hashes."
+	case Rewrite:
+		return "Puts " + r.Branch + " back exactly as it was before the rewrite: your commits in their old order, with their old messages and hashes."
 	case Revert, CherryPick:
 		return "Removes the new commit(s) from " + r.Branch + ", as if they had never been made."
 	case Merge:

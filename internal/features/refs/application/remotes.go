@@ -32,7 +32,7 @@ func (s *Service) accountFor(gitDir, url string) (used, ownerRule string) {
 	info := s.Repos.InfoFor(cfg, gitDir)
 	host, path := remote.Parse(url)
 	cands := resolve.Candidates(cfg, host)
-	if d := resolve.Decide(cfg, cands, resolve.Input{SavedID: info.Saved, RepoPath: path, Worktree: func() string { return s.Locator.WorktreeOf(gitDir) }}); d != nil {
+	if d := resolve.Decide(cfg, cands, resolve.Input{SavedID: info.Saved, RepoPath: path, Worktree: func() string { return s.ruleFolder(gitDir) }}); d != nil {
 		used = d.Account.ID
 	}
 	if info.Saved != "" && !resolve.AsksEveryTime(info.Saved) {

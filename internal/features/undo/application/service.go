@@ -73,6 +73,20 @@ func (s *Service) Merged(gitDir string, before undo.Mark, theirs, from, label st
 	}
 }
 
+// Rebased remembers a rebase of the branch in before onto the commit onto.
+// Undo moves the branch back while the rebased commits are not pushed.
+func (s *Service) Rebased(gitDir string, before undo.Mark, onto, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r, ok := undo.New(undo.Rebase, label, before, s.Git.Mark(gitDir), now().Unix())
+	r.Base = onto
+	if !ok || onto == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Pruned remembers deleted branches, so they can be brought back.
 func (s *Service) Pruned(gitDir string, before undo.Mark, branches []undo.Deleted, label string) {
 	now := time.Now
@@ -161,7 +175,7 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 	if !r.Rewinds() {
 		return nil
 	}
-	if r.Action == undo.Update {
+	if r.Action == undo.Update || r.Action == undo.Rebase {
 		// The commits from the remote stay there; only the rebased copies
 		// of your commits would go, and only while they are not pushed.
 		pushed, err := s.Git.Pushed(gitDir, r.Base, r.After)
