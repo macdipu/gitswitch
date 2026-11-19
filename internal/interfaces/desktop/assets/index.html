@@ -4,20 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GitSwitch</title>
+<script>try{var t=JSON.parse(localStorage.getItem('gs.theme'));if(t==='light'||t==='dark'||t==='dim')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <style>
 :root{
   --paper:#F7F8FA; --panel:#FFFFFF; --ink:#18202B; --muted:#5B6675; --rule:#E2E6EC; --hover:#EEF1F5;
   --focus:#2660D0; --bad:#C92A37; --bad-soft:#FBE9EB; --ok:#17773F;
   --a0:#2660D0; --a1:#0E9F8E; --a2:#8A5CF6; --a3:#D9822B; --a4:#D6457A; --a5:#4F8A2F;
+  --syn-c:#6A737D; --syn-s:#9A5200; --syn-n:#0B6B94; --syn-k:#7A3FCF; --syn-p:#1F6FB5;
   --radius:6px;
   color-scheme:light dark; /* native controls (selects, scrollbars) follow the theme */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Noto Sans", sans-serif;
   font-size:15px; line-height:1.5; color:var(--ink); background:var(--paper);
 }
 @media (prefers-color-scheme:dark){
-  :root{ --paper:#12161C; --panel:#1A2029; --ink:#E7EBF0; --muted:#9AA5B4; --rule:#2B3440; --hover:#222A35;
-    --focus:#6B9AF8; --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59; }
+  :root:not([data-theme]){ --paper:#12161C; --panel:#1A2029; --ink:#E7EBF0; --muted:#9AA5B4; --rule:#2B3440; --hover:#222A35;
+    --focus:#6B9AF8; --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59;
+    --syn-c:#8B96A5; --syn-s:#F0B36B; --syn-n:#6CC4E8; --syn-k:#B79BFF; --syn-p:#7FB4F5; }
 }
+/* the chosen theme (Settings, or the palette) is data-theme on <html>; no attribute follows the system */
+:root[data-theme=light]{ color-scheme:light }
+:root[data-theme=dark]{ color-scheme:dark; --paper:#12161C; --panel:#1A2029; --ink:#E7EBF0; --muted:#9AA5B4; --rule:#2B3440; --hover:#222A35;
+  --focus:#6B9AF8; --bad:#FF6B76; --bad-soft:#3A1E23; --ok:#4CC27E; --a0:#5B8DF5; --a1:#2BC3AE; --a2:#A585FA; --a3:#EDA04F; --a4:#EB6E9C; --a5:#7DBA59;
+  --syn-c:#8B96A5; --syn-s:#F0B36B; --syn-n:#6CC4E8; --syn-k:#B79BFF; --syn-p:#7FB4F5; }
+/* dim: a softer dark, mid grey */
+:root[data-theme=dim]{ color-scheme:dark; --paper:#2A2E35; --panel:#333841; --ink:#E6E9ED; --muted:#A8B0BC; --rule:#464D58; --hover:#3D434D;
+  --focus:#80A9F9; --bad:#FF8089; --bad-soft:#4D2E34; --ok:#5ECB8B; --a0:#6B97F6; --a1:#3CC9B5; --a2:#AD8FFA; --a3:#EFA95C; --a4:#EE7DA5; --a5:#88C264;
+  --syn-c:#97A1AF; --syn-s:#F2BC78; --syn-n:#7ACBEB; --syn-k:#BCA3FF; --syn-p:#8CBAF6; }
 *{box-sizing:border-box}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 [hidden]{display:none !important}
@@ -357,11 +369,6 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .diffbox{margin:10px 0 0;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
 .diffbox .dh{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12.5px;background:var(--hover)}
 .diffbox .dh .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,Consolas,monospace}
-.diffbox pre{margin:0;max-height:420px;overflow:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:4px 0}
-.diffbox pre span{display:block;padding:0 8px;white-space:pre}
-/* plain colors first: older web views have no color-mix() */
-.diffbox .da{color:var(--ok);background:rgb(76 194 126 / .12);background:color-mix(in srgb,var(--ok) 14%,transparent)}
-.diffbox .dd{color:var(--bad);background:rgb(255 107 118 / .12);background:color-mix(in srgb,var(--bad) 14%,transparent)}
 .diffbox .dmeta{color:var(--muted)}
 .details.nodetails .cmsg,.details.nodetails dl{display:none}
 /* uncommitted changes: the log's top row and the panel */
@@ -373,7 +380,7 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .wchip.bad{color:var(--bad);background:var(--bad-soft)}
 .btn.tb{display:inline-flex;align-items:center;gap:6px}
 .btn.tb svg{flex:none;opacity:.85}
-.btn .badge{min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:999px;background:var(--a0);color:#fff;font-size:11.5px;font-weight:650;line-height:18px;text-align:center}
+.btn .badge{min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:999px;background:var(--a0);color:var(--panel);font-size:11.5px;font-weight:650;line-height:18px;text-align:center}
 .btn.primary .badge{background:var(--panel);color:var(--ink)}
 button.link{all:unset;cursor:pointer;color:var(--a0);font-size:12.5px;padding:1px 4px;border-radius:3px}
 button.link:hover{text-decoration:underline}
@@ -392,7 +399,7 @@ button.link.danger{color:var(--bad)}
 .crow .btn.icon{width:24px;height:24px;padding:0;font-size:15px;line-height:1;opacity:.55;flex:none}
 .crow:hover .btn.icon,.crow .btn.icon:focus-visible{opacity:1}
 .fdir{color:var(--muted);font-family:inherit;font-size:12px;margin-left:4px}
-.cl{flex:none;width:17px;height:17px;text-align:center;font:700 11px/17px ui-monospace,Menlo,Consolas,monospace;border-radius:4px;color:#fff;background:var(--muted)}
+.cl{flex:none;width:17px;height:17px;text-align:center;font:700 11px/17px ui-monospace,Menlo,Consolas,monospace;border-radius:4px;color:var(--panel);background:var(--muted)}
 .cl-M,.cl-T{background:var(--a3)} .cl-A,.cl-N,.cl-C{background:var(--ok)} .cl-D{background:var(--bad)} .cl-R{background:var(--a2)} .cl-\!{background:var(--bad)}
 .cbox{border-top:1px solid var(--rule);margin-top:10px;padding-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding-bottom:14px}
 .cbox input#wipMsg,.cbox textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);margin:0 0 6px}
@@ -417,6 +424,26 @@ button.link.danger{color:var(--bad)}
 .stbtns{display:flex;gap:6px;align-items:center}
 .stbtns .btn{padding:3px 10px;font-size:13px}
 #stDiff .diffbox{margin:10px 0 0}
+.sig{display:inline-flex;align-items:center;flex:none;margin-left:5px;vertical-align:-2px}
+.sig svg{display:block}.sig.g{color:var(--ok)}.sig.b{color:var(--bad)}.sig.w{color:var(--a3)}.sig.e{color:var(--muted)}
+.rmrow{border:1px solid var(--rule);border-radius:var(--radius);padding:8px 10px;background:var(--panel);display:grid;gap:4px}
+.rmrow .rmhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#repos td .row-actions{flex-wrap:wrap;justify-content:flex-end}
+.rmrow .chip{max-width:none;overflow:visible}
+.rmrow .rmurl{font-size:12.5px;overflow-wrap:anywhere}
+.rmrow .stbtns{flex-wrap:wrap}
+.warnbox{border:1px solid var(--bad);background:var(--bad-soft);border-radius:var(--radius);padding:8px 12px;margin:0 0 10px;font-size:14px}
+.forcecols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.forcecols .vbody{max-height:34vh}
+@media (max-width:760px){.forcecols{grid-template-columns:1fr}}
+.vrow.lose{border-left:3px solid var(--bad)}
+.vrow.send{border-left:3px solid var(--ok)}
+.chkline{display:flex;flex-direction:row;gap:8px;align-items:flex-start;margin:10px 0;font-size:14px;color:var(--ink)}
+.chkline input{margin-top:4px}
+.btn.dangerfill{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.dangerfill:disabled{opacity:.45}
+.signdlg pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;padding:8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);font-size:12px}
+.signdlg ol{margin:6px 0 10px;padding-left:20px}
 .opbanner{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .opbanner .opmain{flex:1 1 320px;min-width:0}
 .opbanner .opfiles{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:6px}
@@ -431,6 +458,70 @@ dialog.conflictdlg{max-width:min(1200px,calc(100vw - 48px));width:calc(100vw - 4
 .cfgrid textarea{resize:none}
 .cfactions{display:flex;gap:8px;margin-top:10px;align-items:center}
 @media (max-width:900px){.cfgrid{grid-template-columns:1fr}.cfgrid pre,.cfgrid textarea{height:22vh}}
+dialog.vdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px);padding:14px}
+.vdlg .cfhead{flex-wrap:wrap}
+.vdlg .cfhead strong{min-width:0;overflow-wrap:anywhere}
+.vdlg .toggles{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 8px;font-size:13px}
+.vdlg .toggles label{display:inline-flex;gap:5px;align-items:center;flex-direction:row}
+.vbody{max-height:62vh;overflow:auto;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper)}
+.vnote{margin:8px 0;padding:6px 10px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);font-size:13px;overflow-wrap:anywhere}
+.vnote.bad{border-color:var(--bad);background:var(--bad-soft)}
+.bl{min-width:640px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bll{display:grid;grid-template-columns:minmax(240px,320px) 44px minmax(0,1fr);cursor:pointer;min-height:18px}
+.bll.t1{background:rgb(127 127 127 / .09)}
+.bll.sel{background:var(--hover);box-shadow:inset 3px 0 0 var(--focus)}
+.bll.first{border-top:1px solid var(--rule)}
+.bll:first-child{border-top:0}
+.bll .bli{display:flex;gap:6px;align-items:center;padding:0 8px;overflow:hidden;white-space:nowrap;font:12px/1.5 system-ui,sans-serif;color:var(--muted);border-right:1px solid var(--rule)}
+.bll .bli .sh{font:11.5px ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
+.bll .bli .au{overflow:hidden;text-overflow:ellipsis;min-width:2ch;flex:0 1 auto}
+.bll .bli .chip{font-size:10.5px;padding:0 6px;max-width:70px;flex:none}
+.bll .bli .wh{flex:none;margin-left:auto}
+.bll .gn{text-align:right;padding:0 6px;color:var(--muted);user-select:none}
+.bll .blt{white-space:pre;padding:0 8px}
+.bll:hover .blt{background:rgb(127 127 127 / .08)}
+.bll:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.bnd{font:600 10px/14px system-ui,sans-serif;border:1px solid var(--muted);border-radius:3px;padding:0 3px;color:var(--muted);flex:none}
+.bcard{margin:8px 0 0;padding:8px 10px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);font-size:13px}
+.bcard .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bcard .btn{padding:3px 10px;font-size:13px}
+.bcard pre{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-height:90px;overflow:auto}
+.vrow{display:flex;gap:8px;align-items:center;padding:4px 10px;border-bottom:1px solid var(--rule);font-size:13px;min-width:0;cursor:pointer;width:100%;box-sizing:border-box;text-align:left;background:none;color:var(--ink);border-width:0 0 1px 0;border-style:solid;border-color:var(--rule);font-family:inherit}
+.vrow:hover{background:var(--hover)}
+.vrow.on{background:var(--hover);box-shadow:inset 3px 0 0 var(--focus)}
+.vrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.vrow .sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow .sh{font:12px ui-monospace,Menlo,Consolas,monospace;color:var(--muted)}
+.vrow .chip{flex:none}
+.vrow .when{flex:none;color:var(--muted);font-size:12px}
+.vrow .btn{padding:1px 8px;font-size:12px;flex:none}
+div.vrow{cursor:default}
+.vrow .cl{flex:none}
+.vrow .ren{color:var(--muted);font-size:12px}
+.vtwo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+.vtwo h3,.vh3{margin:0 0 4px;font-size:11.5px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.vtwo .vbody{max-height:22vh}
+.cmpform{display:grid;grid-template-columns:1fr auto 1fr;gap:6px 8px;align-items:end;margin:0 0 8px}
+.cmpform label{display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--muted);min-width:0}
+.cmpform input,.bsform input,.fh input{padding:5px 8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);font:inherit;font-size:13.5px;min-width:0}
+.cmpform .modes{grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;font-size:13px}
+.cmpform .modes label{flex-direction:row;align-items:center;gap:5px;color:var(--ink)}
+.cmpform .go{grid-column:1/-1;display:flex;gap:8px;align-items:center}
+.bsform{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:8px 0}
+.bsform label{display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--muted)}
+.bsform .row-actions,.bsform p{grid-column:1/-1;margin:0}
+.bsbtns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.badge{font:600 11px/17px system-ui,sans-serif;padding:0 7px;border-radius:999px;background:var(--hover);color:var(--muted);flex:none;white-space:nowrap}
+.badge.lost{background:var(--bad-soft);color:var(--bad)}
+.badge.act{color:var(--ink)}
+.rlrow{display:grid;grid-template-columns:100px 100px minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:4px 10px;border-bottom:1px solid var(--rule);font-size:13px}
+.rlrow .ix{font:12px ui-monospace,Menlo,Consolas,monospace;color:var(--muted)}
+.rlrow .msg{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rlrow .btn{padding:1px 8px;font-size:12px}
+.vmore{padding:8px 10px;display:flex;gap:10px;align-items:center}
+.vfdiff .diffbox{margin:8px 0 0}
+.opbanner.bis{border-color:var(--a3)}
+@media (max-width:900px){.vtwo{grid-template-columns:1fr}.cmpform{grid-template-columns:1fr}.bsform{grid-template-columns:1fr}.rlrow{grid-template-columns:70px minmax(0,1fr) auto}.rlrow .ac,.rlrow .wn{display:none}}
 .cbox .btn.wide{width:100%;margin-top:8px;padding:7px 12px}
 .cbox .btn.wide:disabled{opacity:.45;cursor:default}
 .cbox .who-as{margin:8px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;overflow-wrap:anywhere}
@@ -441,20 +532,49 @@ dialog.conflictdlg{max-width:min(1200px,calc(100vw - 48px));width:calc(100vw - 4
 .hint.bad{color:var(--bad)}
 dialog.diffdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px);padding:0}
 .diffdlg .diffbox{margin:0;border:0}
-.diffdlg pre{max-height:calc(100vh - 140px)}
-.diffbox .dhunk{color:var(--muted);background:var(--hover)}
+.diffdlg .dvbody{max-height:calc(100vh - 200px)}
 /* the diff of uncommitted changes: pick hunks and lines to stage, unstage or discard */
 .hmeta{padding:3px 8px;font-size:12px;color:var(--muted);border-top:1px solid var(--rule)}
 .hbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;font-size:12.5px;border-top:1px solid var(--rule);background:var(--hover)}
 .hbar .spacer{flex:1}
 .hbar .btn,.hb .btn{padding:1px 9px;font-size:12px;line-height:1.5}
-.hscroll{max-height:420px;overflow:auto}
 .hunk{border-top:1px solid var(--rule)}
 .hh{display:flex;align-items:center;gap:6px;padding:2px 8px;background:var(--hover);color:var(--muted);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .hh .ht{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hb{display:flex;gap:4px;flex:none}
-.hlines{overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:2px 0}
+.hbody{overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:2px 0}
+.hunk.shut .hbody{display:none}
+.hcol{all:unset;cursor:pointer;flex:none;width:20px;text-align:center;border-radius:3px;line-height:1.5}
+.hcol:hover{background:var(--rule);color:var(--ink)}
+.hcol:focus-visible{outline:2px solid var(--focus)}
+.hcol::before{content:"\25BE"} .hunk.shut .hcol::before{content:"\25B8"}
+/* the diff view: toolbar, body, word changes, syntax colours, side by side */
+.dvtool{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:4px 8px;font-size:12px;border-top:1px solid var(--rule)}
+.dvtool .seg{display:inline-flex}
+.dvtool .btn{padding:1px 9px;font-size:12px;line-height:1.5}
+.dvtool .seg .btn{border-radius:0}.dvtool .seg .btn:first-child{border-radius:var(--radius) 0 0 var(--radius)}.dvtool .seg .btn:last-child{border-radius:0 var(--radius) var(--radius) 0;border-left-width:0}
+.dvtool .btn[aria-pressed=true]{background:var(--hover);border-color:var(--focus);color:var(--ink);font-weight:600}
+.dvtool label{display:inline-flex;flex-direction:row;gap:4px;align-items:center;cursor:pointer;color:var(--muted);white-space:nowrap;font-size:12px}
+.dvtool label input{padding:0;margin:0;width:auto}
+.dvbody{max-height:420px;overflow:auto;border-top:1px solid var(--rule)}
+.dvnote{padding:8px;font-size:12.5px;color:var(--muted)}
+.dl.dc .gs{color:transparent}
+.dl .w,.sc .w{background:rgb(128 128 128 / .3);border-radius:2px}
+.dl.da .w,.sc.sa .w{background:rgb(76 194 126 / .32);background:color-mix(in srgb,var(--ok) 34%,transparent)}
+.dl.dd .w,.sc.sd .w{background:rgb(255 107 118 / .32);background:color-mix(in srgb,var(--bad) 34%,transparent)}
+.tc{color:var(--syn-c);font-style:italic}.ts{color:var(--syn-s)}.tn{color:var(--syn-n)}.tk{color:var(--syn-k);font-weight:600}.tp{color:var(--syn-p)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.split .side{overflow-x:auto;min-width:0}
+.split .side+.side{border-left:1px solid var(--rule)}
+.sc{display:flex;min-width:100%;width:max-content}
+.sc .gn{flex:none;width:4ch;padding-right:6px;text-align:right;color:var(--muted);user-select:none}
+.sc .gs{flex:none;width:1.5ch;user-select:none}
+.sc .gt{white-space:pre;padding-right:8px}
+.sc.sa{color:var(--ok);background:rgb(76 194 126 / .12);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.sc.sd{color:var(--bad);background:rgb(255 107 118 / .12);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.sc.se{background:var(--hover);opacity:.6}
 .dl{display:flex;min-width:100%;width:max-content}
+.dl .gt,.sc .gt{tab-size:4}
 .dl .gb{flex:none;width:20px;text-align:center;color:var(--muted);font-size:14px;line-height:1.2}
 .dl .gn{flex:none;width:4ch;padding-right:6px;text-align:right;color:var(--muted);user-select:none}
 .dl .gs{flex:none;width:1.5ch;user-select:none}
@@ -549,6 +669,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
 </aside>
 
 <main>
+  <div id="gitBanner" class="banner" role="alert" hidden><div><strong>GitSwitch needs git 2.30 or newer: <span id="gitWhy"></span></strong><br><span class="hint">Install or update git (git-scm.com), then reopen this window.</span></div></div>
   <div id="installBanner" class="banner" hidden>
     <div><strong>Git is not using GitSwitch yet.</strong><br><span class="hint">Install once and every terminal and IDE on this computer picks the right account.</span></div>
     <button class="btn primary" id="installBtn">Install</button>
@@ -574,6 +695,9 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       </fieldset>
       <label class="full" id="passLabel">Key passphrase (optional, never saved by GitSwitch)<input name="passphrase" type="password" autocomplete="new-password"></label>
       <label class="full" id="keyPathLabel" hidden>Private key path<input name="key" list="keyList" placeholder="~/.ssh/id_ed25519"><datalist id="keyList"></datalist></label>
+      <label>Sign commits<select name="signfmt" aria-describedby="signHint"><option value="off">Off</option><option value="ssh">SSH key</option><option value="gpg">GPG key</option></select></label>
+      <label id="signKeyLabel" hidden><span id="signKeyName">Signing key</span><input name="signkey" placeholder="empty: this account's own key" autocomplete="off" spellcheck="false"></label>
+      <div class="full hint" id="signHint">Signed commits show a verified badge on GitHub and GitLab, and in History here.</div>
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="makeDefault"> Make this the default account</label>
       <div class="full row-actions"><button class="btn primary" type="submit" id="acctSave">Save account</button><button class="btn" type="button" id="acctCancel">Cancel</button></div>
     </form>
@@ -605,9 +729,16 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <button class="btn primary" type="submit">Add folder</button>
       <div class="full hint" id="folders"></div>
     </form>
-    <div class="repo-bar"><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span>
+    <div class="repo-bar"><button class="btn" id="newRepoOpen">New repo…</button><button class="btn" id="cloneOpen">Clone from URL…</button><button class="btn" id="addRepo">Add an existing repo…</button><span class="hint">For a repo outside your project folders.</span>
       <label>Sort by<select id="repoSortBy"><option value="folder">Folder</option><option value="name">Name</option><option value="recent">Recently opened</option><option value="account">Account</option></select></label>
       <label style="margin-left:0">Group by<select id="repoGroupBy"><option value="none">Nothing</option><option value="account">Account</option><option value="owner">Owner or organization</option><option value="folder">Folder</option><option value="group">Your groups</option></select></label></div>
+    <form class="card" id="initForm" hidden aria-label="New repo">
+      <label>Folder for the new repo<span style="display:flex;gap:8px"><input name="path" required style="flex:1" placeholder="~/work/my-project" spellcheck="false"><button class="btn" type="button" id="initBrowse">Browse…</button></span></label>
+      <label>Branch name<input name="branch" value="main" required spellcheck="false" autocomplete="off"></label>
+      <label>Account<select name="account" id="initAccount"></select></label>
+      <div class="hint" style="align-self:end" id="initHint">Starts an empty git repo there with this account's name and email, and adds it to the list.</div>
+      <div class="full row-actions"><button class="btn primary" type="submit" id="initGo">Create repo</button><button class="btn" type="button" id="initCancel">Close</button></div>
+    </form>
     <form class="card" id="cloneForm" hidden>
       <label class="full">Repo URL<input name="url" placeholder="git@github.com:owner/repo.git or https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></label>
       <label>Clone into folder<span style="display:flex;gap:8px"><input name="parent" required style="flex:1"><button class="btn" type="button" id="cloneBrowse">Browse…</button></span></label>
@@ -659,11 +790,18 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <button class="btn tb" id="pushBtn"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Push</span></button>
       <span class="spacer"></span>
       <button class="btn" id="undoBtn" hidden>↶ Undo</button>
+      <button class="btn" id="redoBtn" hidden>↷ Redo</button>
       <div class="pop-wrap">
         <button class="btn ghost" id="actionsBtn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: compare with the remote, view on the web" style="font-size:17px;line-height:1">⋯</button>
         <div class="popover right menu" id="actionsPop" role="menu" hidden>
           <button class="btn" id="compareBtn" role="menuitem" hidden title="List the commits you would push and pull">Compare with the remote…</button>
           <button class="btn" id="stashBtn" role="menuitem" title="Every stash in this repo: parked changes, discarded changes and your own. Apply, pop, drop, or start a branch from one">Stashes…</button>
+          <button class="btn" id="cmpBtn" role="menuitem" title="See how two branches, tags or commits differ: the commits on each side and the changed files">Compare two refs…</button>
+          <button class="btn" id="reflogBtn" role="menuitem" title="Where HEAD has been, including commits a reset left behind. Make a branch to get one back">Reflog…</button>
+          <button class="btn" id="bisectBtn" role="menuitem" title="Find the first commit that broke something, by testing commits between a good one and a bad one">Find the commit that broke it (bisect)…</button>
+          <button class="btn" id="remotesBtn" role="menuitem" title="The servers this repo talks to: add, rename, re-point or remove them, and see which account each one uses">Remotes…</button>
+          <button class="btn" id="pruneFetchBtn" role="menuitem" title="Read the remote's new commits and forget the remote branches that were deleted on the server. Your own branches and files stay as they are">Fetch and forget deleted branches</button>
+          <button class="btn danger" id="forcePushBtn" role="menuitem" title="Replace the remote branch with yours, only if nobody pushed since you fetched. Shows what would be lost first">Force push (with lease)…</button>
           <button class="btn" id="browseRepo" role="menuitem" title="Open the repo on GitHub, GitLab, …">View on the web ↗</button>
         </div>
       </div>
@@ -672,7 +810,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
     <form class="searchrow" id="histSearchForm" role="search">
       <div class="search">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        <input id="histSearch" type="search" placeholder="Search messages   (also author:ana  account:work  since:7d)" aria-label="Search commits (press / to focus)" autocomplete="off">
+        <input id="histSearch" type="search" placeholder="Search messages   (also author:ana  account:work  since:7d  code:text)" aria-label="Search commits (press / to focus)" autocomplete="off">
       </div>
       <div class="seg" role="group" aria-label="Time range" id="rangeSeg">
         <button type="button" data-range="" aria-pressed="true">Any time</button>
@@ -690,6 +828,8 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <label>From<input type="date" name="since"></label>
       <label>To<input type="date" name="until"></label>
       <label>Path<input name="path" placeholder="A file or folder, e.g. src/app" autocomplete="off" spellcheck="false"></label>
+      <label style="grid-column:span 2">Code contains<input name="code" placeholder="Commits that added or removed this text" autocomplete="off" spellcheck="false"></label>
+      <div class="checks2" style="grid-column:span 2;align-self:end"><label><input type="checkbox" name="codeRegex"> Regex</label><label><input type="checkbox" name="codeIgnoreCase"> Ignore case</label></div>
       <div class="checks2">
         <label><input type="checkbox" name="flagged"> Only wrong-account commits</label>
         <label><input type="checkbox" name="local"> Only not pushed</label>
@@ -729,6 +869,8 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
     <h1 tabindex="-1">Settings</h1>
     <p class="lead">GitSwitch has no background process. Git starts it for a moment on each network command, and this window runs only while it is open.</p>
     <form class="card" id="setForm">
+      <label class="full set-row">Theme <select name="theme" aria-label="Colour theme">
+        <option value="system">System (follow the computer)</option><option value="light">Light</option><option value="dark">Dark</option><option value="dim">Dim (a softer dark)</option></select> <span class="hint">(this computer only)</span></label>
       <label class="full" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" name="guiPrompt"> Ask with a small popup when git runs without a terminal (IDE source control, GitHub Desktop)</label>
       <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, <span id="afterWait">then use the default account</span></label>
       <label class="full set-row">New branch names start with <input name="branchPrefix" placeholder="e.g. feature/" style="width:12em" aria-label="New branch name prefix"> <span class="hint">(empty: no prefix)</span></label>
@@ -736,6 +878,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <label class="full set-row">When you switch branch with uncommitted changes <select name="switchChanges">
         <option value="ask">ask each time</option><option value="smart">take them along (smart switch)</option><option value="park">park them on their branch (git stash)</option></select></label>
       <p class="hint full" style="margin:0">A repo can have its own choice: tick “Remember my choice for this repo” when GitSwitch asks, or run <span class="mono">gitswitch set switch-changes park --repo</span>.</p>
+      <label class="full set-row"><input type="checkbox" name="fetchPrune"> Forget remote branches deleted on the server when fetching <span class="hint">(fetch --prune; a repo can differ: <span class="mono">git config fetch.prune</span>)</span></label>
       <label class="full set-row">When Update finds new commits on both sides <select name="pull">
         <option value="ff-only">stop and explain (fast-forward only)</option><option value="rebase">put my not-pushed commits on top (rebase)</option></select></label>
       <p class="hint full" style="margin:0">A rebase never runs with uncommitted changes or your own merge commits, stops with nothing changed if your commits clash, and can be undone until you push. One repo: <span class="mono">gitswitch set pull rebase --repo</span>.</p>
@@ -771,6 +914,51 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
     <button class="btn primary" id="cfDone" title="You fixed the file in your editor: mark it resolved">Mark resolved</button>
   </div>
 </dialog>
+<dialog id="blameDlg" class="vdlg" aria-labelledby="blTitle">
+  <div class="cfhead"><strong id="blTitle">Blame</strong><span class="hint" id="blSub"></span><span class="spacer"></span><button class="btn" id="blBack" hidden title="Go back to the blame you came from">← Back</button><button class="btn ghost" id="blClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="toggles"><label title="Do not blame whitespace-only changes (git blame -w)"><input type="checkbox" id="blWs"> Ignore whitespace</label><label title="Follow lines moved or copied within the file (git blame -M)"><input type="checkbox" id="blMoves"> Detect moved lines</label><span class="hint" id="blCrumb"></span></div>
+  <div id="blNote"></div>
+  <div class="vbody" id="blBody" tabindex="0" aria-label="The file with the commit that last changed each line"></div>
+  <div class="bcard" id="blCard" hidden></div>
+</dialog>
+<dialog id="fileDlg" class="vdlg" aria-labelledby="fhTitle">
+  <div class="cfhead"><strong id="fhTitle">File history</strong><span class="hint" id="fhSub"></span><span class="spacer"></span><button class="btn ghost" id="fhClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="vbody" id="fhList" role="listbox" aria-label="Commits that changed this file"></div>
+  <div class="vfdiff" id="fhDiff"></div>
+</dialog>
+<dialog id="cmpDlg" class="vdlg" aria-labelledby="cmTitle">
+  <div class="cfhead"><strong id="cmTitle">Compare two refs</strong><span class="hint">branches, tags or commits</span><span class="spacer"></span><button class="btn ghost" id="cmClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <form class="cmpform" id="cmForm">
+    <label>A<input id="cmA" list="cmList" autocomplete="off" spellcheck="false" placeholder="a branch, tag or commit"></label>
+    <button type="button" class="btn" id="cmSwap" aria-label="Swap A and B" title="Swap A and B">⇄</button>
+    <label>B<input id="cmB" list="cmList" autocomplete="off" spellcheck="false" placeholder="a branch, tag, commit, or the files on disk"></label>
+    <datalist id="cmList"></datalist>
+    <div class="modes" role="radiogroup" aria-label="What to compare"><label><input type="radio" name="cmMode" value="since-fork" checked> What B changed since they split</label><label><input type="radio" name="cmMode" value="direct"> Direct difference</label><button type="button" class="btn ghost" id="cmDisk" title="Compare A with the files in your folder, uncommitted changes included">B = the files on disk</button></div>
+    <div class="go"><button class="btn primary" id="cmGo">Compare</button></div>
+  </form>
+  <div id="cmOut"></div>
+</dialog>
+<dialog id="reflogDlg" class="vdlg" aria-labelledby="rlTitle">
+  <div class="cfhead"><strong id="rlTitle">Reflog</strong><span class="hint" id="rlSub">where HEAD has been</span><span class="spacer"></span><label class="hint" style="display:inline-flex;gap:5px;align-items:center;flex-direction:row" title="Commits that no branch or tag reaches any more: the ones a reset or a deleted branch left behind"><input type="checkbox" id="rlLost"> Only lost commits</label><button class="btn ghost" id="rlClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="vbody" id="rlList" tabindex="0" aria-label="Reflog entries"></div>
+</dialog>
+<dialog id="remotesDlg" class="vdlg" aria-labelledby="rmTitle">
+  <div class="cfhead"><strong id="rmTitle">Remotes</strong><span class="hint" id="rmSub">where this repo pushes and pulls</span><span class="spacer"></span><button class="btn" id="rmAdd">Add remote…</button><button class="btn ghost" id="rmClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="vbody" id="rmList" tabindex="0" aria-label="Remotes" style="padding:8px;display:grid;gap:8px"></div>
+</dialog>
+<dialog id="forceDlg" class="vdlg" aria-labelledby="fcTitle" style="max-width:min(980px,calc(100vw - 48px))">
+  <div class="cfhead"><strong id="fcTitle">Force push (with lease)</strong><span class="spacer"></span><button class="btn ghost" id="fcClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div id="fcBody"></div>
+</dialog>
+<dialog id="signDlg" class="signdlg" aria-labelledby="sgTitle" style="max-width:min(640px,calc(100vw - 48px))">
+  <h2 id="sgTitle" style="margin:0 0 8px;font-size:17px"></h2>
+  <div id="sgBody"></div>
+  <div class="row-actions"><button class="btn primary" id="sgClose">Close</button></div>
+</dialog>
+<dialog id="bisectDlg" class="vdlg" aria-labelledby="bsTitle" style="max-width:min(760px,calc(100vw - 48px))">
+  <div class="cfhead"><strong id="bsTitle">Find the commit that broke it</strong><span class="spacer"></span><button class="btn ghost" id="bsClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div id="bsBody"></div>
+</dialog>
 <dialog id="keysDlg" aria-labelledby="keysTitle"><form method="dialog">
   <h2 id="keysTitle" style="margin:0 0 10px;font-size:17px">Keyboard shortcuts</h2>
   <dl class="keylist">
@@ -789,6 +977,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
     <dt><kbd>f</kbd></dt><dd>Filters</dd>
     <dt><kbd>r</kbd></dt><dd>Reload</dd>
     <dt><kbd>Shift</kbd>+<kbd>U</kbd></dt><dd>Undo the last change</dd>
+    <dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>Redo what the last Undo took back</dd>
   </dl>
   <h3 class="keyhead">Repo tabs</h3>
   <dl class="keylist">
@@ -1095,6 +1284,7 @@ function renderAccounts(){
       <div>
         <div class="acct-name">${esc(a.id)}${a.id === c.default ? '<span class="tag">default</span>' : ''}</div>
         <div class="meta">${esc(a.name)} &lt;${esc(a.email)}&gt; on ${esc(a.host)}</div>
+        ${a.signingFormat ? `<div class="meta"><span class="status-ok">signs commits</span> with ${a.signingFormat === 'gpg' ? 'GPG' : 'SSH'}${a.signingKey ? ` (<code>${esc(a.signingKey)}</code>)` : ''}</div>` : ''}
         <div class="meta">${a.keyOk ? `Key <code>${esc(a.key)}</code>` : `<span class="status-bad">No key file${a.key ? ' at ' + esc(a.key) : ''}</span>`}
           ${a.user ? ` · <span class="status-ok">key logs in as ${esc(a.user)}</span>` : ''}</div>
         ${apiLine(a)}
@@ -1208,13 +1398,21 @@ function openForm(a){
   const f = $('#acctForm'); f.reset(); f.hidden = false; formMode = a ? 'edit' : 'new';
   f.id.value = a?.id || ''; f.id.readOnly = !!a; f.host.value = a?.host || 'github.com'; f.name.value = a?.name || ''; f.email.value = a?.email || '';
   f.key.value = a?.key || '';
+  f.signfmt.value = a?.signingFormat || 'off'; f.signkey.value = a?.signingKey || ''; syncSignForm();
   $('#keyChoice').hidden = !!a; $('#passLabel').hidden = !!a; $('#keyPathLabel').hidden = !a;
   $('#acctSave').textContent = a ? 'Save changes' : 'Save account';
   f.id.focus();
 }
 $('#addAcctBtn').onclick = () => openForm(null);
 $('#acctCancel').onclick = () => $('#acctForm').hidden = true;
+function syncSignForm(){
+  const f = $('#acctForm'), on = f.signfmt.value !== 'off';
+  $('#signKeyLabel').hidden = !on;
+  $('#signKeyName').textContent = f.signfmt.value === 'gpg' ? 'GPG key id' : 'SSH public key file';
+  f.signkey.placeholder = f.signfmt.value === 'gpg' ? 'the key id, e.g. 3AA5C34371567BD2' : 'empty: this account\'s own key';
+}
 $('#acctForm').addEventListener('change', e => {
+  if (e.target.name === 'signfmt') syncSignForm();
   if (e.target.name === 'keymode'){ const ex = e.target.value === 'existing'; $('#keyPathLabel').hidden = !ex; $('#passLabel').hidden = ex; }
 });
 $('#acctForm').onsubmit = async e => {
@@ -1224,9 +1422,26 @@ $('#acctForm').onsubmit = async e => {
     key: gen ? '' : f.key.value.trim(), generateKey:gen, passphrase:f.passphrase.value, makeDefault:f.makeDefault.checked};
   const r = await act(() => api('POST', '/api/account', data), formMode === 'new' ? 'Account saved' : 'Changes saved');
   if (!r) return;
+  // Signing is its own call: only when it changed.
+  const was = S.config.accounts.find(a => a.id === data.id), fmt = f.signfmt.value, key = f.signkey.value.trim();
+  let sg = null;
+  if (fmt !== (was?.signingFormat || 'off') || (fmt !== 'off' && key !== (was?.signingKey || ''))) sg = await act(() => api('POST', '/api/account/signing', {id:data.id, format:fmt, key}));
   f.hidden = true; await refresh();
+  if (sg && fmt !== 'off') showSigning(sg);
   if (gen) document.querySelector(`.acct[data-id="${CSS.escape(r.id)}"] [data-act=key]`)?.click();
 };
+// showSigning says what to do after signing is switched on: the public key
+// to add on the host, the page to add it on, and any warning.
+function showSigning(r){
+  $('#sgTitle').textContent = `${(typeof r.account === 'object' ? r.account?.id : r.account) || 'The account'} signs commits now`;
+  $('#sgBody').innerHTML = (r.warning ? `<div class="warnbox" role="alert">${esc(r.warning)}</div>` : '')
+    + ((r.steps || []).length ? `<p>To get the verified badge:</p><ol>${r.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
+    + (r.public ? `<pre id="sgPub" tabindex="0" aria-label="Public key">${esc(r.public)}</pre><div class="row-actions"><button class="btn" id="sgCopy">Copy public key</button>${r.page ? `<a class="btn" href="${esc(r.page)}">Open ${esc(r.page.replace(/^https?:\/\//, '').split('/')[0])} ↗</a>` : ''}</div>` : r.page ? `<p><a href="${esc(r.page)}">${esc(r.page)}</a></p>` : '');
+  $('#sgCopy')?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(r.public); toast('Public key copied'); } catch { act(() => api('POST','/api/copy',{text:r.public}), 'Public key copied'); } });
+  if (!$('#signDlg').open) $('#signDlg').showModal();
+  $('#sgCopy' ) ? $('#sgCopy').focus() : $('#sgClose').focus();
+}
+$('#sgClose').onclick = () => $('#signDlg').close();
 $('#installBtn').onclick = async () => { await act(() => api('POST','/api/install'), 'Installed. Every terminal and IDE now uses GitSwitch.'); refresh(); if (!$('#tab-settings').hidden) loadChecks(); };
 
 // ---- repos ----
@@ -1315,6 +1530,34 @@ $('#repos').addEventListener('click', async e => {
 });
 // clone from URL: the clone runs in the background and this polls its progress
 const repoNameOf = u => (u.trim().replace(/\/+$/, '').split(/[\/:]/).pop() || '').replace(/\.git$/, '');
+// New repo: git init in a folder, as an account, then open it in History.
+$('#newRepoOpen').onclick = () => {
+  const f = $('#initForm'); f.hidden = false;
+  $('#initAccount').innerHTML = acctOptions('', 'Choose by rules');
+  $('#initHint').textContent = 'Starts an empty git repo there with this account’s name and email, and adds it to the list.';
+  if (!f.path.value) f.path.value = (S.config.scanFolders[0] || S.home || '') + '/';
+  f.path.focus(); f.path.setSelectionRange(f.path.value.length, f.path.value.length);
+};
+$('#initCancel').onclick = () => { $('#initForm').hidden = true; };
+$('#initBrowse').onclick = async () => { const p = await pickFolder('Choose the folder for the new repo'); if (p) $('#initForm').path.value = p; };
+$('#initForm').onsubmit = async e => {
+  e.preventDefault(); const f = e.target;
+  $('#initGo').disabled = true;
+  let r;
+  try { r = await api('POST','/api/repo/init',{path:f.path.value.trim(), account:f.account.value, branch:f.branch.value.trim() || 'main'}); }
+  catch (err){
+    $('#initGo').disabled = false;
+    if (/choose an account/i.test(err.message)){ $('#initHint').innerHTML = `<span class="status-bad">${esc(err.message)}</span>`; f.account.focus(); return; }
+    toast(err.message, true, err.hint); return;
+  }
+  $('#initGo').disabled = false;
+  toast('Created ' + r.path + (r.account ? ' as ' + r.account : ''));
+  f.reset(); f.hidden = true; await refresh(); await loadRepos();
+  // A repo with no commit yet has no history to show: stay on the list until the first one.
+  try { await api('GET', '/api/refs?gitDir=' + encodeURIComponent(r.gitDir)); }
+  catch { toast(`Created ${r.path}: it has no commits yet, so History has nothing to show. Make the first commit, then open it from here.`); return; }
+  show('history'); $('#histRepo').value = r.gitDir; loadHistory();
+};
 $('#cloneOpen').onclick = () => {
   const f = $('#cloneForm'); f.hidden = false;
   if (!f.parent.value) f.parent.value = S.config.scanFolders[0] || S.home;
@@ -1447,7 +1690,7 @@ function renderReviews(){
 // ---- history ----
 let H = null, R = null;          // the shown history, and {head, branches} of its repo
 const picked = new Set();        // selected commit hashes
-const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:''};
+const F = {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:'', code:'', codeRegex:false, codeIgnoreCase:false};
 // View preferences are this computer's: kept in the page's storage, and
 // the page works the same without it.
 const store = {get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -1610,7 +1853,7 @@ tabsEl.addEventListener('dragend', () => { dragGd = null; renderTabs(); });
 $('#tabAdd').onclick = () => openPalette('repo');
 
 // The search box takes plain words (the commit message) and, for people
-// who like typing, author:, account:, since:, until:, path: and branch:
+// who like typing, author:, account:, since:, until:, path:, code: and branch:
 // tokens. since:7d
 // means 7 days ago (h, d, w, m, y). Tokens turn into filter chips.
 const units = {h:'hours', d:'days', w:'weeks', m:'months', y:'years'};
@@ -1619,7 +1862,7 @@ function applySearch(q){
   const rest = [];
   for (const m of q.matchAll(/(\w+):(?:"([^"]*)"|(\S+))|"([^"]*)"|(\S+)/g)){
     const key = (m[1] || '').toLowerCase(), val = (m[2] ?? m[3] ?? '').trim();
-    if (['author','account','since','until','path','branch'].includes(key) && val){
+    if (['author','account','since','until','path','branch','code'].includes(key) && val){
       if (key === 'branch') F.ref = val;
       else F[key] = key === 'since' || key === 'until' ? rel(val) : val;
       if (key === 'since') F.range = '';
@@ -1647,24 +1890,25 @@ $('#moreFilters').onclick = () => toggleFilters();
 function toggleFilters(open = $('#filterPanel').hidden){
   const p = $('#filterPanel');
   if (open){ p.author.value = F.author; p.account.value = F.account; p.path.value = F.path; p.since.value = /^\d{4}-\d\d-\d\d$/.test(F.since) ? F.since : '';
-    p.until.value = /^\d{4}-\d\d-\d\d$/.test(F.until) ? F.until : ''; p.flagged.checked = F.flagged; p.local.checked = F.local; }
+    p.until.value = /^\d{4}-\d\d-\d\d$/.test(F.until) ? F.until : ''; p.flagged.checked = F.flagged; p.local.checked = F.local; p.code.value = F.code; p.codeRegex.checked = F.codeRegex; p.codeIgnoreCase.checked = F.codeIgnoreCase; }
   p.hidden = !open; $('#moreFilters').setAttribute('aria-expanded', String(open));
   if (open) p.author.focus();
 }
 $('#filterPanel').onsubmit = e => {
   e.preventDefault(); const p = e.target;
-  Object.assign(F, {author:p.author.value.trim(), account:p.account.value, path:p.path.value.trim(), flagged:p.flagged.checked, local:p.local.checked});
+  Object.assign(F, {author:p.author.value.trim(), account:p.account.value, path:p.path.value.trim(), flagged:p.flagged.checked, local:p.local.checked, code:p.code.value.trim(), codeRegex:p.codeRegex.checked, codeIgnoreCase:p.codeIgnoreCase.checked});
   if (p.since.value || p.until.value){ F.since = p.since.value; F.until = p.until.value; F.range = ''; }
   else if (/^\d{4}-/.test(F.since + F.until)){ F.since = ''; F.until = ''; }
   toggleFilters(false); loadHistory();
 };
 $('#filterReset').onclick = () => { const p = $('#filterPanel'); p.reset(); p.account.value = ''; };
-function clearFilters(){ Object.assign(F, {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:''}); $('#histSearch').value = ''; loadHistory(); }
+function clearFilters(){ Object.assign(F, {text:'', author:'', account:'', range:'', since:'', until:'', flagged:false, local:false, ref:'', path:'', code:'', codeRegex:false, codeIgnoreCase:false}); $('#histSearch').value = ''; loadHistory(); }
 
 function renderChips(){
   const chips = [];
   if (F.ref) chips.push(['ref', refLabel(F.ref)]);
   if (F.path) chips.push(['path', 'Path: ' + F.path]);
+  if (F.code) chips.push(['code', `Code ${F.codeRegex ? 'matches' : 'contains'}: “${F.code}”${F.codeIgnoreCase ? ' (any case)' : ''}`]);
   if (F.text) chips.push(['text', `Message: “${F.text}”`]);
   if (F.author) chips.push(['author', 'Author: ' + F.author]);
   if (F.account) chips.push(['account', 'Account: ' + F.account]);
@@ -1674,7 +1918,7 @@ function renderChips(){
   if (F.local) chips.push(['local', 'Not pushed only']);
   $('#chips').innerHTML = chips.map(([k, t]) => `<span class="fchip">${esc(t)}<button type="button" data-chip="${k}" aria-label="Remove filter: ${esc(t)}">✕</button></span>`).join('')
     + (chips.length > 1 ? '<button type="button" class="btn ghost" data-chip="*">Clear all</button>' : '');
-  const n = [F.author, F.account, F.since, F.until, F.flagged, F.local, F.path].filter(Boolean).length;
+  const n = [F.author, F.account, F.since, F.until, F.flagged, F.local, F.path, F.code].filter(Boolean).length;
   $('#filterCount').innerHTML = n ? `<span class="count">${n}</span>` : '';
   document.querySelectorAll('#rangeSeg button').forEach(b => b.setAttribute('aria-pressed', String(!F.since && !F.until && b.dataset.range === F.range)));
   $('#histSearch').value = F.text;
@@ -1683,6 +1927,7 @@ $('#chips').addEventListener('click', e => {
   const k = e.target.closest('[data-chip]')?.dataset.chip; if (!k) return;
   if (k === '*') return clearFilters();
   F[k] = typeof F[k] === 'boolean' ? false : '';
+  if (k === 'code'){ F.codeRegex = false; F.codeIgnoreCase = false; }
   k === 'flagged' || k === 'local' ? (renderChips(), renderHistory()) : loadHistory();
 });
 
@@ -1695,6 +1940,7 @@ function query(gd){
   if (F.until) q.set('until', F.until);
   if (F.ref) q.set('ref', F.ref);
   if (F.path) q.set('path', F.path);
+  if (F.code){ q.set('code', F.code); if (F.codeRegex) q.set('codeRegex', '1'); if (F.codeIgnoreCase) q.set('codeIgnoreCase', '1'); }
   if (OPTS.order === 'date') q.set('order', 'date');
   if (OPTS.firstParent) q.set('firstParent', '1');
   if (OPTS.noMerges) q.set('noMerges', '1');
@@ -1703,7 +1949,7 @@ function query(gd){
 }
 // A branch alone keeps the graph (its history is whole); the rest hide
 // commits, so the graph's lines would not connect.
-const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range || F.path || OPTS.noMerges);
+const gitFiltered = () => !!(F.text || F.author || F.account || F.since || F.until || F.range || F.path || F.code || OPTS.noMerges);
 // refLabel names a ref filter for its chip: refs/heads/x is "Branch: x".
 const refLabel = r => r.startsWith('refs/tags/') ? 'Tag: ' + r.slice(10) : r.startsWith('refs/remotes/') ? 'Branch: ' + r.slice(13) : 'Branch: ' + r.replace(/^refs\/heads\//, '');
 
@@ -1715,7 +1961,7 @@ async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
   markOpened(gd);
   addTab(gd); store.set('gs.repoTabsActive', gd); renderTabs();
-  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, OPTS.order, OPTS.firstParent, OPTS.noMerges, VIEW.hiCherry].join('|');
+  const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, F.code, F.codeRegex, F.codeIgnoreCase, OPTS.order, OPTS.firstParent, OPTS.noMerges, VIEW.hiCherry].join('|');
   histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
   histKey = key;
   if (!H) $('#history').innerHTML = '<p class="hint">Reading history…</p>';
@@ -1738,6 +1984,7 @@ async function loadOperation(gd){
   OP = o;
   const el = $('#opBanner'); if (!el || !o?.kind || $('#histRepo').value !== gd) return;
   const files = o.conflicts || [], word = opWords[o.kind] || o.kind;
+  if (o.kind === 'bisect') return bisectBanner(gd);
   if (!o.actions?.length) return; // a bisect or smart switch has its own way out
   el.className = 'alert bad opbanner';
   el.innerHTML = `<div class="opmain"><strong>A ${esc(word)} is stopped${o.branch ? ' on ' + esc(o.branch) : ''}${o.theirs ? ' · ' + esc(o.theirs) : ''}.</strong>
@@ -1839,7 +2086,7 @@ $('#stList').addEventListener('click', async e => {
     $('#stDiff').innerHTML = '<p class="hint" style="padding:8px">Reading…</p>';
     try {
       const d = await api('GET', `/api/stash/show?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(f.dataset.stfile)}`);
-      $('#stDiff').innerHTML = `<div class="diffbox"><div class="dh"><span class="fn">${esc(f.dataset.stfile)}</span><span class="hint">${d.untracked ? 'new file in the stash' : 'in the stash'}</span></div>${diffPre(d, 'No text to show (a binary file).')}</div>`;
+      $('#stDiff').innerHTML = `<div class="diffbox"><div class="dh"><span class="fn">${esc(f.dataset.stfile)}</span><span class="hint">${d.untracked ? 'new file in the stash' : 'in the stash'}</span></div>${diffPre(d, 'No text to show (a binary file).', f.dataset.stfile)}</div>`;
     } catch (err) { $('#stDiff').innerHTML = `<p class="hint" style="padding:8px">${esc(err.message)}</p>`; }
     return;
   }
@@ -1870,6 +2117,339 @@ $('#stSave').onclick = async () => {
 const undoAndReload = gd => ({label:'Undo', run: async () => { await undoLast(gd); if ($('#stashDlg').open) loadStashes(gd); }});
 $('#stClose').onclick = () => $('#stashDlg').close();
 $('#stashBtn').onclick = openStashes;
+
+// ---- blame, file history, compare, reflog, bisect ----
+const gdq = () => encodeURIComponent($('#histRepo').value);
+const acctChip = a => a ? `<span class="chip" style="color:${colorOf(a)};border-color:currentColor" title="Account ${esc(a)}">${esc(a)}</span>` : '';
+const shortOf = h => String(h || '').slice(0, 7);
+const openDlg = d => { closeMenu(); if (!d.open) d.showModal(); };
+const vErr = (el, e) => { el.innerHTML = `<div class="vnote bad" role="alert">${esc(e.message || e)}</div>`; };
+// goLog selects a commit in the History log when it is loaded and shown.
+function goLog(hash){
+  if (!H || !H.commits.some(c => c.hash === hash) || !document.querySelector(`.hrow[data-hash="${CSS.escape(hash)}"]`)){ toast('That commit is not in the part of the log that is loaded: its card is shown here instead'); return false; }
+  document.querySelectorAll('dialog[open]').forEach(d => d.close());
+  pick(hash); document.querySelector(`.hrow[data-hash="${CSS.escape(hash)}"]`)?.scrollIntoView({block:'center'}); return true;
+}
+// popMenu is a small menu of [key, label] items at a point.
+function popMenu(x, y, items, back, onPick){
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'rmenu'; m.setAttribute('role', 'menu');
+  m.innerHTML = items.map(([k, t]) => k === '-' ? '<hr>' : `<button role="menuitem" data-m="${k}">${esc(t)}</button>`).join('');
+  document.body.append(m);
+  m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + 'px';
+  m.querySelector('button').focus();
+  m.onkeydown = ev => {
+    const bs = [...m.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
+    if (ev.key === 'Escape'){ ev.stopPropagation(); closeMenu(); back?.focus(); }
+    if (ev.key === 'ArrowDown'){ ev.preventDefault(); bs[(i + 1) % bs.length].focus(); }
+    if (ev.key === 'ArrowUp'){ ev.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); }
+  };
+  m.onclick = ev => { const k = ev.target.closest('[data-m]')?.dataset.m; if (!k) return; closeMenu(); onPick(k); };
+}
+// A renamed file is listed as "old => new" or "dir/{old => new}/x": its path now is the new one.
+function newPathOf(p){
+  const m = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(p);
+  return m ? (m[1] + m[3] + m[4]).replace('//', '/') : p.includes(' => ') ? p.split(' => ').pop() : p;
+}
+// The file menu of a commit's file: its diff, blame and history.
+function fileMenu(x, y, path, rev, back){
+  popMenu(x, y, [['diff', 'Show diff'], ['blame', 'Blame'], ['history', 'File history']], back, k => {
+    if (k === 'diff') back?.click(); else if (k === 'blame') openBlame(path, rev); else openFileHistory(path);
+  });
+}
+document.addEventListener('contextmenu', e => {
+  const row = e.target.closest?.('#cdetail .ftree .frow[data-path]'); if (!row || WIP || picked.size !== 1) return;
+  e.preventDefault(); fileMenu(e.clientX, e.clientY, newPathOf(row.dataset.path), [...picked][0], row);
+});
+async function askPath(title, go){
+  const p = await ask(title, {input:'', ok:'Open'});
+  if (p?.trim()) go(p.trim());
+}
+
+// -- blame --
+const BL = {path:'', rev:'', ws:false, moves:false, data:null, shown:0, stack:[], sel:-1, seq:0};
+const BL_STEP = 500;
+async function openBlame(path, rev = '', fresh = true){
+  if (fresh){ BL.stack = []; BL.ws = false; BL.moves = false; $('#blWs').checked = false; $('#blMoves').checked = false; }
+  Object.assign(BL, {path, rev});
+  openDlg($('#blameDlg'));
+  $('#blCard').hidden = true; $('#blNote').innerHTML = '';
+  await loadBlame();
+  if (fresh) $('#blBody').focus();
+}
+async function loadBlame(){
+  const seq = ++BL.seq, gd = $('#histRepo').value;
+  $('#blTitle').textContent = 'Blame · ' + BL.path; $('#blSub').textContent = BL.rev ? 'at ' + (BL.rev.length > 20 ? shortOf(BL.rev) + BL.rev.slice(40) : BL.rev) : 'at HEAD';
+  $('#blBack').hidden = !BL.stack.length;
+  $('#blCrumb').textContent = BL.stack.length ? 'Walked back ' + BL.stack.length + ' step' + (BL.stack.length > 1 ? 's' : '') + ' from ' + (BL.stack[0].rev || 'HEAD') : '';
+  $('#blBody').innerHTML = '<p class="hint" style="padding:10px">Reading who changed each line…</p>';
+  let d;
+  try { d = await api('GET', `/api/blame?gitDir=${encodeURIComponent(gd)}&path=${encodeURIComponent(BL.path)}&rev=${encodeURIComponent(BL.rev)}${BL.ws ? '&ignoreWs=1' : ''}${BL.moves ? '&moves=1' : ''}`); }
+  catch (e){ if (seq === BL.seq){ $('#blBody').innerHTML = ''; vErr($('#blNote'), e); } return; }
+  if (seq !== BL.seq) return;
+  BL.data = d; BL.sel = -1; BL.shown = 0;
+  $('#blNote').innerHTML = d.truncated ? '<div class="vnote">The file is long: only the first part is shown.</div>' : '';
+  $('#blBody').innerHTML = '<div class="bl" id="blRows"></div><div class="vmore" id="blMore" hidden><span class="hint" id="blLeft"></span><button class="btn" id="blShowMore">Show more</button></div>';
+  $('#blShowMore').onclick = () => blRows();
+  blRows();
+}
+function blRows(){
+  const d = BL.data, L = DV.syn ? dvLang(BL.path) : null, lines = d.lines, from = BL.shown, to = Math.min(lines.length, from + BL_STEP);
+  const startOf = new Map(); d.chunks.forEach((c, i) => startOf.set(c.startLine, i));
+  let html = '';
+  for (let i = from; i < to; i++){
+    const l = lines[i], ci = startOf.get(l.line), first = ci !== undefined;
+    if (first) BL.cur = ci; else if (BL.cur === undefined) BL.cur = 0;
+    const c = d.chunks[BL.cur];
+    const info = first ? `<span class="sh">${esc(c.short)}</span>${c.boundary ? '<span class="bnd" title="A boundary commit: the oldest the blame can see here, so the line may be older">root</span>' : ''}<span class="au">${esc(c.author)}</span>${acctChip(c.account)}<span class="wh">${esc(ago(c.time))}</span>` : '';
+    html += `<div class="bll${BL.cur % 2 ? ' t1' : ''}${first && i ? ' first' : ''}" data-c="${BL.cur}" tabindex="${first ? 0 : -1}"${first ? ` title="${esc(c.short + ' · ' + c.summary + '\n' + c.author + ' <' + c.email + '>')}"` : ''}><span class="bli">${info}</span><span class="gn">${l.line}</span><span class="blt">${dvLine(l.text, null, L)}</span></div>`;
+  }
+  $('#blRows').insertAdjacentHTML('beforeend', html); BL.shown = to;
+  $('#blMore').hidden = to >= lines.length; $('#blLeft').textContent = `Showing ${to} of ${lines.length} lines`;
+  $('#blShowMore').textContent = `Show ${Math.min(BL_STEP, lines.length - to)} more`;
+  blSelect(BL.sel, false);
+}
+function blSelect(ci, card = true){
+  BL.sel = ci;
+  document.querySelectorAll('#blRows .bll').forEach(r => r.classList.toggle('sel', +r.dataset.c === ci));
+  if (ci < 0 || !card) return;
+  const c = BL.data.chunks[ci], el = $('#blCard'); el.hidden = false;
+  const path = c.origPath || BL.path;
+  el.innerHTML = `<div class="row"><strong class="mono">${esc(c.short)}</strong><span>${esc(c.summary)}</span>${acctChip(c.account)}<span class="hint">${esc(c.author)} · ${esc(ago(c.time))}</span><span class="spacer"></span>
+    <button class="btn" data-bc="back" title="Blame this file as it was just before this commit, to see who had the lines before">Blame before this commit</button>
+    <button class="btn" data-bc="hist" title="Every commit that changed this file">File history</button>
+    <button class="btn" data-bc="log" title="Select the commit in the History log">Show in the log</button></div>
+    <div class="hint" id="blCardMore">${c.origPath && c.origPath !== BL.path ? `The lines came from ${esc(c.origPath)}${c.origLine ? ' line ' + c.origLine : ''}. ` : ''}${c.count} line${c.count === 1 ? '' : 's'} here.</div>`;
+  el.dataset.hash = c.hash; el.dataset.path = path;
+  const seq = BL.seq;
+  api('GET', `/api/commit/show?gitDir=${gdq()}&hash=${encodeURIComponent(c.hash)}`).then(d => {
+    if (seq !== BL.seq || el.dataset.hash !== c.hash) return;
+    const body = d.message.split('\n').slice(1).join('\n').trim(), n = d.files.length + d.more;
+    $('#blCardMore').insertAdjacentHTML('afterbegin', `${n} file${n === 1 ? '' : 's'} changed in it (<span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span>). `);
+    if (body) el.insertAdjacentHTML('beforeend', `<pre>${esc(body)}</pre>`);
+  }).catch(() => {});
+}
+$('#blBody').addEventListener('click', e => { const r = e.target.closest('.bll'); if (r) blSelect(+r.dataset.c); });
+$('#blBody').addEventListener('keydown', e => {
+  const r = e.target.closest('.bll'); if (!r) return;
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); blSelect(+r.dataset.c); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault(); const rs = [...document.querySelectorAll('#blRows .bll.first, #blRows .bll:first-child')], i = rs.indexOf(r);
+    (rs[i + (e.key === 'ArrowDown' ? 1 : -1)] || r).focus();
+  }
+});
+$('#blCard').addEventListener('click', e => {
+  const a = e.target.closest('[data-bc]')?.dataset.bc, el = $('#blCard'); if (!a) return;
+  if (a === 'back'){ BL.stack.push({path:BL.path, rev:BL.rev}); BL.path = el.dataset.path; BL.rev = el.dataset.hash + '^'; $('#blCard').hidden = true; loadBlame(); }
+  else if (a === 'hist') openFileHistory(el.dataset.path);
+  else goLog(el.dataset.hash);
+});
+$('#blBack').onclick = () => { const s = BL.stack.pop(); if (s){ Object.assign(BL, s); $('#blCard').hidden = true; loadBlame(); } };
+$('#blWs').onchange = e => { BL.ws = e.target.checked; loadBlame(); };
+$('#blMoves').onchange = e => { BL.moves = e.target.checked; loadBlame(); };
+$('#blClose').onclick = () => $('#blameDlg').close();
+
+// -- file history --
+const FH = {path:'', commits:[], more:false, sel:-1};
+async function openFileHistory(path){
+  Object.assign(FH, {path, commits:[], more:false, sel:-1});
+  $('#fhTitle').textContent = 'File history · ' + path; $('#fhSub').textContent = ''; $('#fhDiff').innerHTML = '';
+  $('#fhList').innerHTML = '<p class="hint" style="padding:10px">Reading…</p>';
+  openDlg($('#fileDlg'));
+  await loadFileHistory(false);
+}
+async function loadFileHistory(more){
+  let d;
+  try { d = await api('GET', `/api/file/history?gitDir=${gdq()}&path=${encodeURIComponent(FH.path)}&n=50&skip=${more ? FH.commits.length : 0}`); }
+  catch (e){ vErr($('#fhList'), e); return; }
+  FH.commits = more ? FH.commits.concat(d.commits) : d.commits; FH.more = d.more;
+  $('#fhSub').textContent = `${FH.commits.length}${d.more ? '+' : ''} commit${FH.commits.length === 1 ? '' : 's'}`;
+  drawFileHistory();
+  if (!more) $('#fhList .vrow')?.focus();
+}
+function drawFileHistory(){
+  $('#fhList').innerHTML = !FH.commits.length ? '<p class="hint" style="padding:10px">No commit changed this file (is the path right, and relative to the repo?).</p>' : FH.commits.map((c, i) => {
+    const l = stLetter(c.status), word = c.status;
+    return `<div class="vrow${i === FH.sel ? ' on' : ''}" role="option" aria-selected="${i === FH.sel}" tabindex="0" data-i="${i}" title="${esc(c.path)}"><span class="cl cl-${esc(l)}" title="${esc(word)}">${esc(l)}</span><span class="sh">${esc(c.short)}</span>
+      <span class="sub">${esc(c.subject)}${c.status === 'R' && c.oldPath ? ` <span class="ren">renamed from ${esc(c.oldPath)}${c.similarity ? ` (${c.similarity}%)` : ''}</span>` : ''}</span>${acctChip(c.account)}<span class="hint">${esc(c.author)}</span><span class="when">${esc(ago(c.time))}</span>
+      <button class="btn" data-fb="${i}" title="See who wrote each line as the file was in this commit">Blame at this commit</button></div>`;
+  }).join('') + (FH.more ? '<div class="vmore"><button class="btn" id="fhMore">Load more</button></div>' : '');
+  $('#fhMore')?.addEventListener('click', e => { e.target.disabled = true; loadFileHistory(true); });
+}
+async function fhPick(i){
+  const c = FH.commits[i]; if (!c) return; FH.sel = i;
+  document.querySelectorAll('#fhList .vrow').forEach(r => { const on = +r.dataset.i === i; r.classList.toggle('on', on); r.setAttribute('aria-selected', String(on)); });
+  $('#fhDiff').innerHTML = '<p class="hint" style="padding:8px">Reading the diff…</p>';
+  try {
+    const d = await api('GET', `/api/commit/diff?gitDir=${gdq()}&hash=${encodeURIComponent(c.hash)}&path=${encodeURIComponent(c.path)}`);
+    if (FH.sel !== i) return;
+    $('#fhDiff').innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(c.path)}">${esc(c.path)}</span><span class="hint">${esc(c.short)} · ${esc(c.subject)}</span></div>${diffPre(d, undefined, c.path)}</div>`;
+  } catch (e){ vErr($('#fhDiff'), e); }
+}
+$('#fhList').addEventListener('click', e => {
+  const b = e.target.closest('[data-fb]');
+  if (b){ const c = FH.commits[+b.dataset.fb]; return openBlame(c.path, c.hash); }
+  const r = e.target.closest('.vrow'); if (r) fhPick(+r.dataset.i);
+});
+$('#fhList').addEventListener('keydown', e => {
+  const r = e.target.closest('.vrow'); if (!r || e.target.closest('button')) return;
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fhPick(+r.dataset.i); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); (e.key === 'ArrowDown' ? r.nextElementSibling : r.previousElementSibling)?.focus(); }
+});
+$('#fhClose').onclick = () => $('#fileDlg').close();
+
+// -- compare two refs --
+const CM = {tags:[]};
+const stLetter = s => String(s || 'M')[0].toUpperCase();
+async function openCompare(a = '', b = ''){
+  closeMenu();
+  const gd = $('#histRepo').value; if (!gd) return;
+  $('#cmA').value = a || R?.head.branch || 'HEAD'; $('#cmB').value = b; $('#cmOut').innerHTML = '';
+  document.querySelector('#cmForm [name=cmMode][value=since-fork]').checked = true;
+  openDlg($('#cmpDlg'));
+  try { CM.tags = await api('GET', '/api/tags?gitDir=' + encodeURIComponent(gd)) || []; } catch { CM.tags = []; }
+  const names = [...(R?.branches || []).map(x => x.name), ...CM.tags];
+  $('#cmList').innerHTML = [...new Set(names)].map(n => `<option value="${esc(n)}">`).join('') + '<option value=":working" label="the files on disk">';
+  (b ? $('#cmGo') : $('#cmB')).focus();
+  if (a !== '' && b !== '') runCompare();
+}
+async function runCompare(){
+  const a = $('#cmA').value.trim(), b = $('#cmB').value.trim(), mode = document.querySelector('#cmForm [name=cmMode]:checked').value;
+  if (!a || !b){ vErr($('#cmOut'), 'Fill in both A and B.'); return; }
+  CM.q = {a, b, mode}; $('#cmOut').innerHTML = '<p class="hint">Comparing…</p>';
+  let d;
+  try { d = await api('GET', `/api/compare?gitDir=${gdq()}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&mode=${mode}`); }
+  catch (e){ vErr($('#cmOut'), e); return; }
+  CM.d = d;
+  const list = (title, cs, n) => `<div><h3 class="vh3">${title} (${n})</h3><div class="vbody">${cs.length ? cs.map(c => `<div class="vrow" title="${esc(c.subject)}"><span class="sh">${esc(c.short)}</span><span class="sub">${esc(c.subject)}</span><span class="hint">${esc(c.author)}</span><span class="when">${esc(ago(c.time))}</span></div>`).join('') + (n > cs.length ? `<div class="vmore"><span class="hint">…and ${n - cs.length} more</span></div>` : '') : '<p class="hint" style="padding:8px 10px">Nothing.</p>'}</div></div>`;
+  const files = d.files || [];
+  $('#cmOut').innerHTML = `<div class="vnote" role="status"><strong>${esc(d.summary || '')}</strong>${d.same ? ' <span class="hint">They are the same.</span>' : ''}${d.working ? ' <span class="hint">B is the files on disk.</span>' : ''}${d.base ? ` <span class="hint">They split at ${esc(shortOf(d.base))}.</span>` : ''}</div>
+    ${d.working ? '' : `<div class="vtwo">${list('Only on A: <span style="text-transform:none">' + esc(d.a) + '</span>', d.onlyA || [], d.onlyACount)}${list('Only on B: <span style="text-transform:none">' + esc(d.b) + '</span>', d.onlyB || [], d.onlyBCount)}</div>`}
+    <h3 class="vh3">Changed files (${files.length}${d.moreFiles ? '+' : ''}) <span class="add">+${d.added}</span> <span class="del">−${d.deleted}</span></h3>
+    <div class="vbody" id="cmFiles" style="max-height:26vh">${files.length ? files.map((f, i) => { const l = stLetter(f.status); return `<button class="vrow" data-f="${i}" title="${esc(f.path)}"><span class="cl cl-${esc(l)}" title="${esc(f.status || '')}">${esc(l)}</span><span class="sub">${esc(f.path)}${f.oldPath ? ` <span class="ren">from ${esc(f.oldPath)}</span>` : ''}</span>${f.binary ? '<span class="when">binary</span>' : `<span class="add">+${f.added}</span><span class="del">−${f.deleted}</span>`}</button>`; }).join('') + (d.moreFiles ? `<div class="vmore"><span class="hint">…and ${d.moreFiles} more files</span></div>` : '') : '<p class="hint" style="padding:8px 10px">No file differs.</p>'}</div>
+    <div class="vfdiff" id="cmDiff"></div>`;
+}
+$('#cmOut').addEventListener('click', async e => {
+  const r = e.target.closest('[data-f]'); if (!r || !CM.q) return;
+  const f = CM.d.files[+r.dataset.f];
+  document.querySelectorAll('#cmFiles .vrow').forEach(x => x.classList.toggle('on', x === r));
+  $('#cmDiff').innerHTML = '<p class="hint" style="padding:8px">Reading the diff…</p>';
+  try {
+    const d = await api('GET', `/api/compare/file?gitDir=${gdq()}&a=${encodeURIComponent(CM.q.a)}&b=${encodeURIComponent(CM.q.b)}&mode=${CM.q.mode}&path=${encodeURIComponent(f.path)}`);
+    $('#cmDiff').innerHTML = `<div class="diffbox"><div class="dh"><span class="fn">${esc(f.path)}</span></div>${diffPre(d, 'No text to show (a binary file).', f.path)}</div>`;
+    $('#cmDiff').scrollIntoView({block:'nearest'});
+  } catch (err){ vErr($('#cmDiff'), err); }
+});
+$('#cmForm').onsubmit = e => { e.preventDefault(); runCompare(); };
+$('#cmSwap').onclick = () => { const a = $('#cmA').value; $('#cmA').value = $('#cmB').value === ':working' ? '' : $('#cmB').value; $('#cmB').value = a; };
+$('#cmDisk').onclick = () => { $('#cmB').value = ':working'; };
+$('#cmClose').onclick = () => $('#cmpDlg').close();
+$('#cmpBtn').onclick = () => openCompare();
+
+// -- reflog --
+const RL = {entries:[], more:false, next:0, lost:false};
+async function openReflog(){
+  RL.entries = []; RL.lost = false; $('#rlLost').checked = false;
+  $('#rlList').innerHTML = '<p class="hint" style="padding:10px">Reading…</p>';
+  openDlg($('#reflogDlg'));
+  await loadReflog(false); $('#rlLost').focus();
+}
+async function loadReflog(more){
+  let d;
+  try { d = await api('GET', `/api/reflog?gitDir=${gdq()}&n=30&skip=${more ? RL.next : 0}${RL.lost ? '&lost=1' : ''}`); }
+  catch (e){ vErr($('#rlList'), e); return; }
+  RL.entries = more ? RL.entries.concat(d.entries) : d.entries; RL.more = d.more; RL.next = d.next;
+  $('#rlSub').textContent = `${d.ref || 'HEAD'}: ${RL.entries.length}${d.more ? '+' : ''} entr${RL.entries.length === 1 ? 'y' : 'ies'}`;
+  $('#rlList').innerHTML = !RL.entries.length ? `<p class="hint" style="padding:10px">${RL.lost ? 'No lost commits in the part of the reflog that was read: everything reachable from HEAD is on a branch.' : 'The reflog is empty.'}</p>` : RL.entries.map((e, i) =>
+    `<div class="rlrow"><span class="ix" title="Reflog entry ${e.index}">${esc(/@\{/.test(e.ref || '') ? e.ref : (e.ref || 'HEAD') + '@{' + e.index + '}')}</span><span><span class="badge act">${esc(e.action || '')}</span></span>
+      <span class="msg" title="${esc(e.message || e.subject)}"><span class="mono">${esc(e.short)}</span> ${esc(e.subject)}${e.what ? ` <span class="hint">${esc(e.what)}</span>` : ''}</span>
+      <span class="wn hint">${esc(ago(e.time))}</span><span class="ac">${e.lost ? '<span class="badge lost" title="No branch or tag reaches this commit any more, so git may clean it up. Make a branch here to keep it">lost</span>' : ''}</span>
+      <button class="btn" data-rl="${i}" title="Start a new branch at this commit, so it is kept">Make a branch here…</button></div>`).join('')
+    + (RL.more ? '<div class="vmore"><button class="btn" id="rlMore">Load more</button></div>' : '');
+  $('#rlMore')?.addEventListener('click', e => { e.target.disabled = true; loadReflog(true); });
+}
+$('#rlLost').onchange = e => { RL.lost = e.target.checked; loadReflog(false); };
+$('#rlList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-rl]'); if (!b) return;
+  const en = RL.entries[+b.dataset.rl];
+  const name = await ask(`Make a branch at ${en.short} (${en.subject}), so this commit is kept:`, {input:'recovered/' + en.short, ok:'Make branch', atEnd:true});
+  if (!name?.trim()) return;
+  const r = await act(() => api('POST', '/api/reflog/recover', {gitDir:$('#histRepo').value, hash:en.hash, name:name.trim()}));
+  if (r){ toast(`Made the branch ${r.name || name.trim()} at ${en.short}. You are still where you were`, false, null, {label:'Switch to it', run: () => { $('#reflogDlg').close(); switchTo(r.name || name.trim()); }}); loadHistory(); }
+});
+$('#rlClose').onclick = () => $('#reflogDlg').close();
+$('#reflogBtn').onclick = openReflog;
+
+// -- bisect --
+let BS = null;
+async function bisectPost(body){
+  const gd = $('#histRepo').value;
+  try { const s = await api('POST', '/api/bisect', {gitDir:gd, ...body}); BS = s; return s; }
+  catch (e){ toast(e.message, true, e.hint); return null; }
+}
+async function openBisect(){
+  closeMenu(); const gd = $('#histRepo').value; if (!gd) return;
+  $('#bsBody').innerHTML = '<p class="hint">Reading…</p>'; openDlg($('#bisectDlg'));
+  try { BS = await api('GET', '/api/bisect?gitDir=' + encodeURIComponent(gd)); } catch (e){ vErr($('#bsBody'), e); return; }
+  drawBisect(); ($('#bsBody').querySelector('input,button'))?.focus();
+}
+const bsCommit = c => `<span class="mono">${esc(c.short)}</span> ${esc(c.subject)} <span class="hint">· ${esc(c.author)}, ${esc(ago(c.time))}</span>`;
+function drawBisect(){
+  const s = BS, el = $('#bsBody');
+  const names = [...(R?.branches || []).map(x => x.name), ...CM.tags];
+  if (!s.running){
+    const sel = H && picked.size === 1 ? [...picked][0] : '';
+    el.innerHTML = `<p class="hint">Bisect finds the first commit that broke something by testing commits between one that was good and one that is bad. You check out and test each commit it offers (a build or a quick look), and say good, bad or skip. It takes about log2(commits) steps.</p>
+      <form class="bsform" id="bsForm"><label>Bad: the commit where it is broken<input name="bad" value="HEAD" autocomplete="off" spellcheck="false" list="bsList"></label>
+      <label>Good: an older commit where it worked<input name="good" autocomplete="off" spellcheck="false" list="bsList" placeholder="a tag, branch or commit"></label>
+      <datalist id="bsList">${[...new Set(names)].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <div class="row-actions">${sel ? `<button type="button" class="btn" id="bsUseSel" title="Use the commit selected in the log as the good one">Good = the selected commit</button>` : ''}<button class="btn primary">Start</button></div></form>`;
+    $('#bsForm').onsubmit = async e => {
+      e.preventDefault(); const f = e.target;
+      if (!f.good.value.trim()){ toast('Say which commit was good.', true); return; }
+      const r = await bisectPost({action:'start', bad:f.bad.value.trim() || 'HEAD', good:f.good.value.trim()}); if (r){ drawBisect(); loadHistory(); }
+    };
+    $('#bsUseSel')?.addEventListener('click', () => { $('#bsForm').good.value = sel; });
+    return;
+  }
+  const steps = (s.steps || []).map(x => `<div class="vrow"><span class="badge ${x.mark === 'bad' ? 'lost' : ''}">${esc(x.mark)}</span><span class="sh">${esc(x.short)}</span><span class="sub">${esc(x.subject)}</span></div>`).join('');
+  const stop = `<button class="btn" data-bs="reset" title="Finish and put the folder back as it was">${s.next ? 'Stop and go back to ' : 'Go back to '}${esc(s.original || 'where you were')}</button>`;
+  if (s.culprit){
+    const c = s.culprit;
+    el.innerHTML = `<div class="vnote" role="status"><strong>Found it: this commit first made it bad.</strong></div>
+      <div class="bcard"><div class="row"><strong class="mono">${esc(c.short)}</strong><span>${esc(c.subject)}</span>${acctChip(c.account)}<span class="hint">${esc(c.author)} · ${esc(ago(c.time))}</span></div>
+      <div class="stfiles" style="margin-top:6px">${(c.files || []).map(f => `<div class="frow"><span class="fn">${esc(f)}</span></div>`).join('')}${c.filesMore ? `<div class="hint">and ${c.filesMore} more</div>` : ''}</div></div>
+      ${(s.maybe || []).length ? `<p class="hint">Too many were skipped to be sure; it is one of:</p>${s.maybe.map(m => `<div class="vrow"><span class="sh">${esc(m.short)}</span><span class="sub">${esc(m.subject)}</span></div>`).join('')}` : ''}
+      <div class="bsbtns"><button class="btn primary" data-bs="show">Show it in the log</button>${stop}</div>${steps ? `<h3 class="vh3">Steps</h3><div class="vbody" style="max-height:20vh">${steps}</div>` : ''}`;
+  } else {
+    el.innerHTML = `<div class="vnote" role="status"><strong>Test this commit:</strong> ${s.next ? bsCommit(s.next) : ''}<br><span class="hint">It is checked out in your folder. Build or try it, then answer. About ${s.stepsLeft} step${s.stepsLeft === 1 ? '' : 's'} left (${s.left} commits in doubt).</span></div>
+      <div class="bsbtns"><button class="btn primary" data-bs="good" title="This commit works">Good</button><button class="btn danger" data-bs="bad" title="This commit has the bug">Bad</button><button class="btn" data-bs="skip" title="Can't test this one (it does not build): try another">Skip</button><span class="spacer"></span>${stop}</div>
+      ${steps ? `<h3 class="vh3">Steps so far</h3><div class="vbody" style="max-height:24vh">${steps}</div>` : ''}`;
+  }
+}
+async function bisectDo(a){
+  if (a === 'show'){ if (BS?.culprit) goLog(BS.culprit.hash); return; }
+  if (a === 'reset' && BS?.next && !await ask(`Stop the search and go back to ${BS.original || 'where you were'}?`, {ok:'Stop'})) return;
+  const r = await bisectPost({action:a}); if (!r) return;
+  if (a === 'reset'){ toast('Back on ' + (r.original || 'your branch')); $('#bisectDlg').close(); }
+  else if ($('#bisectDlg').open) { drawBisect(); $('#bsBody').querySelector('[data-bs=good],[data-bs=show]')?.focus(); }
+  loadHistory();
+}
+$('#bsBody').addEventListener('click', e => { const a = e.target.closest('[data-bs]')?.dataset.bs; if (a) bisectDo(a); });
+$('#bsClose').onclick = () => $('#bisectDlg').close();
+$('#bisectBtn').onclick = openBisect;
+// The History page says so while a bisect runs, and answers from the banner.
+async function bisectBanner(gd, el){
+  let s; try { s = await api('GET', '/api/bisect?gitDir=' + encodeURIComponent(gd)); } catch { return; }
+  if (!s.running || $('#histRepo').value !== gd || !$('#opBanner')) return;
+  BS = s; const e2 = $('#opBanner'); e2.className = 'alert opbanner bis';
+  e2.innerHTML = s.culprit
+    ? `<div class="opmain"><strong>Bisect found it: ${esc(s.culprit.short)} ${esc(s.culprit.subject)}</strong></div><div class="opbtns"><button class="btn primary" data-bsb="show">Show it</button><button class="btn" data-bsb="reset">Go back to ${esc(s.original)}</button></div>`
+    : `<div class="opmain"><strong>Bisecting: test ${s.next ? esc(s.next.short + ' ' + s.next.subject) : 'the next commit'}</strong> <span class="hint">(~${s.stepsLeft} step${s.stepsLeft === 1 ? '' : 's'} left)</span></div>
+      <div class="opbtns"><button class="btn primary" data-bsb="good">Good</button><button class="btn danger" data-bsb="bad">Bad</button><button class="btn" data-bsb="skip">Skip</button><button class="btn" data-bsb="reset" title="Stop and go back to ${esc(s.original)}">Stop</button></div>`;
+  e2.querySelectorAll('[data-bsb]').forEach(b => b.onclick = () => bisectDo(b.dataset.bsb));
+}
 
 // ---- live refresh: the page follows the files and git ----
 // A long poll of /api/watch (the backend watches the repo's folder and git
@@ -1998,12 +2578,21 @@ function renderToolbar(){
   lbl(pb, 'Push', h?.ahead, `${h?.ahead} commit${h?.ahead > 1 ? 's' : ''} to push`);
   pb.title = !h?.branch ? 'Start or switch to a branch to push'
     : first ? `Put ${h.branch} on the remote${as}, and track it from then on`
-    : h.ahead && h.behind ? `${h.upstream} has new commits too: combine them first (git pull --rebase), then push. GitSwitch never forces a push.`
+    : h.ahead && h.behind ? `${h.upstream} has new commits too: combine them first (git pull --rebase), then push. Or replace them with Force push (with lease) in the ⋯ menu: it shows what would be lost first.`
     : h.ahead ? `Push ${h.ahead} commit${h.ahead > 1 ? 's' : ''} to ${h.upstream}${as}` : `Nothing to push: up to date with ${h.upstream}`;
   // Undo: only while the last change can still be undone.
   const u = R?.undo, can = !!(u && !u.blocked), btn = $('#undoBtn');
   btn.hidden = !can;
   btn.title = can ? `Undo “${u.label}” (Shift+U). ${u.effect}` : '';
+  // Redo: only after an Undo, until something else changes the repo.
+  const rd = R?.redo, canRedo = !!(rd && !rd.blocked), rb = $('#redoBtn');
+  rb.hidden = !canRedo;
+  rb.title = canRedo ? `Redo “${rd.label}” (Shift+R). ${rd.effect}` : '';
+  // Force push (with lease): only when both sides have new commits.
+  const fb = $('#forcePushBtn'), both = !!(h?.branch && h.upstream && h.ahead && h.behind);
+  fb.disabled = !both;
+  fb.title = both ? `Replace ${h.upstream} with your commits, only if nobody pushed since you fetched. Shows what would be lost first`
+    : 'Only when both this branch and its remote branch have new commits (the push is refused then)';
 }
 // undoLast asks, then undoes the repo's last change.
 async function undoLast(gd){
@@ -2016,6 +2605,16 @@ async function undoLast(gd){
 }
 // undoable is the toast action that undoes the change just made.
 const undoable = gd => ({label:'Undo', run: () => undoLast(gd)});
+// redoLast asks, then does again what the last Undo took back.
+async function redoLast(gd){
+  const r = await act(() => api('GET', '/api/refs?gitDir=' + encodeURIComponent(gd)));
+  const u = r?.redo;
+  if (!u){ toast('Nothing to redo in this repo'); return; }
+  if (u.blocked){ toast(u.blocked, true); return; }
+  if (!await ask(`Redo “${u.label}”? ${u.effect}`, {ok:'Redo'})) return;
+  if (await act(() => api('POST', '/api/redo', {gitDir:gd}))){ toast('Redone: ' + u.label, false, null, undoable(gd)); picked.clear(); loadHistory(); }
+}
+$('#redoBtn').onclick = () => redoLast($('#histRepo').value);
 $('#undoBtn').onclick = () => undoLast($('#histRepo').value);
 $('#fetchBtn').onclick = async e => {
   const gd = $('#histRepo').value, b = e.currentTarget;
@@ -2025,6 +2624,20 @@ $('#fetchBtn').onclick = async e => {
   if (!r) return;
   toast(r.gained ? `${r.gained} new commit${r.gained > 1 ? 's' : ''} on ${r.head.upstream}` : 'Fetched: nothing new',
     false, null, r.gained ? {label:'Update', run: () => $('#updateBtn').click()} : null);
+  loadHistory();
+};
+// Fetch and forget the remote branches the server deleted; says which, and
+// which local branches lost their remote branch.
+$('#pruneFetchBtn').onclick = async () => {
+  const gd = $('#histRepo').value, b = $('#fetchBtn');
+  b.disabled = true; lbl(b, 'Fetching…');
+  const r = await act(() => api('POST','/api/repo/fetch',{gitDir:gd, prune:true}));
+  b.disabled = false; lbl(b, 'Fetch');
+  if (!r) return;
+  const pr = r.pruned || [], gone = r.gone || [];
+  if (!pr.length && !gone.length){ toast('Fetched: no remote branch was deleted on the server' + (r.gained ? `; ${r.gained} new commit${r.gained > 1 ? 's' : ''} to pull` : '')); loadHistory(); return; }
+  await ask((pr.length ? `Forgot ${pr.length} remote branch${pr.length > 1 ? 'es' : ''} that ${pr.length > 1 ? 'were' : 'was'} deleted on the server:\n  ${pr.join('\n  ')}` : 'No remote branch was forgotten.')
+    + (gone.length ? `\n\n${gone.length} of your branch${gone.length > 1 ? 'es pull' : ' pulls'} from a deleted remote branch, so ${gone.length > 1 ? 'have' : 'has'} no upstream now:\n  ${gone.join('\n  ')}\nTheir commits are still here. Push a branch again to put it back on the server, or delete it if it is done.` : ''), {ok:'Close', cancel:'Done'});
   loadHistory();
 };
 $('#updateBtn').onclick = async e => {
@@ -2055,7 +2668,16 @@ $('#pushBtn').onclick = async e => {
     if (how === 'ok' && !await act(() => api('POST','/api/repo/fix',{gitDir:gd}))) return;
   }
   b.disabled = true; lbl(b, 'Pushing…');
-  const r = await act(() => api('POST','/api/repo/push',{gitDir:gd}));
+  let r;
+  try { r = await api('POST','/api/repo/push',{gitDir:gd}); }
+  catch (err) {
+    b.disabled = false; lbl(b, 'Push', R?.head?.ahead, `${R?.head?.ahead} commits to push`);
+    // Both sides have new commits: say so, and offer the lease-protected force.
+    if (/both have new commits, so a push would be refused/.test(err.message)){
+      if (await ask(`${err.message.split('\n')[0].replace(/ \(GitSwitch never forces one\)/, '')}.\n\nCombine them first (git pull --rebase), or replace the remote branch with yours. A force push with lease shows what would be lost and only goes through when nobody pushed since you fetched.`, {ok:'Review a force push…', cancel:'Close', danger:true})) forcePush();
+    } else toast(err.message, true, err.hint);
+    loadHistory(); return;
+  }
   if (r){
     const msg = !r.commits && !r.first ? 'Nothing to push' : `Pushed ${r.commits} commit${r.commits === 1 ? '' : 's'} to ${r.upstream}${r.account ? ' as ' + r.account : ''}`;
     toast(msg, false, null, r.prUrl ? {label:'Open pull request', run: () => act(() => api('POST','/api/open',{url:r.prUrl}))} : null);
@@ -2131,23 +2753,30 @@ $('#branchList').addEventListener('click', async e => {
 // switchTo switches branch, asking first what to do with uncommitted
 // changes (or doing what the switch setting says). b is a local branch or
 // a remote one (origin/x), which becomes a local branch that tracks it.
+// chooseMode says what happens to uncommitted changes when HEAD moves to
+// target: the setting answers, or the dialog asks (smart switch or park).
+// '' when there are none; null when cancelled. fresh preselects Smart switch.
+// detached: the move is to a commit, so the choice is not remembered.
+async function chooseMode(target, fresh, detached){
+  const gd = $('#histRepo').value, from = R?.head.branch || 'this commit', c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0), st = R.switchSetting;
+  if (!n) return '';
+  if (st.mode !== 'ask') return st.mode; // the setting answers
+  // Uncommitted changes: say what happens to them before moving. Smart
+  // switch is preselected for a new branch, park for one with its own work.
+  const parkable = !!R.head.branch;
+  const how = await ask(`You have uncommitted changes on ${from} (${[c.staged && c.staged + ' staged', c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}).\n\nSmart switch takes them with you to ${target}. If some of them clash with ${target}, you fix those files there, or go back exactly as before.\n\n` + (parkable ? `Park leaves them on ${from} (git stash) and switches clean. They are offered back when you return to ${from}.` : 'Park is not possible from a detached HEAD: there is no branch to park them on.'),
+    parkable ? {ok:'Smart switch', alt:'Park them on ' + from, pick: fresh ? 'ok' : 'alt', check: detached ? undefined : 'Remember my choice for this repo'} : {ok:'Smart switch'});
+  if (!how) return null;
+  const mode = how === 'alt' ? 'park' : 'smart';
+  if (!detached && parkable && $('#dlgCheck').checked && !await act(() => api('POST','/api/switch-setting',{gitDir:gd, mode}))) return null;
+  return mode;
+}
 async function switchTo(b){
   if (b === R?.head.branch) return;
   const gd = $('#histRepo').value, from = R?.head.branch, c = R?.head.changes || {}, n = (c.staged || 0) + (c.changed || 0) + (c.new || 0);
-  let mode = '';
   const st = R.switchSetting;
-  if (n && st.mode !== 'ask') mode = st.mode; // the setting answers
-  else if (n){
-    // Uncommitted changes: say what happens to them before switching.
-    // Smart switch is preselected for a new branch, park for one with its
-    // own work.
-    const isNew = R.branches.some(x => x.remote && x.name === b);
-    const how = await ask(`You have uncommitted changes on ${from} (${[c.staged && c.staged + ' staged', c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}).\n\nSmart switch takes them with you to ${b}. If some of them clash with ${b}, you fix those files there, or go back exactly as before.\n\nPark leaves them on ${from} (git stash) and switches clean. They are offered back when you return to ${from}.`,
-      {ok:'Smart switch', alt:'Park them on ' + from, pick: isNew ? 'ok' : 'alt', check:'Remember my choice for this repo'});
-    if (!how) return;
-    mode = how === 'alt' ? 'park' : 'smart';
-    if ($('#dlgCheck').checked && !await act(() => api('POST','/api/switch-setting',{gitDir:gd, mode}))) return;
-  }
+  const mode = await chooseMode(b, R.branches.some(x => x.remote && x.name === b));
+  if (mode === null) return;
   const r = await act(() => api('POST','/api/repo/switch',{gitDir:gd, branch:b, mode}));
   if (!r) return;
   if (r.clash) toast(`Switched to ${r.branch}, but ${r.clash.files.length} file${r.clash.files.length > 1 ? 's clash' : ' clashes'} with it. See the note above the commits.`);
@@ -2312,7 +2941,8 @@ function renderHistory(){
       <button class="btn${p.branch === h?.branch ? ' primary' : ''}" data-park-restore="${esc(p.stash)}"${p.branch === h?.branch ? '' : ` title="Restore them on ${esc(h?.branch || 'this commit')}, not ${esc(p.branch)}"`}>${p.branch === h?.branch ? 'Restore' : 'Restore here'}</button><button class="btn ghost danger" data-park-drop="${esc(p.stash)}">Delete</button></div>`).join('')}</div></div>` : '')
     + (r.emailBad ? `<div class="alert bad" role="status"><span><strong>New commits here are made as ${esc(r.email)}, not as ${esc(r.account)}.</strong> They will show another person than the account that pushes them.</span><button class="btn primary" id="useBtn">Use ${esc(r.account)}’s name and email</button></div>` : '')
     + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
-  if (h?.busy && !cl) loadOperation(r.gitDir);
+  detachedBanner(r.gitDir);
+  if (h?.busy === 'bisect' && !cl) bisectBanner(r.gitDir); else if (h?.busy && !cl) loadOperation(r.gitDir);
   $('#clashDone')?.addEventListener('click', async () => {
     if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}).then(() => true))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
   });
@@ -2412,7 +3042,7 @@ function renderHistory(){
     // The account comes first: a known account as a chip, then the name.
     const chip = VIEW.colAccount && (c.account || c.flagged) ? `<span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}${c.flagged ? '<span class="sr-only"> (wrong account for this repo)</span>' : ''}</span>` : '';
     const sel = picked.has(c.hash);
-    const subj = VIEW.refsLeft ? `${pills(c)}<span class="stext">${esc(c.subject)}</span>` : `<span class="stext">${esc(c.subject)}</span>${pills(c)}`;
+    const subj = VIEW.refsLeft ? `${pills(c)}<span class="stext">${esc(c.subject)}</span>${sigIcon(c.hash)}` : `<span class="stext">${esc(c.subject)}</span>${sigIcon(c.hash)}${pills(c)}`;
     return `<div class="hrow${c.flagged ? ' flag' : ''}${c.merge ? ' merge' : ''}${c.onHead ? ' onhead' : ''}${c.notPicked ? ' notpicked' : ''}${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" tabindex="0" data-hash="${esc(c.hash)}" title="${esc(c.short + ' ' + c.author + ' <' + c.email + '>' + (c.flagged ? ' (wrong account for this repo)' : ''))}">${svg}
       <div class="subj">${subj}</div>
       ${who ? `<div class="who" title="${esc(c.email)}">${chip}${VIEW.colAuthor ? `<span class="aname ${c.account ? 'mine' : 'other'}">${esc(c.author)}</span>` : ''}</div>` : ''}
@@ -2420,6 +3050,7 @@ function renderHistory(){
   }).join('') + '</div>' + (H.more ? `<div class="more-row"><span class="hint">Showing the latest ${H.commits.length} commits.</span> <button class="btn" id="moreBtn">Load ${HIST_PAGE} more</button></div>` : '');
   $('#moreBtn')?.addEventListener('click', e => { e.target.disabled = true; e.target.textContent = 'Loading…'; loadHistory(true); });
   renderDetails();
+  if (signingOn()) loadSignatures(H.commits.slice(0, 200).map(c => c.hash)).then(paintSigs);
 }
 
 function pick(hash, multi){
@@ -2600,13 +3231,14 @@ $('#refTree').addEventListener('contextmenu', e => {
 function refMenu(e, b, back = b){
   e.preventDefault();
   const {name, kind, ref} = b.dataset, cur = kind === 'local' && name === R?.head.branch;
-  const items = [['show', 'Show only its commits'], ...(kind !== 'tag' && !cur ? [['switch', 'Switch to ' + name], ['merge', `Merge into ${R?.head.branch || 'the current branch'}…`]] : []), ['new', `New branch from ${name}…`], ['copy', 'Copy name'],
+  const items = [['show', 'Show only its commits'], ...(kind !== 'tag' && !cur ? [['switch', 'Switch to ' + name], ['merge', `Merge into ${R?.head.branch || 'the current branch'}…`]] : []), ['new', `New branch from ${name}…`], ...(cur ? [] : [['compare', `Compare with ${R?.head.branch || 'HEAD'}…`]]), ['copy', 'Copy name'],
     ...(kind === 'local' ? [['-'], ['rename', 'Rename…'], ['upstream', 'Pull from a remote branch…'], ...(cur ? [] : [['delete', `Delete ${name}…`]])] : []),
-    ...(kind === 'tag' ? [['-'], ['tagpush', 'Push to the remote'], ['tagdel', 'Delete tag…']] : [])];
+    ...(kind === 'tag' ? [['-'], ['detach', 'Check out (detached)'], ['tagpush', 'Push to the remote'], ['tagdel', 'Delete tag…']] : []),
+    ...(kind === 'remote' ? [['-'], ['rdelete', 'Delete on the server…']] : [])];
   closeMenu();
   const m = document.createElement('div');
   m.className = 'rmenu'; m.setAttribute('role', 'menu');
-  m.innerHTML = items.map(([k, t]) => k === '-' ? '<hr>' : `<button role="menuitem" data-m="${k}"${k === 'delete' || k === 'tagdel' ? ' class="danger"' : ''}>${esc(t)}</button>`).join('');
+  m.innerHTML = items.map(([k, t]) => k === '-' ? '<hr>' : `<button role="menuitem" data-m="${k}"${k === 'delete' || k === 'tagdel' || k === 'rdelete' ? ' class="danger"' : ''}>${esc(t)}</button>`).join('');
   document.body.append(m);
   m.style.left = Math.min(e.clientX, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
   m.querySelector('button').focus();
@@ -2615,9 +3247,11 @@ function refMenu(e, b, back = b){
     closeMenu();
     if (k === 'show'){ F.ref = ref; picked.clear(); H = null; loadHistory(); }
     else if (k === 'switch') switchTo(name);
+    else if (k === 'compare') openCompare(R?.head.branch || 'HEAD', name);
     else if (k === 'new') newBranch(ref, 'from ' + name);
     else if (k === 'copy'){ try { await navigator.clipboard.writeText(name); toast('Copied ' + name); } catch { act(() => api('POST','/api/copy',{text:name}), 'Copied ' + name); } }
     else if (k === 'merge') mergeInto(name);
+    else if (k === 'detach') checkoutDetached(name, name);
     else branchAction(k, name);
   };
   m.onkeydown = ev => {
@@ -2653,6 +3287,8 @@ async function branchAction(k, name){
       r = await act(() => api('POST','/api/branch/delete',{gitDir:gd, name, force:true}));
     }
     if (r){ toast(`Deleted ${r.branch}${r.only ? ` (${r.only} commit${r.only > 1 ? 's' : ''} only Undo can bring back)` : ''}`, false, null, undoable(gd)); loadHistory(); }
+  } else if (k === 'rdelete'){
+    deleteRemoteBranch(name);
   } else if (k === 'tagpush'){
     const r = await act(() => api('POST','/api/tag/push',{gitDir:gd, name}));
     if (r) toast(`Pushed the tag ${r.tag} to ${r.remote}${r.account ? ' as ' + r.account : ''}`);
@@ -2721,11 +3357,13 @@ function renderDetails(){
       <dt>Account</dt><dd><span class="chip" style="color:${c.flagged ? 'var(--bad)' : col};border-color:currentColor">${esc(c.account || 'unknown')}</span>${c.flagged ? ' <span class="status-bad">wrong account for this repo</span>' : ''}</dd>
       <dt>Date</dt><dd>${esc(new Date(c.time * 1000).toLocaleString())}<br><span class="hint">${ago(c.time)}</span></dd>
       ${c.refs ? `<dt>Refs</dt><dd>${esc(c.refs)}</dd>` : ''}
+      ${signingOn() ? `<dt>Signature</dt><dd id="sigRow"><span class="hint">checking…</span></dd>` : ''}
       <dt>State</dt><dd>${pushed ? '<span class="state">Pushed</span>' : '<span class="state local">Not pushed</span> <span class="hint">only on this computer</span>'}</dd></dl>
     <div class="agroup"><h3>Safe</h3>
       ${actionRow('revert', 'Revert', 'Adds a new commit that undoes this one. History is kept, so it is safe after pushing.')}
       ${actionRow('pick', 'Cherry-pick', `Copies this commit from another branch onto ${branch} as a new commit.`)}
       ${actionRow('branch', 'New branch here', 'Starts a branch at this commit and switches to it. Uncommitted changes come along when they don’t clash with it.')}
+      ${actionRow('detach', 'Check out this commit (detached)', 'Look at the files as they were here. You are on no branch then: Back returns to ' + branch + ', New branch here keeps any work.')}
       ${actionRow('tag', 'Tag…', 'Names this commit, e.g. a release (v1.2.0). Nothing else changes.')}
       ${actionRow('browse', 'View on web ↗', pushed ? 'Opens this commit on GitHub, GitLab, …' : 'Push it first: the server does not have it yet.', {disabled: pushed ? '' : 'Not pushed yet'})}
     </div>
@@ -2737,6 +3375,7 @@ function renderDetails(){
     <p class="hint">Ctrl/⌘-click more commits to cherry-pick several at once.</p>`;
   d.hidden = false;
   showDetail($('#histRepo').value, c.hash);
+  if (signingOn()) loadSignatures([c.hash]).then(() => paintSigRow(c.hash));
 }
 // reflow joins the lines of each paragraph of a commit message: messages
 // are wrapped at ~72 columns, which wraps again, raggedly, in the narrow
@@ -2850,17 +3489,255 @@ async function showDiff(gd, hash, path){
   try { d = await api('GET', `/api/commit/diff?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`); }
   catch (e) { box.innerHTML = `<p class="hint" style="padding:8px">${esc(e.message)}</p>`; return; }
   if (inline && $('#diffbox') !== box) return;
-  const pre = diffPre(d);
+  const pre = diffPre(d, undefined, path);
   if (!inline){ box.innerHTML = pre; return; }
   box.innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>${pre}</div>`;
   box.querySelector('button').onclick = () => { box.innerHTML = ''; $('.frow.on')?.classList.remove('on'); };
 }
-// diffPre colors a unified diff: added and removed lines, hunk headers.
-function diffPre(d, empty = 'No text changes (a binary file, or only its mode changed).'){
-  const lines = d.text.split('\n').filter((l, i, a) => !(l.startsWith('diff --git') || l.startsWith('index ') || l.startsWith('--- ') || l.startsWith('+++ ') || (i === a.length - 1 && l === '')));
-  const cls = l => l.startsWith('@@') ? 'dhunk' : l.startsWith('+') ? 'da' : l.startsWith('-') ? 'dd'
-    : /^(new|deleted) file mode|^(old|new) mode|^similarity|^rename |^Binary files/.test(l) ? 'dmeta' : '';
-  return `<pre>${lines.length ? lines.map(l => `<span class="${cls(l)}">${esc(l) || ' '}</span>`).join('') : `<span class="hint">${esc(empty)}</span>`}${d.truncated ? '<span class="hint">… cut here: the diff is long. See the rest in your editor.</span>' : ''}</pre>`;
+// ---- the diff view: layout, word changes, syntax colours ----
+// Every diff on this page (a commit's file, the changes panel, a stash)
+// becomes a model {meta, hunks:[{index, header, lines:[{kind, text, old, new}]}]}
+// and is drawn by dvInner: unified or side by side, with the changed words
+// marked inside a modified line, whitespace-only changes optionally folded,
+// and a small built-in colouring of comments, strings, numbers and keywords.
+// Only the first few hundred lines are drawn; "Show more" adds more.
+const DV = Object.assign({layout:'unified', word:true, ws:false, syn:true}, store.get('gs.diffView', {}));
+const DV_STEP = 400;
+const dvReg = new Map(); let dvSeq = 0;
+const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|ico|avif|svg)$/i;
+// dvParse reads a unified diff's text. Merge (combined) diffs have no hunks it
+// understands: they come back as one plain block.
+function dvParse(text){
+  const meta = [], hunks = [], raw = [];
+  let h = null, o = 0, n = 0;
+  for (const l of (text || '').split('\n')){
+    const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
+    if (m){ o = +m[1]; n = +m[2]; h = {index: hunks.length, header: l, lines: []}; hunks.push(h); continue; }
+    if (!h){
+      if (/^(new|deleted) file mode|^rename |^copy |^similarity|^(old|new) mode|^Binary files/.test(l)) meta.push(l);
+      else if (l && !/^(diff |index |--- |\+\+\+ )/.test(l)) raw.push(l);
+      continue;
+    }
+    const c = l[0], t = l.slice(1);
+    if (c === '+') h.lines.push({kind: 'add', text: t, new: n++});
+    else if (c === '-') h.lines.push({kind: 'del', text: t, old: o++});
+    else if (c === ' ') h.lines.push({kind: 'context', text: t, old: o++, new: n++});
+    else if (c === '\\' && h.lines.length) h.lines[h.lines.length - 1].noEol = true;
+  }
+  if (!hunks.length && raw.length && !meta.some(x => x.startsWith('Binary')))
+    hunks.push({index: 0, header: '', lines: raw.map(l => ({kind: l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : 'context', text: l}))});
+  return {meta, hunks};
+}
+const DV_KW = s => new Set(s.split(' '));
+const DV_C = 'if else for while do switch case break continue return default new delete this true false null void static const let var class struct enum union typedef try catch finally throw throws import export from as in of is not and or sizeof extends implements interface public private protected final abstract override async await yield function package namespace using template typename virtual inline extern volatile goto';
+const DV_LANGS = {
+  go: {kw: DV_KW('break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var true false nil iota'), line: ['//'], block: true, q: '"\'`'},
+  js: {kw: DV_KW('break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof let new of return static super switch this throw try typeof var void while with yield async await true false null undefined interface type enum implements public private protected readonly as'), line: ['//'], block: true, q: '"\'`'},
+  py: {kw: DV_KW('and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield True False None self'), line: ['#'], q: '"\'', triple: true},
+  rs: {kw: DV_KW('as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while'), line: ['//'], block: true, q: '"', life: true},
+  jv: {kw: DV_KW('abstract as break case catch class const continue data default do else enum extends false final finally for fun if implements import in instanceof interface is new null object override package private protected public return static super switch synchronized this throw throws true try val var void when while'), line: ['//'], block: true, q: '"\''},
+  c: {kw: DV_KW(DV_C + ' auto char double float int long short signed unsigned bool'), line: ['//'], block: true, q: '"\''},
+  sh: {kw: DV_KW('if then else elif fi for while until do done case esac in function return exit local export readonly set unset source true false'), line: ['#'], q: '"\'', vars: true},
+  json: {kw: DV_KW('true false null'), q: '"', json: true},
+  yaml: {kw: DV_KW('true false null yes no on off'), line: ['#'], q: '"\'', yaml: true},
+  md: {kw: new Set(), q: '`', md: true},
+  html: {kw: new Set(), q: '"\'', html: true},
+  css: {kw: new Set(), block: true, q: '"\'', css: true},
+};
+const DV_EXT = {go:'go', js:'js', mjs:'js', cjs:'js', jsx:'js', ts:'js', tsx:'js', py:'py', rs:'rs', java:'jv', kt:'jv', kts:'jv', scala:'jv', c:'c', h:'c', cc:'c', cpp:'c', hpp:'c', cs:'c', swift:'c',
+  sh:'sh', bash:'sh', zsh:'sh', json:'json', yml:'yaml', yaml:'yaml', toml:'yaml', md:'md', markdown:'md', html:'html', htm:'html', xml:'html', svg:'html', css:'css', scss:'css'};
+function dvLang(path){ const m = /\.([A-Za-z0-9]+)$/.exec(path || ''); return m ? DV_LANGS[DV_EXT[m[1].toLowerCase()]] : null; }
+// dvSyn fills out[] with a code per character: 1 comment, 2 string, 3 number, 4 keyword, 5 property.
+// It reads one line at a time, so a comment or string that runs over several lines is coloured only where it starts.
+function dvSyn(t, L, out){
+  const n = t.length, ID = /[A-Za-z_$][\w$]*/y;
+  const mark = (a, b, c) => out.fill(c, a, b);
+  if (L.md){
+    if (/^\s{0,3}#{1,6}\s/.test(t)) mark(0, n, 4); else if (/^\s*>/.test(t)) mark(0, n, 1);
+  }
+  let i = 0;
+  while (i < n){
+    const c = t[i];
+    if (L.html && t.startsWith('<!--', i)){ const e = t.indexOf('-->', i + 4), end = e < 0 ? n : e + 3; mark(i, end, 1); i = end; continue; }
+    if (L.html && c === '<'){ const m = /^<\/?[A-Za-z][\w:-]*/.exec(t.slice(i, i + 60)); if (m){ mark(i + 1, i + m[0].length, 4); i += m[0].length; continue; } }
+    if (L.line && L.line.some(s => t.startsWith(s, i)) && (L.line[0] !== '#' || i === 0 || /\s/.test(t[i - 1]))){ mark(i, n, 1); break; }
+    if (L.block && t.startsWith('/*', i)){ const e = t.indexOf('*/', i + 2), end = e < 0 ? n : e + 2; mark(i, end, 1); i = end; continue; }
+    if (L.q && L.q.includes(c)){
+      if (L.triple && (t.startsWith('"""', i) || t.startsWith("'''", i))){ const e = t.indexOf(t.slice(i, i + 3), i + 3), end = e < 0 ? n : e + 3; mark(i, end, 2); i = end; continue; }
+      let j = i + 1;
+      while (j < n && t[j] !== c){ if (t[j] === '\\' && !L.md) j++; j++; }
+      if (j >= n && L.life && c === "'"){ i++; continue; } // a Rust lifetime, not a string
+      const end = Math.min(j + 1, n);
+      mark(i, end, L.json && /^\s*:/.test(t.slice(end)) ? 5 : 2); i = end; continue;
+    }
+    if (L.vars && c === '$'){ const m = /^\$(\{[^}]*\}|\w+)/.exec(t.slice(i, i + 60)); if (m){ mark(i, i + m[0].length, 3); i += m[0].length; continue; } }
+    if (L.css && c === '@'){ const m = /^@[\w-]+/.exec(t.slice(i, i + 40)); if (m){ mark(i, i + m[0].length, 4); i += m[0].length; continue; } }
+    if (c >= '0' && c <= '9' && (i === 0 || !/[\w$]/.test(t[i - 1]))){
+      const m = /^(0[xX][\da-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(t.slice(i, i + 40));
+      let end = i + (m ? m[0].length : 1);
+      if (L.css) while (end < n && /[a-z%]/i.test(t[end])) end++;
+      mark(i, end, 3); i = end; continue;
+    }
+    if (/[A-Za-z_$]/.test(c)){
+      ID.lastIndex = i; const m = ID.exec(t), w = m ? m[0] : c;
+      if (L.kw.has(w)) mark(i, i + w.length, 4);
+      i += w.length; continue;
+    }
+    i++;
+  }
+  if (L.yaml){ const m = /^(\s*-?\s*)([\w.\/-]+)(\s*:)(?=\s|$)/.exec(t); if (m) for (let k = m[1].length; k < m[1].length + m[2].length; k++) if (!out[k]) out[k] = 5; }
+  if (L.css){ const m = /^(\s+)([\w-]+)(?=\s*:)/.exec(t); if (m) for (let k = m[1].length; k < m[1].length + m[2].length; k++) if (!out[k]) out[k] = 5; }
+}
+// dvWords marks which words differ between an old and a new line (LCS on
+// words, spaces and symbols). It returns the changed character ranges of both
+// lines, or null when the lines are too different or too long for it to help.
+function dvWords(a, b, ws){
+  const tok = s => s.match(/\s+|\w+|[^\w\s]/g) || [], A = tok(a), B = tok(b), n = A.length, m = B.length;
+  if (!n || !m || n * m > 40000) return null;
+  const key = t => ws && /^\s/.test(t) ? ' ' : t, ka = A.map(key), kb = B.map(key), w = m + 1, L = new Uint16Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    L[i * w + j] = ka[i] === kb[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+  const ca = new Uint8Array(n).fill(1), cb = new Uint8Array(m).fill(1);
+  let i = 0, j = 0, same = 0;
+  while (i < n && j < m){
+    if (ka[i] === kb[j]){ ca[i] = cb[j] = 0; if (/\S/.test(A[i])) same++; i++; j++; }
+    else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) i++; else j++;
+  }
+  const words = Math.max(A.filter(t => /\S/.test(t)).length, B.filter(t => /\S/.test(t)).length);
+  if (!words || same / words < 0.3) return null;
+  const ranges = (T, c) => { const r = []; let p = 0; T.forEach((t, k) => { if (c[k] && !(ws && /^\s/.test(t))){ if (r.length && r[r.length - 1][1] === p) r[r.length - 1][1] = p + t.length; else r.push([p, p + t.length]); } p += t.length; }); return r; };
+  return [ranges(A, ca), ranges(B, cb)];
+}
+// dvEff turns a hunk's lines into rows {k: add|del|ctx, t, n, r (changed ranges), i (index in the hunk)}.
+// A del/add pair that differs only in whitespace folds into one context row when fold is set.
+function dvEff(lines, fold){
+  const rows = []; let i = 0;
+  const squash = s => s.replace(/\s+/g, '');
+  while (i < lines.length){
+    const l = lines[i];
+    if (l.kind === 'context'){ rows.push({k: 'ctx', t: l.text, n: l.new, i, eol: l.noEol}); i++; continue; }
+    let j = i; while (j < lines.length && lines[j].kind === 'del') j++;
+    let e = j; while (e < lines.length && lines[e].kind === 'add') e++;
+    if (e === i){ i++; continue; }
+    const nd = j - i, na = e - j, dels = [], adds = [];
+    for (let p = 0; p < nd; p++) dels.push({k: 'del', t: lines[i + p].text, n: lines[i + p].old, i: i + p, eol: lines[i + p].noEol});
+    for (let p = 0; p < na; p++) adds.push({k: 'add', t: lines[j + p].text, n: lines[j + p].new, i: j + p, eol: lines[j + p].noEol});
+    const gone = new Set();
+    for (let p = 0; p < Math.min(nd, na); p++){
+      const d = dels[p], a = adds[p];
+      if (DV.ws && squash(d.t) === squash(a.t)){
+        if (fold){ gone.add(d); a.k = 'ctx'; } else { d.r = []; a.r = []; }
+      } else if (DV.word && d.t !== a.t && d.t.length < 600 && a.t.length < 600){
+        const r = dvWords(d.t, a.t, DV.ws); if (r){ d.r = r[0]; a.r = r[1]; }
+      }
+    }
+    for (const d of dels) if (!gone.has(d)) rows.push(d);
+    for (const a of adds) rows.push(a);
+    i = e;
+  }
+  return rows;
+}
+// dvLine is one line's HTML: syntax classes and changed-word marks over escaped text.
+function dvLine(t, r, L){
+  if (!t) return ' ';
+  const n = t.length;
+  if (!L && !(r && r.length)) return esc(t);
+  const code = new Uint8Array(n), w = new Uint8Array(n);
+  if (L && n < 1500) dvSyn(t, L, code);
+  if (r) for (const [a, b] of r) w.fill(1, a, b);
+  const cls = ['', 'tc', 'ts', 'tn', 'tk', 'tp'];
+  let out = '', s = 0;
+  for (let i = 1; i <= n; i++){
+    if (i < n && code[i] === code[s] && w[i] === w[s]) continue;
+    const c = cls[code[s]] + (w[s] ? ' w' : ''), seg = esc(t.slice(s, i));
+    out += c.trim() ? `<span class="${c.trim()}">${seg}</span>` : seg;
+    s = i;
+  }
+  return out;
+}
+const DV_SIGN = {add: '+', del: '-', ctx: ' '};
+function dvInner(id){
+  const {model: m, opts: o} = dvReg.get(id), split = DV.layout === 'split', sel = !!o.hd && !split;
+  const L = DV.syn ? dvLang(o.path) : null, hd = o.hd;
+  const img = IMG_RE.test(o.path || '') && m.meta.some(x => x.startsWith('Binary'));
+  const chk = (k, t) => `<label><input type="checkbox" data-dvk="${k}"${DV[k] ? ' checked' : ''}> ${t}</label>`;
+  const tool = `<div class="dvtool" role="toolbar" aria-label="Diff view options"><span class="seg" role="group" aria-label="Layout"><button class="btn" data-dv="unified" aria-pressed="${!split}">Unified</button><button class="btn" data-dv="split" aria-pressed="${split}">Side by side</button></span>`
+    + chk('word', 'Word changes') + chk('ws', 'Ignore whitespace') + chk('syn', 'Syntax')
+    + (m.hunks.length > 1 ? `<button class="btn ghost" data-dv="fold">${m.shut.size >= m.hunks.length ? 'Expand all hunks' : 'Collapse all hunks'}</button>` : '')
+    + (hd && split ? '<span class="hint">Side by side stages whole hunks; use Unified to pick single lines.</span>' : '') + '</div>';
+  const meta = m.meta.length ? `<div class="hmeta">${esc(m.meta.join(' · '))}</div>` : '';
+  if (!m.hunks.length){
+    return tool + meta + (hd ? '<div class="hbar" id="hbar" role="status" hidden></div>' : '') + `<div class="dvbody"><p class="dvnote">${img ? 'An image changed: this is a binary file, so there is no text to compare. Open it in your editor or image viewer to see the difference.' : esc(o.empty)}</p></div>`;
+  }
+  let budget = m.limit, hidden = 0;
+  const verbs = !hd ? [] : hd.staged ? [['unstage', 'Unstage hunk']] : [['stage', 'Stage hunk'], ...(hd.isNew ? [] : [['discard', 'Discard hunk']])];
+  const word = {add: 'added', del: 'removed'};
+  const body = m.hunks.map(h => {
+    const take = Math.max(0, Math.min(h.lines.length, budget)); budget -= take; hidden += h.lines.length - take;
+    if (!take && h.lines.length) return '';
+    const shut = m.shut.has(h.index), rows = dvEff(h.lines.slice(0, take), !sel);
+    let inner;
+    if (split){
+      const left = [], right = [], cell = (r, side) => `<div class="sc ${side === 'l' ? 'sd' : 'sa'}"><span class="gn">${r.n ?? ''}</span><span class="gs">${side === 'l' ? '-' : '+'}</span><span class="gt">${dvLine(r.t, r.r, L)}</span></div>`;
+      const ctx = r => `<div class="sc"><span class="gn">${r.n ?? ''}</span><span class="gs"> </span><span class="gt">${dvLine(r.t, null, L)}</span></div>`, none = '<div class="sc se"><span class="gn"></span><span class="gs"> </span><span class="gt"> </span></div>';
+      for (let i = 0; i < rows.length;){
+        if (rows[i].k === 'ctx'){ left.push(ctx(rows[i])); right.push(ctx(rows[i])); i++; continue; }
+        const ds = [], as = [];
+        while (i < rows.length && rows[i].k === 'del') ds.push(rows[i++]);
+        while (i < rows.length && rows[i].k === 'add') as.push(rows[i++]);
+        for (let p = 0; p < Math.max(ds.length, as.length); p++){ left.push(ds[p] ? cell(ds[p], 'l') : none); right.push(as[p] ? cell(as[p], 'r') : none); }
+      }
+      inner = `<div class="split"><div class="side">${left.join('')}</div><div class="side">${right.join('')}</div></div>`;
+    } else {
+      inner = rows.map(r => {
+        const cls = r.k === 'add' ? 'da' : r.k === 'del' ? 'dd' : '', ch = r.k !== 'ctx', pick = sel && ch;
+        const attrs = pick ? ` role="checkbox" aria-checked="false" tabindex="0" data-h="${h.index}" data-l="${r.i}" aria-label="Pick ${word[r.k]} line ${r.n}: ${esc(r.t.slice(0, 60))}"` : '';
+        return `<div class="dl ${cls}"${attrs}>${sel ? '<span class="gb" aria-hidden="true"></span>' : ''}<span class="gn">${r.n ?? ''}</span><span class="gs">${DV_SIGN[r.k]}</span><span class="gt">${dvLine(r.t, r.r, L)}${r.eol ? ' <span class="hint">⏎ no newline at end of file</span>' : ''}</span></div>`;
+      }).join('');
+    }
+    const head = h.header ? `<div class="hh"><button class="hcol" data-hc="${h.index}" aria-expanded="${!shut}" aria-label="${shut ? 'Expand' : 'Collapse'} hunk ${h.index + 1}"></button><span class="ht" title="${esc(h.header)}">${esc(h.header)}</span>`
+      + (verbs.length ? `<span class="hb">${verbs.map(([v, t]) => `<button class="btn${v === 'discard' ? ' danger' : ''}" data-hv="${v}" data-h="${h.index}" aria-label="${t} ${h.index + 1} of ${esc(hd.path)}">${t}</button>`).join('')}</span>` : '') + '</div>' : '';
+    return `<section class="hunk${shut ? ' shut' : ''}" aria-label="Hunk ${h.index + 1} of ${m.hunks.length}">${head}<div class="hbody">${inner}</div></section>`;
+  }).join('');
+  const more = hidden > 0 ? `<div class="more-row"><span class="hint">${hidden} more line${hidden > 1 ? 's' : ''} not shown</span><button class="btn" data-more="1">Show ${Math.min(DV_STEP, hidden)} more</button></div>` : '';
+  return tool + meta + (hd ? '<div class="hbar" id="hbar" role="status" hidden></div>' : '') + `<div class="dvbody">${body}${more}${m.truncated ? '<p class="dvnote">… cut here: the diff is long. See the rest in your editor.</p>' : ''}</div>`;
+}
+// dvMount registers a diff and returns its HTML; the page's one set of
+// listeners (below) redraws it when a choice changes.
+function dvMount(m, opts){
+  const id = 'dv' + (++dvSeq);
+  if (dvReg.size > 30) dvReg.delete(dvReg.keys().next().value);
+  m.shut = new Set(); m.limit = DV_STEP;
+  dvReg.set(id, {model: m, opts});
+  return `<div class="dv" data-dvid="${id}">${dvInner(id)}</div>`;
+}
+function dvRedraw(el){
+  const id = el.dataset.dvid, reg = dvReg.get(id); if (!reg) return;
+  const sc = el.querySelector('.dvbody')?.scrollTop || 0, a = document.activeElement, f = a && el.contains(a) ? (a.dataset.dv ? `[data-dv="${a.dataset.dv}"]` : a.dataset.dvk ? `[data-dvk="${a.dataset.dvk}"]` : a.dataset.hc ? `[data-hc="${a.dataset.hc}"]` : a.dataset.more ? '[data-more]' : '') : '';
+  el.innerHTML = dvInner(id);
+  const b = el.querySelector('.dvbody'); if (b) b.scrollTop = sc;
+  if (f) el.querySelector(f)?.focus();
+  if (reg.opts.hd) hupdate();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('.dv [data-dv],.dv [data-hc],.dv [data-more]'); if (!t) return;
+  const el = t.closest('.dv'), reg = dvReg.get(el.dataset.dvid); if (!reg) return;
+  const m = reg.model;
+  if (t.dataset.dv === 'unified' || t.dataset.dv === 'split'){ DV.layout = t.dataset.dv; store.set('gs.diffView', DV); if (reg.opts.hd){ hsel.clear(); hanchor = null; } }
+  else if (t.dataset.dv === 'fold'){ if (m.shut.size >= m.hunks.length) m.shut.clear(); else m.hunks.forEach(h => m.shut.add(h.index)); }
+  else if (t.dataset.hc !== undefined){ const i = +t.dataset.hc; m.shut.has(i) ? m.shut.delete(i) : m.shut.add(i); }
+  else if (t.dataset.more){ m.limit += DV_STEP; }
+  dvRedraw(el);
+});
+document.addEventListener('change', e => {
+  const t = e.target.closest?.('.dv [data-dvk]'); if (!t) return;
+  DV[t.dataset.dvk] = t.checked; store.set('gs.diffView', DV);
+  dvRedraw(t.closest('.dv'));
+});
+// diffPre draws a diff's text (the toolbar and the lines).
+function diffPre(d, empty = 'No text changes (a binary file, or only its mode changed).', path = ''){
+  const m = dvParse(d.text); m.truncated = d.truncated;
+  return dvMount(m, {path, empty});
 }
 $('#diffDlgClose').onclick = () => $('#diffDlg').close();
 
@@ -3079,7 +3956,7 @@ async function showWipDiff(gd, path, staged){
   const head = `<div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>`;
   const hunks = d.hunks || [];
   if (!hunks.length || !d.fingerprint){
-    box.innerHTML = `<div class="diffbox">${head}${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'))}${d.noHunks && d.text ? `<p class="hmeta">${esc(d.noHunks)}</p>` : ''}</div>`;
+    box.innerHTML = `<div class="diffbox">${head}${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'), path)}${d.noHunks && d.text ? `<p class="hmeta">${esc(d.noHunks)}</p>` : ''}</div>`;
   } else {
     const f = CH?.files.find(x => x.path === path);
     HD = {gd, path, staged, fp: d.fingerprint, hunks, isNew: !staged && f?.staged === '?'};
@@ -3097,17 +3974,8 @@ async function showWipDiff(gd, path, staged){
 let HD = null, hanchor = null;
 const hsel = new Set();
 function hunkView(d, hd){
-  const meta = [];
-  for (const l of d.text.split('\n')){ if (l.startsWith('@@')) break; if (/^(new|deleted) file mode|^rename |^copy |^similarity|^(old|new) mode|^Binary files/.test(l)) meta.push(l); }
-  const verbs = hd.staged ? [['unstage', 'Unstage hunk']] : [['stage', 'Stage hunk'], ...(hd.isNew ? [] : [['discard', 'Discard hunk']])];
-  const word = {add: 'added', del: 'removed'};
-  return (meta.length ? `<div class="hmeta">${esc(meta.join(' · '))}</div>` : '') + `<div class="hbar" id="hbar" role="status" hidden></div><div class="hscroll">`
-    + hd.hunks.map(h => `<section class="hunk" aria-label="Hunk ${h.index + 1} of ${hd.hunks.length}"><div class="hh"><span class="ht" title="${esc(h.header)}">${esc(h.header)}</span>
-      <span class="hb">${verbs.map(([v, t]) => `<button class="btn${v === 'discard' ? ' danger' : ''}" data-hv="${v}" data-h="${h.index}" aria-label="${t} ${h.index + 1} of ${esc(hd.path)}">${t}</button>`).join('')}</span></div>
-      <div class="hlines">${h.lines.map((l, i) => {
-        const ch = l.kind !== 'context', n = l.kind === 'del' ? l.old : l.new, txt = (l.text || '').replace(/\r$/, '');
-        return `<div class="dl ${l.kind === 'add' ? 'da' : l.kind === 'del' ? 'dd' : ''}"${ch ? ` role="checkbox" aria-checked="false" tabindex="0" data-h="${h.index}" data-l="${i}" aria-label="Pick ${word[l.kind]} line ${n}: ${esc(txt.slice(0, 60))}"` : ''}><span class="gb" aria-hidden="true"></span><span class="gn">${n}</span><span class="gs">${l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' '}</span><span class="gt">${esc(txt) || ' '}${l.noEol ? ' <span class="hint">⏎ no newline at end of file</span>' : ''}</span></div>`;
-      }).join('')}</div></section>`).join('') + (d.truncated ? '<p class="hmeta">… cut here: the diff is long.</p>' : '') + '</div>';
+  const m = dvParse(d.text); m.hunks = hd.hunks; m.truncated = d.truncated; // the server's own hunks: their numbers are what staging uses
+  return dvMount(m, {path: hd.path, hd, empty: 'No changes here.'});
 }
 // hupdate shows which lines are picked and the bar that acts on them.
 function hupdate(){
@@ -3171,7 +4039,7 @@ $('#details').addEventListener('keydown', e => {
 // everyone (.gitignore) or just this clone (.git/info/exclude).
 function ignoreMenu(x, y, path, back){
   const name = path.split('/').pop(), dot = name.lastIndexOf('.'), ext = dot > 0 ? name.slice(dot) : '', dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-  const items = [['file', `Ignore ${name}`], ...(ext ? [['ext', `Ignore all *${ext} files`]] : []), ...(dir ? [['folder', `Ignore the folder ${dir}/`]] : []), ['-'], ['local', 'Only for me (not shared)…']];
+  const items = [['blame', 'Blame'], ['history', 'File history'], ['-'], ['file', `Ignore ${name}`], ...(ext ? [['ext', `Ignore all *${ext} files`]] : []), ...(dir ? [['folder', `Ignore the folder ${dir}/`]] : []), ['-'], ['local', 'Only for me (not shared)…']];
   closeMenu();
   const m = document.createElement('div');
   m.className = 'rmenu'; m.setAttribute('role', 'menu');
@@ -3188,6 +4056,8 @@ function ignoreMenu(x, y, path, back){
   m.onclick = async ev => {
     let k = ev.target.closest('[data-m]')?.dataset.m; if (!k) return;
     closeMenu();
+    if (k === 'blame') return openBlame(path, '');
+    if (k === 'history') return openFileHistory(path);
     let local = false;
     if (k === 'local'){
       const how = await ask(`Ignore ${name} only in this clone (.git/info/exclude)? Others won’t see the rule.`, {ok:`Ignore ${name}`, alt: ext ? `All *${ext} files` : ''});
@@ -3244,6 +4114,7 @@ async function commitAction(a){
   if (a === 'browse'){ act(() => api('POST','/api/commit/browse',{gitDir:gd, hash:c.hash})); return; }
   if (a === 'branch'){ newBranch(c.hash, `at ${c.short} “${c.subject}”`); return; }
   if (a === 'tag'){ newTag(c); return; }
+  if (a === 'detach'){ checkoutDetached(c.hash, `${c.short} “${c.subject}”`); return; }
   const n = cs.length, s = n > 1 ? 's' : '', name = `${c.short} “${c.subject}”`;
   const q = {
     pick: [`Cherry-pick ${n > 1 ? n + ' commits' : name} onto ${branch}${n > 1 ? ', oldest first' : ''}? Each becomes a new commit on ${branch}. If one does not apply cleanly, nothing changes.`, 'Cherry-pick'],
@@ -3271,7 +4142,7 @@ document.addEventListener('keydown', e => {
 });
 $('#keysBtn').onclick = () => $('#keysDlg').showModal();
 document.addEventListener('keydown', e => {
-  if (!histVisible() || $('#dlg').open || $('#palDlg').open || e.altKey) return;
+  if (!histVisible() || $('#dlg').open || $('#palDlg').open || e.altKey || document.querySelector('dialog[open]')) return;
   const typing = e.target.closest('input, select, textarea');
   if (e.key === 'Escape'){
     if (!$('#actionsPop').hidden){ toggleActions(false); $('#actionsBtn').focus(); return; }
@@ -3292,9 +4163,234 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'b'){ e.preventDefault(); toggleBranches(true); }
   else if (e.key === 't'){ e.preventDefault(); toggleSide(); }
   else if (e.key === 'U'){ e.preventDefault(); undoLast($('#histRepo').value); }
+  else if (e.key === 'R'){ e.preventDefault(); redoLast($('#histRepo').value); }
   else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
   else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }
 });
+
+
+// ---- remotes ----
+const noteToast = (msg, undo, lead = 'To undo') => toast(msg + (undo ? `\n${lead}: ${undo}` : ''), false, null, {label:'OK', run: () => {}});
+async function openRemotes(){
+  closeMenu();
+  const gd = $('#histRepo').value; if (!gd) return;
+  $('#rmList').innerHTML = '<p class="hint" style="padding:6px">Reading…</p>';
+  openDlg($('#remotesDlg'));
+  await loadRemotes(gd); $('#rmAdd').focus();
+}
+async function loadRemotes(gd = $('#histRepo').value){
+  let l; try { l = await api('GET', '/api/remotes?gitDir=' + encodeURIComponent(gd)); } catch (e){ vErr($('#rmList'), e); return; }
+  l = l || [];
+  $('#rmSub').textContent = l.length ? `${l.length} remote${l.length > 1 ? 's' : ''}` : 'none yet';
+  $('#rmList').innerHTML = !l.length ? '<p class="hint" style="padding:8px">No remote yet: this repo is only on this computer. “Add remote…” connects it to a server such as GitHub.</p>'
+    : l.map(r => {
+      const tr = r.tracking || [];
+      const used = [r.upstream && '<span class="tag">current branch pulls from this</span>', tr.length && `<span class="hint">tracked by ${tr.map(esc).join(', ')}</span>`].filter(Boolean).join(' ');
+      return `<div class="rmrow" data-remote="${esc(r.name)}"><div class="rmhead"><strong>${esc(r.name)}</strong>${r.account ? `<span class="chip" style="color:${colorOf(r.account)};border-color:currentColor" title="Fetching and pushing use this account">pushes as ${esc(r.account)}</span>` : '<span class="hint">no account for ' + esc(r.host || 'this host') + ': git asks</span>'}${used}</div>
+        <div class="rmurl mono">${esc(r.fetchURL)}</div>${r.pushURL && r.pushURL !== r.fetchURL ? `<div class="rmurl mono hint">push: ${esc(r.pushURL)}</div>` : ''}
+        <div class="stbtns"><button class="btn" data-rma="rename">Rename…</button><button class="btn" data-rma="url">Change URL…</button><span class="spacer"></span><button class="btn ghost danger" data-rma="remove">Remove</button></div></div>`;
+    }).join('');
+}
+$('#rmClose').onclick = () => $('#remotesDlg').close();
+$('#rmAdd').onclick = async () => {
+  const gd = $('#histRepo').value, first = !$('#rmList .rmrow');
+  const name = await ask('Name for the new remote (the usual one is origin):', {input: first ? 'origin' : '', ok:'Next'});
+  if (!name?.trim()) return;
+  const url = await ask(`URL of ${name.trim()}, e.g. git@github.com:owner/repo.git`, {input:'', ok:'Add remote'});
+  if (!url?.trim()) return;
+  const r = await act(() => api('POST','/api/remote/add',{gitDir:gd, name:name.trim(), url:url.trim()}));
+  if (!r) return;
+  noteToast(`Added ${r.name} (${r.url})${r.note ? '. ' + r.note : ''}`, `git remote remove ${r.name}`);
+  await loadRemotes(gd); loadHistory();
+};
+$('#rmList').addEventListener('click', async e => {
+  const a = e.target.closest('[data-rma]')?.dataset.rma, row = e.target.closest('[data-remote]'); if (!a || !row) return;
+  const gd = $('#histRepo').value, name = row.dataset.remote;
+  if (a === 'rename'){
+    const to = await ask(`Rename the remote ${name} to:`, {input:name, ok:'Rename', atEnd:true});
+    if (!to?.trim() || to.trim() === name) return;
+    const r = await act(() => api('POST','/api/remote/rename',{gitDir:gd, name, newName:to.trim()}));
+    if (r) noteToast(`Renamed ${r.name} to ${r.newName}${r.branches?.length ? `; ${r.branches.join(', ')} still track it` : ''}${r.note ? '. ' + r.note : ''}`, `git remote rename ${r.newName} ${r.name}`);
+  } else if (a === 'url'){
+    const cur = row.querySelector('.rmurl').textContent;
+    const url = await ask(`New URL for ${name}:`, {input:cur, ok:'Change URL', atEnd:true});
+    if (!url?.trim() || url.trim() === cur) return;
+    const r = await act(() => api('POST','/api/remote/set-url',{gitDir:gd, name, url:url.trim()}));
+    if (r) noteToast(`${r.name} now points to ${r.url}${r.note ? '. ' + r.note : ''}`, r.was ? `git remote set-url ${r.name} ${r.was}` : '');
+  } else if (a === 'remove'){
+    if (!await ask(`Remove the remote ${name} from this repo? The server and its branches are not touched; this clone just forgets it and its remote branches.`, {ok:'Remove', danger:true})) return;
+    let r;
+    try { r = await api('POST','/api/remote/remove',{gitDir:gd, name}); }
+    catch (err){
+      if (!/only with force/.test(err.message)){ toast(err.message, true, err.hint); return; }
+      if (!await ask(err.message.replace(/\. Remove it anyway only with force$/, '.') + '\n\nRemove it anyway?', {ok:'Remove anyway', danger:true})) return;
+      r = await act(() => api('POST','/api/remote/remove',{gitDir:gd, name, force:true}));
+    }
+    if (r) noteToast(`Removed ${r.name}${r.branches?.length ? `; ${r.branches.join(', ')} have no upstream now` : ''}`, r.was ? `git remote add ${r.name} ${r.was}` : '');
+  }
+  await loadRemotes(gd); loadHistory();
+});
+$('#remotesBtn').onclick = openRemotes;
+
+// ---- a branch on the server ----
+async function deleteRemoteBranch(ref){
+  const gd = $('#histRepo').value;
+  let p, force = false;
+  const preview = () => api('POST','/api/remote-branch/delete',{gitDir:gd, ref, preview:true, force});
+  try { p = await preview(); }
+  catch (e){
+    if (!/only with force/.test(e.message)){ toast(e.message, true, e.hint); return; }
+    if (!await ask(e.message.replace(/\.? ?Delete it anyway only with force$/, '.').replace(/, or delete it anyway only with force$/, '.') + '\n\nGo on anyway?', {ok:'Go on', danger:true})) return;
+    force = true;
+    try { p = await preview(); } catch (e2){ toast(e2.message, true, e2.hint); return; }
+  }
+  const tr = p.tracking || [];
+  if (!await ask(`Delete ${p.branch} on ${p.remote}, the server? It goes away for everyone, not only here.\n\nIt is at ${shortOf(p.hash)} now. ${p.account ? p.account + ' does it.' : 'Git asks who you are.'}`
+    + (tr.length ? `\n\nYour ${tr.join(', ')} pull${tr.length === 1 ? 's' : ''} from it and lose${tr.length === 1 ? 's' : ''} the upstream.` : '')
+    + (p.restore ? `\n\nTo put it back: ${p.restore}` : ''), {ok:'Delete on the server', danger:true})) return;
+  const r = await act(() => api('POST','/api/remote-branch/delete',{gitDir:gd, ref, force}));
+  if (!r) return;
+  noteToast(`Deleted ${r.branch} on ${r.remote}${r.account ? ' as ' + r.account : ''}`, r.restore, 'To put it back');
+  loadHistory();
+}
+
+// ---- force push with lease ----
+let FP = null;
+async function forcePush(){
+  closeMenu();
+  const gd = $('#histRepo').value; if (!gd) return;
+  let p; try { p = await api('GET', '/api/repo/push-plan?gitDir=' + encodeURIComponent(gd)); } catch (e){ toast(e.message, true, e.hint); return; }
+  FP = p;
+  const n = p.toOverwrite?.length + (p.moreOverwrite || 0), m = p.toPush?.length + (p.morePush || 0);
+  const list = (ls, more, cls) => `<div class="vbody">${(ls || []).map(l => `<div class="vrow ${cls}" title="${esc(l.subject)}"><span class="sh">${esc(l.short)}</span><span class="sub">${esc(l.subject)}</span><span class="hint">${esc(l.author)}</span><span class="when">${esc(ago(l.time))}</span></div>`).join('')}${more ? `<div class="vmore"><span class="hint">…and ${more} more</span></div>` : ''}</div>`;
+  $('#fcBody').innerHTML = !p.canForce ? `<div class="vnote" role="status">${esc(p.why || 'A force push is not possible now.')}</div><div class="row-actions"><button class="btn" id="fcCancel">Close</button></div>` : `
+    <div class="warnbox" role="alert"><strong>This replaces ${esc(p.upstream)}.</strong> These ${n} commit${n === 1 ? '' : 's'} on the server will be lost for everyone who hasn't got ${n === 1 ? 'it' : 'them'}:</div>
+    ${list(p.toOverwrite, p.moreOverwrite, 'lose')}
+    <p style="margin:12px 0 6px"><strong>These ${m} of yours will be pushed${p.account ? ' as ' + esc(p.account) : ''}:</strong></p>
+    ${list(p.toPush, p.morePush, 'send')}
+    <p class="hint">It goes through only if ${esc(p.upstream)} is still where your last fetch saw it (${esc(shortOf(p.expect))}). If someone pushed since, nothing is overwritten.</p>
+    <label class="chkline"><input type="checkbox" id="fcOk"> <span>I understand other people’s commits on the server are overwritten</span></label>
+    <div class="row-actions"><button class="btn" id="fcCancel">Cancel</button><button class="btn dangerfill" id="fcGo" disabled>Force push (with lease)</button></div>`;
+  openDlg($('#forceDlg'));
+  $('#fcOk')?.addEventListener('change', e => $('#fcGo').disabled = !e.target.checked);
+  $('#fcCancel').onclick = () => $('#forceDlg').close();
+  if ($('#fcGo')) $('#fcGo').onclick = () => runForcePush(gd, p);
+  ($('#fcOk') || $('#fcCancel')).focus();
+}
+$('#fcClose').onclick = () => $('#forceDlg').close();
+async function runForcePush(gd, p){
+  $('#fcGo').disabled = true;
+  // The account check first, as for Push.
+  let accountOk = false;
+  const ch = await act(() => api('GET', '/api/account-check?gitDir=' + encodeURIComponent(gd)));
+  if (!ch){ $('#fcGo').disabled = false; return; }
+  if (ch.wrong){
+    $('#forceDlg').close();
+    const how = await ask(`${ch.wrong} not-pushed commit${ch.wrong > 1 ? 's' : ''} on this branch ${ch.wrong > 1 ? 'were' : 'was'} made as ${ch.wrongEmails.join(', ')}, but ${ch.account} will push ${ch.wrong > 1 ? 'them' : 'it'}.\n\nFix rewrites ${ch.wrong > 1 ? 'them' : 'it'} as ${ch.account} (${ch.accountEmail}) before pushing; pushed commits are never changed.`, {ok:'Fix, then push', alt:'Push as they are'});
+    if (!how) return forcePush();
+    if (how === 'ok'){ if (!await act(() => api('POST','/api/repo/fix',{gitDir:gd}))) return forcePush(); await loadHistory(); return forcePush(); } // the lease changes with the rewrite: look again
+    accountOk = true;
+  }
+  try {
+    const body = {gitDir:gd, force:'lease', confirm:true, expect:p.expect}; if (accountOk) body.accountOk = true;
+    const r = await api('POST','/api/repo/push', body);
+    $('#forceDlg').close();
+    toast(`Force pushed ${r.commits || ''} commit${r.commits === 1 ? '' : 's'} to ${r.upstream || p.upstream}${r.account ? ' as ' + r.account : ''}`);
+    loadHistory();
+  } catch (e){
+    if (/moved since you looked|someone pushed/i.test(e.message)){
+      toast('Someone pushed since you looked: Fetch and review first. Nothing was overwritten.', true);
+      // Read the remote again, then show the plan again: the checkbox starts empty.
+      await act(() => api('POST','/api/repo/fetch',{gitDir:gd})); await loadHistory(); return forcePush();
+    }
+    toast(e.message, true, e.hint); $('#fcGo').disabled = !$('#fcOk').checked;
+  }
+}
+$('#forcePushBtn').onclick = forcePush;
+
+// ---- detached HEAD ----
+let DET = {key:'', v:null};
+function detachedBanner(gd){
+  const h = R?.head; if (!h || h.branch !== '' || !h.hash) return;
+  const key = gd + '|' + h.hash;
+  const draw = d => {
+    if (!d?.detached || $('#histRepo').value !== gd || R?.head.branch !== '') return;
+    let el = $('#detBanner');
+    if (!el){ el = document.createElement('div'); el.id = 'detBanner'; $('#histAlert').prepend(el); }
+    const words = String(d.words || '').replace(/^You are looking at commit \S+, not on a branch\.\s*/, '').replace(/\s*To leave, go back to \S+\.$/, '');
+    el.className = 'alert' + (d.orphans ? ' bad' : ''); el.setAttribute('role', 'status');
+    el.innerHTML = `<span><strong>You are looking at <span class="mono">${esc(d.short)}</span> (not on a branch).</strong> ${esc(words)}${d.orphans ? ` <strong>${d.orphans} commit${d.orphans > 1 ? 's' : ''} made here ${d.orphans > 1 ? 'are' : 'is'} on no branch.</strong>` : ''}</span>
+      ${d.back ? `<button class="btn primary" data-det="back">Back to ${esc(d.back)}</button>` : ''}<button class="btn" data-det="branch">New branch here…</button>`;
+    el.querySelector('[data-det=back]')?.addEventListener('click', () => backFromDetached(d));
+    el.querySelector('[data-det=branch]').onclick = () => newBranch('', 'here');
+  };
+  if (DET.key === key) return draw(DET.v);
+  api('GET', '/api/repo/detached?gitDir=' + encodeURIComponent(gd)).then(d => { DET = {key, v:d}; draw(d); }).catch(() => {});
+}
+async function backFromDetached(d){
+  const gd = $('#histRepo').value;
+  let force = false;
+  if (d.orphans > 0){
+    if (!await ask(`${d.orphans} commit${d.orphans > 1 ? 's' : ''} you made here ${d.orphans > 1 ? 'are' : 'is'} on no branch. If you go back to ${d.back}, only the reflog still finds ${d.orphans > 1 ? 'them' : 'it'}.\n\nStart a branch here first to keep ${d.orphans > 1 ? 'them' : 'it'}, or go back anyway.`, {ok:'Go back anyway', cancel:'Stay here', danger:true})) return;
+    force = true;
+  }
+  const mode = await chooseMode(d.back, false, true); if (mode === null) return;
+  const r = await act(() => api('POST','/api/repo/back',{gitDir:gd, mode, force}));
+  if (!r) return;
+  DET = {key:'', v:null}; toast('Back on ' + (r.branch || d.back), false, null, undoable(gd)); picked.clear(); loadHistory();
+}
+// checkoutDetached looks at a commit or tag with HEAD on no branch.
+async function checkoutDetached(rev, label){
+  const gd = $('#histRepo').value;
+  const mode = await chooseMode(label, true, true); if (mode === null) return;
+  let r;
+  try { r = await api('POST','/api/repo/checkout',{gitDir:gd, rev, mode, force:false}); }
+  catch (e){
+    if (!/with force$/.test(e.message)){ toast(e.message, true, e.hint); return; }
+    if (!await ask(e.message.replace(/\.? ?(Or g|G)o on anyway with force$/, '.') + '\n\nCheck it out anyway?', {ok:'Check out anyway', danger:true})) return;
+    r = await act(() => api('POST','/api/repo/checkout',{gitDir:gd, rev, mode, force:true}));
+  }
+  if (!r) return;
+  DET = {key:'', v:null}; toast(r.words || `Checked out ${r.short}, on no branch`, false, null, r.back ? {label:'Go back', run: () => backFromDetached({back:r.back, orphans:0})} : null); picked.clear(); loadHistory();
+}
+
+// ---- commit signatures ----
+// Verified badges after the subject. Read after the log is drawn, and only
+// when an account signs commits; kept per repo and commit (a commit never changes).
+const SIG = new Map();
+const signingOn = () => !!S?.config.accounts.some(a => a.signingFormat);
+const SIG_ICON = {
+  g:'<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.7-5.5 6.8-3.2-1.1-5.5-3.6-5.5-6.8V3.5z M5.4 8l1.8 1.8L10.8 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  w:'<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z M8 6.5v3.2 M8 11.6v.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  e:'<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.7-5.5 6.8-3.2-1.1-5.5-3.6-5.5-6.8V3.5z M6.4 6.3a1.7 1.7 0 1 1 2.3 1.6c-.5.3-.7.6-.7 1.1 M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'};
+function sigInfo(x){
+  if (!x || x.status === 'N' || !x.status) return null;
+  const st = x.status, tone = st === 'G' ? 'g' : st === 'B' || st === 'R' ? 'b' : st === 'X' || st === 'Y' ? 'w' : 'e';
+  const text = (x.label || {G:'Signed', B:'Bad signature', U:'Signature not checked', X:'Signature expired', Y:'Signing key expired', R:'Signing key revoked', E:'Cannot check'}[st] || st) + (x.signer ? ' · ' + x.signer : '');
+  return {tone, text, icon: tone === 'g' ? SIG_ICON.g : tone === 'e' ? SIG_ICON.e : SIG_ICON.w};
+}
+function sigIcon(hash){
+  const i = sigInfo(SIG.get($('#histRepo').value + '|' + hash)); if (!i) return '';
+  return `<span class="sig ${i.tone}" title="${esc(i.text)}" role="img" aria-label="${esc(i.text)}">${i.icon}</span>`;
+}
+async function loadSignatures(hashes){
+  const gd = $('#histRepo').value, need = [...new Set(hashes)].filter(h => !SIG.has(gd + '|' + h)).slice(0, 200);
+  if (!gd || !need.length) return;
+  let m; try { m = await api('GET', `/api/signatures?gitDir=${encodeURIComponent(gd)}&hashes=${need.join(',')}`); } catch { return; }
+  for (const h of need) SIG.set(gd + '|' + h, (m || {})[h] || {status:'N'});
+}
+// paintSigs adds the badges to the rows already on screen.
+function paintSigs(){
+  document.querySelectorAll('.hrow[data-hash]').forEach(r => {
+    if (r.querySelector('.sig')) return;
+    const h = sigIcon(r.dataset.hash); if (h) r.querySelector('.stext')?.insertAdjacentHTML('afterend', h);
+  });
+}
+function paintSigRow(hash){
+  const el = $('#sigRow'), i = sigInfo(SIG.get($('#histRepo').value + '|' + hash));
+  if (!el || !picked.has(hash)) return;
+  el.innerHTML = i ? `<span class="sig ${i.tone}" style="margin:0">${i.icon}</span> ${esc(i.text)}` : '<span class="hint">not signed</span>';
+}
 
 // ---- command palette ----
 // Ctrl/⌘+K (or Ctrl/⌘+Shift+P) lists every page and every action the page
@@ -3342,8 +4438,17 @@ function palCommands(){
       viaBtn('h.update', '#updateBtn', 'Update', h, null, {hint:'pull, fast-forward only'}),
       viaBtn('h.push', '#pushBtn', 'Push', h),
       viaBtn('h.undo', '#undoBtn', R.undo?.label ? `Undo “${R.undo.label}”` : 'Undo', h, kb('Shift', 'U')),
+      viaBtn('h.redo', '#redoBtn', R.redo?.label ? `Redo “${R.redo.label}”` : 'Redo', h, kb('Shift', 'R')),
+      viaBtn('h.remotes', '#remotesBtn', 'Remotes…', h, null, {hint:'add, rename, change URL, remove'}),
+      viaBtn('h.prunefetch', '#pruneFetchBtn', 'Fetch and forget deleted branches', h, null, {hint:'fetch --prune'}),
+      viaBtn('h.force', '#forcePushBtn', 'Force push (with lease)…', h, null, {hint:'shows what would be lost'}),
       viaBtn('h.compare', '#compareBtn', 'Compare with the remote…', h),
       viaBtn('h.stashes', '#stashBtn', 'Stashes…', h, null, {hint:'apply, pop, drop'}),
+      viaBtn('h.cmp', '#cmpBtn', 'Compare two refs…', h, null, {hint:'branches, tags, commits'}),
+      viaBtn('h.reflog', '#reflogBtn', 'Reflog…', h, null, {hint:'recover lost commits'}),
+      viaBtn('h.bisect', '#bisectBtn', 'Find the commit that broke it (bisect)…', h),
+      {id:'h.blame', label:'Blame a file…', cat:h, hint:'who wrote each line', run: () => hist(() => askPath('Blame which file? Its path from the repo’s top folder, e.g. src/app.go', p => openBlame(p, '')))},
+      {id:'h.filehist', label:'File history…', cat:h, hint:'every commit that changed a file', run: () => hist(() => askPath('Show the history of which file? Its path from the repo’s top folder.', p => openFileHistory(p)))},
       {id:'h.switch', label:'Switch branch…', cat:h, keys:kb('b'), sub:'branch', hint: R.head.branch ? 'on ' + R.head.branch : ''},
       viaBtn('h.newbranch', '#newBranchBtn', 'New branch…', h),
       viaBtn('h.prune', '#pruneBtn', 'Delete merged branches…', h),
@@ -3363,15 +4468,18 @@ function palCommands(){
   }
   const st = (id, label, sel) => ({id:'set.' + id, label, cat:'Settings', run: () => { show('settings'); const el = $(sel); el.scrollIntoView({block:'center'}); el.focus(); }});
   out.push(
+    ...THEMES.map(([k, n]) => ({id:'theme.' + k, label:'Theme: ' + n, cat:'Settings', run: () => setTheme(k)})),
     st('switch', 'Uncommitted changes when switching branch', '#setForm [name=switchChanges]'),
     st('pull', 'When Update finds new commits on both sides', '#setForm [name=pull]'),
     st('prefix', 'New branch name prefix', '#setForm [name=branchPrefix]'),
     st('fetch', 'Fetch when a repo’s History opens', '#setForm [name=fetchOnOpen]'),
+    st('fetchprune', 'Forget remote branches deleted on the server when fetching', '#setForm [name=fetchPrune]'),
     st('popup', 'Ask with a popup when git runs without a terminal', '#setForm [name=guiPrompt]'),
     st('wait', 'Seconds to wait for an answer', '#setForm [name=promptTimeout]'),
     {id:'set.checks', label:'Health check', cat:'Settings', run: () => { show('settings'); $('#checks').scrollIntoView({block:'start'}); }},
     {id:'set.setup', label:'Run guided setup', cat:'Settings', run: () => $('#rerunSetup').click()},
     {id:'acct.add', label:'Add account…', cat:'Accounts', run: () => { show('accounts'); $('#addAcctBtn').click(); }},
+    {id:'repos.init', label:'New repo…', cat:'Repos', hint:'git init in a folder', run: () => { show('repos'); $('#newRepoOpen').click(); }},
     {id:'repos.clone', label:'Clone from URL…', cat:'Repos', run: () => { show('repos'); $('#cloneOpen').click(); }},
     {id:'repos.add', label:'Add an existing repo…', cat:'Repos', run: () => { show('repos'); $('#addRepo').click(); }},
     {id:'repos.folder', label:'Add a projects folder…', cat:'Repos', run: () => { show('repos'); $('#browseFolder').click(); }},
@@ -3537,7 +4645,7 @@ $('#rules').addEventListener('click', async e => { const i = e.target.dataset.ru
 
 // ---- settings ----
 function renderSettings(){
-  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix; f.fetchOnOpen.checked = !!S.fetchOnOpen; f.pull.value = S.pull;
+  const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix; f.fetchOnOpen.checked = !!S.fetchOnOpen; f.fetchPrune.checked = S.fetchPrune ? S.fetchPrune.global === 'on' : store.get('gs.fetchPrune', false); f.pull.value = S.pull; f.theme.value = store.get('gs.theme', 'system');
   $('#afterWait').textContent = !S.config.default ? 'then stop: there is no default account to fall back on' : 'then use the default account';
 }
 // The health checks start several programs, so they run only while Settings is shown.
@@ -3563,9 +4671,28 @@ async function saveSettings(){
   refresh(); if (R) loadHistory(); // the branch menu says what switching does
 }
 $('#setForm').onsubmit = e => { e.preventDefault(); saveSettings(); };
-$('#setForm').addEventListener('change', saveSettings);
+$('#setForm').addEventListener('change', async e => {
+  if (e.target.name === 'theme') return setTheme(e.target.value);
+  if (e.target.name === 'fetchPrune'){
+    // The server has no way to read this setting back yet, so the page keeps the last value it saved.
+    const on = e.target.checked, r = await act(() => api('POST','/api/fetch-prune-setting',{value: on ? 'on' : 'off'}));
+    if (r){ store.set('gs.fetchPrune', r.global === 'on'); S.fetchPrune = r; toast(on ? 'Fetching now forgets remote branches deleted on the server' : 'Fetching keeps remote branches deleted on the server'); } else e.target.checked = !on;
+    return;
+  }
+  saveSettings();
+});
+// Themes: System follows the computer (no data-theme); the others set it on <html>. Kept in this page's storage.
+const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark'], ['dim', 'Dim']];
+function setTheme(t){
+  if (!THEMES.some(x => x[0] === t)) t = 'system';
+  store.set('gs.theme', t);
+  if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+  const sel = $('#setForm [name=theme]'); if (sel) sel.value = t;
+}
 $('#checks').addEventListener('click', async e => { const id = e.target.dataset.fix; if (!id) return; await act(() => api('POST','/api/doctor/fix',{id}), 'Fixed'); refresh(); loadChecks(); });
 
+// git itself: a banner when it is missing or too old.
+api('GET', '/api/git-info').then(g => { if (g && g.ok === false){ $('#gitWhy').textContent = g.why || (g.installed ? 'found ' + g.version : 'git was not found'); $('#gitBanner').hidden = false; } }).catch(() => {});
 refresh().then(() => { if (needsSetup() && !wizSkipped()) openWizard(); }).catch(e => toast(e.message, true, e.hint));
 </script>
 </body>
