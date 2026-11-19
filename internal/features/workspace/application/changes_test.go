@@ -1,6 +1,7 @@
 package application
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -8,12 +9,18 @@ import (
 )
 
 type fakeChanges struct {
-	files []workspace.File
-	ran   []string
+	files    []workspace.File
+	ran      []string
+	diff     string // what Diff returns; "" a huge one
+	patch    string
+	applyErr error
 }
 
 func (f *fakeChanges) Status(string) ([]workspace.File, error) { return f.files, nil }
 func (f *fakeChanges) Diff(_ string, staged bool, paths []string) (string, error) {
+	if f.diff != "" {
+		return f.diff, nil
+	}
 	return strings.Repeat("x", workspace.MaxDiffBytes+1), nil
 }
 func (f *fakeChanges) Stage(wt string, paths []string) error {
@@ -26,6 +33,20 @@ func (f *fakeChanges) Unstage(wt string, paths []string) error {
 }
 func (f *fakeChanges) Discard(wt, msg string, paths []string) error {
 	f.ran = append(f.ran, "discard "+wt+" "+msg+" "+strings.Join(paths, ","))
+	return nil
+}
+
+func (f *fakeChanges) Apply(wt, patch string, o workspace.ApplyOptions) error {
+	f.ran = append(f.ran, fmt.Sprintf("apply %+v", o))
+	f.patch = patch
+	return f.applyErr
+}
+func (f *fakeChanges) IntentToAdd(wt, path string) error {
+	f.ran = append(f.ran, "intent "+path)
+	return nil
+}
+func (f *fakeChanges) Backup(wt, msg, path string) error {
+	f.ran = append(f.ran, "backup "+msg+" "+path)
 	return nil
 }
 

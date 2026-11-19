@@ -718,3 +718,184 @@ func TestChangesIgnore(t *testing.T) {
 		t.Fatal("untracking removed the file")
 	}
 }
+
+// stashScreen is the stash manager as drawn, without colours.
+func stashScreen(x *tui) string {
+	lines, _ := x.drawStashes()
+	return history.StripANSI(strings.Join(lines, "\n"))
+}
+
+// stashAll stashes the changesRepo changes through the s form: a message,
+// new files included, staged files stashed too.
+func stashAll(t *testing.T, x *tui, msg string) {
+	t.Helper()
+	x.handle("s")
+	if x.form == nil || !strings.Contains(x.form.title, "Stash the uncommitted changes") {
+		t.Fatalf("no stash form (msg %q)", x.msg)
+	}
+	typeKeys(x, msg)
+	for i := 0; i < 3; i++ {
+		x.handle("enter")
+	}
+	if x.msgErr {
+		t.Fatalf("stash failed: %s", x.msg)
+	}
+}
+
+// h opens the stash manager; s stashes everything with a message, U brings
+// the changes back.
+func TestStashesSaveAndUndo(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("h")
+	if x.stashes == nil || !strings.Contains(stashScreen(x), "No stashes") {
+		t.Fatalf("h did not open an empty manager (msg %q)", x.msg)
+	}
+	if f := x.footer(); !strings.Contains(f, "a apply") || !strings.Contains(f, "p pop") {
+		t.Errorf("footer = %q", f)
+	}
+	before := git("status", "--porcelain")
+	stashAll(t, x, "my work")
+	if git("status", "--porcelain") != "" || git("stash", "list", "--format=%gs") != "On main: my work" {
+		t.Fatalf("not stashed: %q / %q", git("status", "--porcelain"), git("stash", "list"))
+	}
+	got := stashScreen(x)
+	for _, want := range []string{"stash@{0}", "my work", "main", "3 files, 1 new"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(x.msg, "U to undo") {
+		t.Errorf("msg = %q", x.msg)
+	}
+	x.handle("U")
+	if x.confirm == nil {
+		t.Fatalf("U did not ask (msg %q)", x.msg)
+	}
+	x.handle("y")
+	if git("status", "--porcelain") != before || git("stash", "list") != "" || len(x.stashes.all) != 0 {
+		t.Fatalf("undo: status %q, stash %q", git("status", "--porcelain"), git("stash", "list"))
+	}
+	x.handle("esc") // closes the manager
+	if x.stashes != nil || x.quit {
+		t.Fatal("Esc should go back to the commits")
+	}
+}
+
+// Enter opens the files (new ones too) and then a file's diff; Esc steps
+// back one level.
+func TestStashesFilesAndDiff(t *testing.T) {
+	x, _, _ := changesRepo(t)
+	x.handle("h")
+	stashAll(t, x, "files")
+	x.handle("enter")
+	if !x.stashes.files {
+		t.Fatalf("Enter did not open the files (msg %q)", x.msg)
+	}
+	got := stashScreen(x)
+	for _, want := range []string{"M a.txt", "M b.txt", "? new.txt", "+1 -1", "staged"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+	x.handle("j")
+	x.handle("j") // the new file
+	x.handle("enter")
+	if x.view == nil || !strings.Contains(x.view.title, "new.txt") || !strings.Contains(strings.Join(x.view.lines, "\n"), "+fresh") {
+		t.Fatalf("new file diff: %+v", x.view)
+	}
+	x.handle("esc")
+	x.handle("esc")
+	if x.stashes == nil || x.stashes.files {
+		t.Fatal("Esc should close the diff, then the files, and keep the manager")
+	}
+}
+
+// a applies and keeps the stash, p pops it; both refuse with uncommitted
+// changes and say so.
+func TestStashesApplyAndPop(t *testing.T) {
+	x, dir, git := changesRepo(t)
+	x.handle("h")
+	stashAll(t, x, "again")
+	x.handle("a")
+	if git("stash", "list") == "" || git("status", "--porcelain") == "" || x.msgErr || !strings.Contains(x.msg, "Applied") {
+		t.Fatalf("apply: msg %q, status %q", x.msg, git("status", "--porcelain"))
+	}
+	x.handle("p") // the folder is not clean now
+	if !x.msgErr || !strings.Contains(x.msg, "uncommitted changes") || git("stash", "list") == "" {
+		t.Fatalf("pop on a dirty folder: msg %q", x.msg)
+	}
+	git("reset", "-q", "--hard")
+	if err := os.Remove(filepath.Join(dir, "new.txt")); err != nil {
+		t.Fatal(err)
+	}
+	x.handle("p")
+	if git("stash", "list") != "" || git("status", "--porcelain") == "" || len(x.stashes.all) != 0 || !strings.Contains(x.msg, "Popped") {
+		t.Fatalf("pop: msg %q, stash %q", x.msg, git("stash", "list"))
+	}
+}
+
+// A clash on apply changes nothing and keeps the stash.
+func TestStashesClashChangesNothing(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("h")
+	stashAll(t, x, "clash")
+	top := git("rev-parse", "--show-toplevel")
+	if err := os.WriteFile(filepath.Join(top, "a.txt"), []byte("a different line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("commit", "-q", "-am", "moved on")
+	x.handle("a")
+	if !x.msgErr || git("status", "--porcelain") != "" || git("stash", "list") == "" {
+		t.Fatalf("clash: msg %q, status %q", x.msg, git("status", "--porcelain"))
+	}
+	if _, err := os.Stat(filepath.Join(top, "new.txt")); !os.IsNotExist(err) {
+		t.Errorf("new.txt left behind: %v", err)
+	}
+}
+
+// d asks first; y deletes, and U brings it back.
+func TestStashesDropAsks(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("h")
+	stashAll(t, x, "drop me")
+	x.handle("d")
+	if x.confirm == nil || !strings.Contains(x.confirm.text, "stash@{0}") || !strings.Contains(x.confirm.text, "U brings it back") {
+		t.Fatalf("d did not ask: %+v", x.confirm)
+	}
+	x.handle("n")
+	if git("stash", "list") == "" {
+		t.Fatal("cancelled drop deleted the stash")
+	}
+	x.handle("d")
+	x.handle("y")
+	if git("stash", "list") != "" || !strings.Contains(x.msg, "U to undo") {
+		t.Fatalf("drop: stash %q, msg %q", git("stash", "list"), x.msg)
+	}
+	x.handle("U")
+	x.handle("y")
+	if git("stash", "list", "--format=%gs") != "On main: drop me" || len(x.stashes.all) != 1 {
+		t.Fatalf("undo drop: %q (msg %q)", git("stash", "list", "--format=%gs"), x.msg)
+	}
+}
+
+// n makes a branch from the stash; parked changes are labelled.
+func TestStashesBranchAndParkedLabel(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("h")
+	stashAll(t, x, "to branch")
+	x.handle("n")
+	if x.form == nil || !strings.Contains(x.form.title, "stash@{0}") {
+		t.Fatalf("n did not open the form (msg %q)", x.msg)
+	}
+	typeKeys(x, "from-stash")
+	x.handle("enter")
+	if git("branch", "--show-current") != "from-stash" || git("stash", "list") != "" || x.msgErr {
+		t.Fatalf("branch: on %q, msg %q", git("branch", "--show-current"), x.msg)
+	}
+	git("add", "-A")
+	git("stash", "push", "-q", "-m", "gitswitch park: other")
+	x.handle("r")
+	if got := stashScreen(x); !strings.Contains(got, "parked on other") {
+		t.Fatalf("parked label:\n%s", got)
+	}
+}

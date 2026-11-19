@@ -99,6 +99,9 @@ History and branches
   gitswitch unstage <path>...|--all   take changes out of the next commit; the files keep them
   gitswitch discard <path>...|--all [-y]   put files back as in the last commit (new files removed);
                                     asks first, and keeps the changes in git stash
+  gitswitch hunks <path> [--staged] [--json]   a file's change in hunks, numbered from 1
+  gitswitch stage|unstage|discard <path> --hunk <n>[,<n>...]   only those hunks; discard asks first
+                                    (-y skips) and keeps the file as it was in git stash
   gitswitch ignore <path> [--ext|--folder] [--local] [--untrack]   add the file, its extension (*.ext)
                                     or its folder to .gitignore (--local: .git/info/exclude, this clone
                                     only); --untrack takes a tracked file out of git, keeping it
@@ -119,6 +122,15 @@ History and branches
   gitswitch parked [--json]         the parked changes (git stash), newest first
   gitswitch parked show|restore|drop [<n>] [-y]   look at, restore or delete parked changes
                                     (<n> from the list; else the newest parked on this branch)
+  gitswitch stash [list] [--json]   every stash (parked and discarded changes too), newest first
+  gitswitch stash show <n|hash> [<path>] [--json]   a stash's files, or one file's diff (new files too)
+  gitswitch stash save [-m <message>] [--staged-keep] [-u|--no-untracked] [<path>...]   stash the
+                                    uncommitted changes, or only these files; new files are included
+                                    unless --no-untracked; undo takes a plain stash of everything back
+  gitswitch stash apply|pop <n|hash>   put a stash back (pop: and remove it); needs no uncommitted
+                                    changes, and a clash changes nothing
+  gitswitch stash drop <n|hash> [-y]   delete a stash; undo brings it back
+  gitswitch stash branch <n|hash> <name>   a new branch from a stash, with its changes
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
   gitswitch merge <branch> [--ff-only|--no-ff|--squash] [-y]   merge a branch into the current one
@@ -355,6 +367,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdUnstage(rest)
 	case "discard":
 		return x.cmdDiscard(rest)
+	case "hunks":
+		return x.cmdHunks(rest)
 	case "ignore":
 		return x.cmdIgnore(rest)
 	case "switch":
@@ -385,6 +399,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdResolve(rest)
 	case "parked":
 		return x.cmdParked(rest)
+	case "stash":
+		return x.cmdStash(rest)
 	case "browse":
 		return x.cmdBrowse(rest)
 	case "show":

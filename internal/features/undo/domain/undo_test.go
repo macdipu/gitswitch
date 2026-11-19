@@ -101,3 +101,22 @@ func TestMergeEffect(t *testing.T) {
 		t.Fatalf("Effect: %q / %q", ff.Effect(), mc.Effect())
 	}
 }
+
+func TestStashActions(t *testing.T) {
+	for _, a := range []Action{StashSave, StashDrop} {
+		r := Record{Action: a, Worktree: "/r", Branch: "main", Before: "h", After: "h"}
+		if r.Rewinds() {
+			t.Errorf("%s must not rewind", a)
+		}
+		// Any branch and any HEAD: only the stash list and the folder matter.
+		if err := r.Check(Mark{Worktree: "/r", Branch: "other", Head: "z"}); err != nil {
+			t.Errorf("%s: %v", a, err)
+		}
+		if err := r.Check(Mark{Worktree: "/r", Busy: "rebase"}); err == nil {
+			t.Errorf("%s: busy must refuse", a)
+		}
+		if r.Effect() == "" {
+			t.Errorf("%s: no effect", a)
+		}
+	}
+}

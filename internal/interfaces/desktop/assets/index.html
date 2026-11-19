@@ -405,6 +405,18 @@ button.link.danger{color:var(--bad)}
 .cochip{display:inline-flex;align-items:center;gap:2px;font-size:12px;padding:1px 4px 1px 9px;border-radius:999px;background:var(--hover);border:1px solid var(--rule)}
 .cochip button{all:unset;cursor:pointer;width:18px;height:18px;text-align:center;border-radius:50%;color:var(--muted)}
 .cochip button:hover{background:var(--rule);color:var(--ink)}
+.stashdlg{max-width:min(860px,calc(100vw - 48px));width:calc(100vw - 48px);padding:14px}
+.stlist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.strow{border:1px solid var(--rule);border-radius:var(--radius);padding:8px 10px;background:var(--panel)}
+.sthead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px}
+.sttitle{font-size:13.5px;min-width:0;overflow-wrap:anywhere}
+.stkind{font-size:11px;font-weight:650;padding:0 8px;line-height:18px;border-radius:999px;background:var(--hover);color:var(--muted)}
+.stkind.k-park{background:rgb(76 194 126 / .14);background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.stkind.k-discard{background:var(--bad-soft);color:var(--bad)}
+.stfiles{display:flex;flex-direction:column;max-height:150px;overflow:auto;margin:0 0 6px}
+.stbtns{display:flex;gap:6px;align-items:center}
+.stbtns .btn{padding:3px 10px;font-size:13px}
+#stDiff .diffbox{margin:10px 0 0}
 .opbanner{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .opbanner .opmain{flex:1 1 320px;min-width:0}
 .opbanner .opfiles{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:6px}
@@ -431,6 +443,30 @@ dialog.diffdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px)
 .diffdlg .diffbox{margin:0;border:0}
 .diffdlg pre{max-height:calc(100vh - 140px)}
 .diffbox .dhunk{color:var(--muted);background:var(--hover)}
+/* the diff of uncommitted changes: pick hunks and lines to stage, unstage or discard */
+.hmeta{padding:3px 8px;font-size:12px;color:var(--muted);border-top:1px solid var(--rule)}
+.hbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;font-size:12.5px;border-top:1px solid var(--rule);background:var(--hover)}
+.hbar .spacer{flex:1}
+.hbar .btn,.hb .btn{padding:1px 9px;font-size:12px;line-height:1.5}
+.hscroll{max-height:420px;overflow:auto}
+.hunk{border-top:1px solid var(--rule)}
+.hh{display:flex;align-items:center;gap:6px;padding:2px 8px;background:var(--hover);color:var(--muted);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.hh .ht{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb{display:flex;gap:4px;flex:none}
+.hlines{overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:2px 0}
+.dl{display:flex;min-width:100%;width:max-content}
+.dl .gb{flex:none;width:20px;text-align:center;color:var(--muted);font-size:14px;line-height:1.2}
+.dl .gn{flex:none;width:4ch;padding-right:6px;text-align:right;color:var(--muted);user-select:none}
+.dl .gs{flex:none;width:1.5ch;user-select:none}
+.dl .gt{white-space:pre;padding-right:8px}
+.dl.da{color:var(--ok);background:rgb(76 194 126 / .12);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.dl.dd{color:var(--bad);background:rgb(255 107 118 / .12);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.dl[role=checkbox]{cursor:pointer}
+.dl[role=checkbox] .gb::before{content:"\2610"}
+.dl[role=checkbox][aria-checked=true] .gb::before{content:"\2611";color:var(--focus)}
+.dl[role=checkbox]:hover{filter:brightness(.96)}
+.dl.picked{box-shadow:inset 3px 0 0 var(--focus)}
+.dl[role=checkbox]:focus-visible{outline-offset:-2px}
 .more-row{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0}
 .checks-sum{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
 .checks-sum .dot{margin-top:0}
@@ -627,6 +663,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
         <button class="btn ghost" id="actionsBtn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: compare with the remote, view on the web" style="font-size:17px;line-height:1">⋯</button>
         <div class="popover right menu" id="actionsPop" role="menu" hidden>
           <button class="btn" id="compareBtn" role="menuitem" hidden title="List the commits you would push and pull">Compare with the remote…</button>
+          <button class="btn" id="stashBtn" role="menuitem" title="Every stash in this repo: parked changes, discarded changes and your own. Apply, pop, drop, or start a branch from one">Stashes…</button>
           <button class="btn" id="browseRepo" role="menuitem" title="Open the repo on GitHub, GitLab, …">View on the web ↗</button>
         </div>
       </div>
@@ -714,6 +751,11 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <dialog id="diffDlg" class="diffdlg" aria-labelledby="diffDlgPath">
   <div class="diffbox"><div class="dh"><span class="fn" id="diffDlgPath"></span><button class="btn ghost" id="diffDlgClose" aria-label="Close the diff" title="Close (Esc)">✕</button></div><div id="diffDlgBody"></div></div>
+</dialog>
+<dialog id="stashDlg" class="stashdlg" aria-labelledby="stTitle">
+  <div class="cfhead"><strong id="stTitle">Stashes</strong><span class="hint" id="stSub">saved changes (git stash)</span><span class="spacer"></span><button class="btn" id="stSave" title="Put the uncommitted changes aside with a message">Stash changes…</button><button class="btn ghost" id="stClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div id="stList" class="stlist"></div>
+  <div id="stDiff"></div>
 </dialog>
 <dialog id="conflictDlg" class="conflictdlg" aria-labelledby="cfTitle">
   <div class="cfhead"><strong id="cfTitle"></strong><span class="hint" id="cfKind"></span><span class="spacer"></span><button class="btn ghost" id="cfClose" aria-label="Close" title="Close (Esc)">✕</button></div>
@@ -1764,22 +1806,97 @@ async function mergeInto(name){
   loadHistory();
 }
 
+// ---- stashes: every stash, not only parked changes ----
+let STS = [];
+const stKind = {park:'Parked', discard:'Discarded', stash:'Stash'};
+async function openStashes(){
+  closeMenu();
+  const gd = $('#histRepo').value; if (!gd) return;
+  $('#stDiff').innerHTML = '';
+  if (!$('#stashDlg').open) $('#stashDlg').showModal();
+  await loadStashes(gd);
+}
+async function loadStashes(gd = $('#histRepo').value){
+  let l; try { l = await api('GET', '/api/stashes?gitDir=' + encodeURIComponent(gd)); } catch (e) { $('#stList').innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+  STS = l || [];
+  $('#stSub').textContent = STS.length ? `${STS.length} saved` : 'nothing saved';
+  $('#stList').innerHTML = STS.length ? STS.map(stRow).join('') : '<p class="hint" style="padding:12px 4px">No stashes. “Stash changes…” puts your uncommitted changes aside; switching with “Park” does the same for you.</p>';
+}
+function stRow(t){
+  const title = t.kind === 'park' ? `Parked changes · ${t.parkedOn || t.branch || ''}` : t.kind === 'discard' ? `Discarded changes · ${t.parkedOn || t.branch || ''}` : (t.message || t.subject || 'Stash');
+  const n = t.files?.length || 0;
+  const files = (t.files || []).map(f => `<button class="frow" data-stfile="${esc(f.path)}" title="${esc(f.path)}"><span class="cl cl-${esc(f.status === '?' ? 'N' : f.status)}">${esc(f.status === '?' ? 'N' : f.status)}</span><span class="fn">${esc(f.path)}</span>${f.binary ? '<span class="cnt">binary</span>' : f.untracked ? '<span class="cnt">new</span>' : `<span class="add">+${f.added}</span><span class="del">−${f.deleted}</span>`}</button>`).join('');
+  return `<div class="strow" data-hash="${esc(t.hash)}"><div class="sthead"><span class="stkind k-${esc(t.kind)}">${stKind[t.kind] || 'Stash'}</span>
+      <strong class="sttitle">${esc(title)}</strong><span class="hint">${t.kind === 'stash' && t.branch ? 'on ' + esc(t.branch) + ' · ' : ''}${esc(ago(t.time))} · ${n} file${n === 1 ? '' : 's'}${t.untracked ? ` (${t.untracked} new)` : ''}</span></div>
+    <div class="stfiles">${files}</div>
+    <div class="stbtns"><button class="btn" data-sta="apply" title="Put these changes back, and keep the stash">Apply</button><button class="btn" data-sta="pop" title="Put these changes back and delete the stash">Pop</button><button class="btn" data-sta="branch" title="Start a branch from where it was made, with these changes">New branch…</button><span class="spacer"></span><button class="btn ghost danger" data-sta="drop" title="Delete it. Undo can bring it back">Drop</button></div></div>`;
+}
+$('#stList').addEventListener('click', async e => {
+  const row = e.target.closest('.strow'); if (!row) return;
+  const gd = $('#histRepo').value, hash = row.dataset.hash, t = STS.find(x => x.hash === hash), f = e.target.closest('[data-stfile]');
+  if (f){
+    row.querySelectorAll('.frow.on').forEach(x => x.classList.remove('on')); f.classList.add('on');
+    $('#stDiff').innerHTML = '<p class="hint" style="padding:8px">Reading…</p>';
+    try {
+      const d = await api('GET', `/api/stash/show?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(f.dataset.stfile)}`);
+      $('#stDiff').innerHTML = `<div class="diffbox"><div class="dh"><span class="fn">${esc(f.dataset.stfile)}</span><span class="hint">${d.untracked ? 'new file in the stash' : 'in the stash'}</span></div>${diffPre(d, 'No text to show (a binary file).')}</div>`;
+    } catch (err) { $('#stDiff').innerHTML = `<p class="hint" style="padding:8px">${esc(err.message)}</p>`; }
+    return;
+  }
+  const a = e.target.closest('[data-sta]')?.dataset.sta; if (!a || !t) return;
+  const label = t.kind === 'park' ? 'the parked changes' : 'this stash';
+  if (a === 'drop'){
+    if (!await ask(`Drop ${label}${t.kind === 'park' ? ' on ' + (t.parkedOn || t.branch) : ''}? It is removed from the stash list. Undo can bring it back right after.`, {ok:'Drop', danger:true})) return;
+    if (await act(() => api('POST','/api/stash/drop',{gitDir:gd, hash}).then(() => true))){ toast('Dropped the stash', false, null, undoAndReload(gd)); await loadStashes(gd); loadHistory(); }
+  } else if (a === 'branch'){
+    const name = await ask('New branch from this stash: its changes are applied on it.', {input:'', ok:'Create branch'});
+    if (!name?.trim()) return;
+    if (await act(() => api('POST','/api/stash/branch',{gitDir:gd, hash, name:name.trim()}).then(() => true))){ $('#stashDlg').close(); toast(`On the new branch ${name.trim()} with the stash applied`); loadHistory(); }
+  } else {
+    if (await act(() => api('POST','/api/stash/' + a,{gitDir:gd, hash}).then(() => true))){
+      toast(a === 'pop' ? 'Put the changes back and deleted the stash' : 'Put the changes back; the stash is kept'); await loadStashes(gd); loadHistory();
+    }
+  }
+});
+$('#stSave').onclick = async () => {
+  const gd = $('#histRepo').value;
+  const msg = await ask('Put your uncommitted changes aside as a stash. A message helps you find it later (optional):', {input:'', ok:'Stash', check:'Leave new files where they are (stash only changes to files git tracks)'});
+  if (msg === null) return;
+  const leave = $('#dlgCheck').checked;
+  const r = await act(() => api('POST','/api/stash/save',{gitDir:gd, message:msg.trim(), untracked:!leave}));
+  if (r){ toast('Stashed your changes', false, null, undoAndReload(gd)); await loadStashes(gd); loadHistory(); }
+};
+// undoAndReload is the toast's Undo, then the open list is read again.
+const undoAndReload = gd => ({label:'Undo', run: async () => { await undoLast(gd); if ($('#stashDlg').open) loadStashes(gd); }});
+$('#stClose').onclick = () => $('#stashDlg').close();
+$('#stashBtn').onclick = openStashes;
+
 // ---- live refresh: the page follows the files and git ----
 // A long poll of /api/watch (the backend watches the repo's folder and git
 // dir, nothing polls git): when files, the index, HEAD, refs or a merge or
 // rebase change, the changes list and the history are read again. While
 // you type in the commit box only the file list is read, so nothing under
 // your cursor moves.
-let watchGd = '', watchTimer = 0;
+let watchGd = '', watchTimer = 0, watchAbort = null;
+// watchGet reads /api/watch; the request is cancelled when another repo
+// is watched, so no stale poll stays open for its 25 seconds.
+async function watchGet(url, signal){
+  const r = await fetch(url, {signal});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j.data;
+}
 async function watchRepo(gd){
   if (watchGd === gd) return;
+  watchAbort?.abort();
+  const ac = watchAbort = new AbortController();
   watchGd = gd;
   let seq = 0;
-  try { seq = (await api('GET', '/api/watch?gitDir=' + encodeURIComponent(gd))).seq; } catch { watchGd = ''; return; }
-  while (watchGd === gd){
+  try { seq = (await watchGet('/api/watch?gitDir=' + encodeURIComponent(gd), ac.signal)).seq; } catch { if (watchGd === gd) watchGd = ''; return; }
+  while (watchGd === gd && !ac.signal.aborted){
     let r;
-    try { r = await api('GET', `/api/watch?gitDir=${encodeURIComponent(gd)}&since=${seq}`); }
-    catch { await new Promise(res => setTimeout(res, 4000)); continue; }
+    try { r = await watchGet(`/api/watch?gitDir=${encodeURIComponent(gd)}&since=${seq}`, ac.signal); }
+    catch (e) { if (e.name === 'AbortError' || ac.signal.aborted) return; await new Promise(res => setTimeout(res, 4000)); continue; }
     if (watchGd !== gd) return;
     seq = r.seq;
     if (!r.kinds?.length || !histVisible() || document.hidden) continue;
@@ -2948,6 +3065,7 @@ async function commitChanges(gd){
   toast(`${amend ? 'Amended ' + r.amended + ': now' : 'Committed'} ${r.short} ${r.subject}${r.account ? ' as ' + r.account : ''}`, false, null, undoable(gd));
   loadHistory();
 }
+let wipFlip = false; // after a hunk action: when this side has nothing left, show the other
 async function showWipDiff(gd, path, staged){
   const box = $('#diffbox'); if (!box) return;
   box.innerHTML = '<p class="hint" style="padding:8px">Reading the diff…</p>';
@@ -2955,9 +3073,100 @@ async function showWipDiff(gd, path, staged){
   try { d = await api('GET', `/api/repo/diff?gitDir=${encodeURIComponent(gd)}&path=${encodeURIComponent(path)}&staged=${staged ? 1 : 0}`); }
   catch (e) { box.innerHTML = `<p class="hint" style="padding:8px">${esc(e.message)}</p>`; return; }
   if ($('#diffbox') !== box || !wipDiff || wipDiff.path !== path) return;
-  box.innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'))}</div>`;
-  box.querySelector('button').onclick = () => { wipDiff = null; box.innerHTML = ''; document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); };
+  const flip = wipFlip; wipFlip = false;
+  if (flip && !d.text){ wipDiff.staged = !staged; return showWipDiff(gd, path, !staged); }
+  HD = null; hsel.clear();
+  const head = `<div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>`;
+  const hunks = d.hunks || [];
+  if (!hunks.length || !d.fingerprint){
+    box.innerHTML = `<div class="diffbox">${head}${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'))}${d.noHunks && d.text ? `<p class="hmeta">${esc(d.noHunks)}</p>` : ''}</div>`;
+  } else {
+    const f = CH?.files.find(x => x.path === path);
+    HD = {gd, path, staged, fp: d.fingerprint, hunks, isNew: !staged && f?.staged === '?'};
+    box.innerHTML = `<div class="diffbox" id="hdiff">${head}${hunkView(d, HD)}</div>`;
+    hupdate();
+  }
+  box.querySelector('button').onclick = () => { wipDiff = null; HD = null; box.innerHTML = ''; document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); };
 }
+
+// ---- hunks and lines: stage, unstage or discard a part of a file ----
+// HD is the diff on screen (with the fingerprint the server gave it, sent
+// back so a change made meanwhile is refused); hsel holds the picked lines
+// as "hunk:line". Click a line to pick it, Shift+click for a range, Space
+// or Enter from the keyboard; the hunk buttons act on a whole hunk.
+let HD = null, hanchor = null;
+const hsel = new Set();
+function hunkView(d, hd){
+  const meta = [];
+  for (const l of d.text.split('\n')){ if (l.startsWith('@@')) break; if (/^(new|deleted) file mode|^rename |^copy |^similarity|^(old|new) mode|^Binary files/.test(l)) meta.push(l); }
+  const verbs = hd.staged ? [['unstage', 'Unstage hunk']] : [['stage', 'Stage hunk'], ...(hd.isNew ? [] : [['discard', 'Discard hunk']])];
+  const word = {add: 'added', del: 'removed'};
+  return (meta.length ? `<div class="hmeta">${esc(meta.join(' · '))}</div>` : '') + `<div class="hbar" id="hbar" role="status" hidden></div><div class="hscroll">`
+    + hd.hunks.map(h => `<section class="hunk" aria-label="Hunk ${h.index + 1} of ${hd.hunks.length}"><div class="hh"><span class="ht" title="${esc(h.header)}">${esc(h.header)}</span>
+      <span class="hb">${verbs.map(([v, t]) => `<button class="btn${v === 'discard' ? ' danger' : ''}" data-hv="${v}" data-h="${h.index}" aria-label="${t} ${h.index + 1} of ${esc(hd.path)}">${t}</button>`).join('')}</span></div>
+      <div class="hlines">${h.lines.map((l, i) => {
+        const ch = l.kind !== 'context', n = l.kind === 'del' ? l.old : l.new, txt = (l.text || '').replace(/\r$/, '');
+        return `<div class="dl ${l.kind === 'add' ? 'da' : l.kind === 'del' ? 'dd' : ''}"${ch ? ` role="checkbox" aria-checked="false" tabindex="0" data-h="${h.index}" data-l="${i}" aria-label="Pick ${word[l.kind]} line ${n}: ${esc(txt.slice(0, 60))}"` : ''}><span class="gb" aria-hidden="true"></span><span class="gn">${n}</span><span class="gs">${l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' '}</span><span class="gt">${esc(txt) || ' '}${l.noEol ? ' <span class="hint">⏎ no newline at end of file</span>' : ''}</span></div>`;
+      }).join('')}</div></section>`).join('') + (d.truncated ? '<p class="hmeta">… cut here: the diff is long.</p>' : '') + '</div>';
+}
+// hupdate shows which lines are picked and the bar that acts on them.
+function hupdate(){
+  const box = $('#hdiff'); if (!box || !HD) return;
+  box.querySelectorAll('.dl[data-l]').forEach(el => {
+    const on = hsel.has(el.dataset.h + ':' + el.dataset.l);
+    el.setAttribute('aria-checked', on); el.classList.toggle('picked', on);
+  });
+  const bar = $('#hbar'), n = hsel.size;
+  bar.hidden = !n; if (!n){ bar.innerHTML = ''; return; }
+  const s = `${n} selected line${n > 1 ? 's' : ''}`;
+  bar.innerHTML = `<strong>${s}</strong><span class="spacer"></span>`
+    + (HD.staged ? `<button class="btn" data-hv="unstage">Unstage ${s}</button>` : `<button class="btn" data-hv="stage">Stage ${s}</button>${HD.isNew ? '' : `<button class="btn danger" data-hv="discard">Discard ${s}…</button>`}`)
+    + `<button class="btn ghost" data-hv="clear">Clear</button>`;
+}
+function hpick(el, shift){
+  const key = el.dataset.h + ':' + el.dataset.l;
+  if (shift && hanchor){
+    const all = [...$('#hdiff').querySelectorAll('.dl[data-l]')], a = all.findIndex(x => x.dataset.h + ':' + x.dataset.l === hanchor), b = all.indexOf(el);
+    if (a >= 0) for (const x of all.slice(Math.min(a, b), Math.max(a, b) + 1)) hsel.add(x.dataset.h + ':' + x.dataset.l);
+  } else { hsel.has(key) ? hsel.delete(key) : hsel.add(key); }
+  hanchor = key; hupdate();
+}
+// selection turns the picked lines into the request's lines: {hunk: [line]}.
+function hselection(){
+  const lines = {};
+  for (const k of hsel){ const [h, l] = k.split(':'); (lines[h] ||= []).push(+l); }
+  return {lines};
+}
+async function hunkDo(verb, sel, what){
+  if (!HD) return;
+  const {gd, path, fp, staged} = HD, where = HD.path;
+  if (verb === 'discard' && !await ask(`Discard ${what} of ${path}? ${what[0].toUpperCase() + what.slice(1)} is removed from the file.\n\nNothing is lost: the file as it is now is kept in git stash (“gitswitch discard: …”). To get it back: git restore --source='stash@{0}' -- ${path}`, {ok: 'Discard', danger: true})) return;
+  const r = await act(() => api('POST', `/api/repo/${verb}-hunks`, {gitDir: gd, path, fingerprint: fp, ...sel}));
+  if (!r){ if (wipDiff?.path === where) showWipDiff(gd, path, staged); return; } // the file may have changed: read it again
+  const msg = {stage: 'Staged', unstage: 'Unstaged', discard: 'Discarded'}[verb] + ` ${what} of ${path}`;
+  if (verb === 'discard') toast(msg + '; kept in git stash', false, null, {label: 'Copy restore command', run: async () => { try { await navigator.clipboard.writeText(r.restore); toast('Copied: ' + r.restore); } catch { toast(r.restore); } }});
+  else toast(msg);
+  wipFlip = true; loadHistory();
+}
+$('#details').addEventListener('click', e => {
+  if (!HD) return;
+  const b = e.target.closest('[data-hv]');
+  if (b){
+    const v = b.dataset.hv;
+    if (v === 'clear'){ hsel.clear(); hanchor = null; hupdate(); return; }
+    if (b.dataset.h !== undefined) return hunkDo(v, {hunks: [+b.dataset.h]}, `hunk ${+b.dataset.h + 1}`);
+    return hunkDo(v, hselection(), `${hsel.size} line${hsel.size > 1 ? 's' : ''}`);
+  }
+  const l = e.target.closest('.dl[data-l]'); if (l) hpick(l, e.shiftKey);
+});
+$('#details').addEventListener('keydown', e => {
+  const l = e.target.closest?.('.dl[data-l]'); if (!l || !HD) return;
+  if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); hpick(l, e.shiftKey); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    const all = [...$('#hdiff').querySelectorAll('.dl[data-l]')], i = all.indexOf(l) + (e.key === 'ArrowDown' ? 1 : -1);
+    if (all[i]){ e.preventDefault(); e.stopPropagation(); all[i].focus(); }
+  }
+});
 // ignoreMenu offers to ignore a file, its extension or its folder, for
 // everyone (.gitignore) or just this clone (.git/info/exclude).
 function ignoreMenu(x, y, path, back){
@@ -3134,6 +3343,7 @@ function palCommands(){
       viaBtn('h.push', '#pushBtn', 'Push', h),
       viaBtn('h.undo', '#undoBtn', R.undo?.label ? `Undo “${R.undo.label}”` : 'Undo', h, kb('Shift', 'U')),
       viaBtn('h.compare', '#compareBtn', 'Compare with the remote…', h),
+      viaBtn('h.stashes', '#stashBtn', 'Stashes…', h, null, {hint:'apply, pop, drop'}),
       {id:'h.switch', label:'Switch branch…', cat:h, keys:kb('b'), sub:'branch', hint: R.head.branch ? 'on ' + R.head.branch : ''},
       viaBtn('h.newbranch', '#newBranchBtn', 'New branch…', h),
       viaBtn('h.prune', '#pruneBtn', 'Delete merged branches…', h),

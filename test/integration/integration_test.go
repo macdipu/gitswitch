@@ -3160,3 +3160,184 @@ func TestMergeContinueAbort(t *testing.T) {
 	}
 	e.gsErr(api, "nothing is in progress", "continue")
 }
+
+// The stash manager end to end: save with a message, chosen files and new
+// files, list (parked changes too), show, apply (with a clash that changes
+// nothing), pop, branch from a stash, drop and undo.
+func TestStashManager(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(file, text string) {
+		t.Helper()
+		must(t, os.WriteFile(filepath.Join(api, file), []byte(text), 0o644))
+	}
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	stashes := func() string { return e.gitIn(api, "stash", "list", "--format=%gs") }
+	e.commitFile(api, "f.txt", "1\n2\n3\n", "base f")
+	e.commitFile(api, "g.txt", "g\n", "base g")
+
+	e.gsErr(api, "nothing to stash", "stash", "save")
+	if out := e.gsIn(api, "stash"); !strings.Contains(out, "No stashes") {
+		t.Fatalf("empty list:\n%s", out)
+	}
+
+	// Save everything, new files included, with a message.
+	write("f.txt", "ONE\n2\n3\n")
+	write("new.txt", "n\n")
+	before := status()
+	out := e.gsIn(api, "stash", "save", "-m", "work in progress")
+	if status() != "" || stashes() != "On main: work in progress" || !strings.Contains(out, "gitswitch undo") {
+		t.Fatalf("save: status %q, stash %q\n%s", status(), stashes(), out)
+	}
+	if out := e.gsIn(api, "stash"); !strings.Contains(out, "stash@{0}") || !strings.Contains(out, "work in progress") || !strings.Contains(out, "2 files") {
+		t.Fatalf("list:\n%s", out)
+	}
+	out = e.gsIn(api, "stash", "show", "0")
+	if !strings.Contains(out, "M  f.txt") || !strings.Contains(out, "?  new.txt") {
+		t.Fatalf("show:\n%s", out)
+	}
+	if out := e.gsIn(api, "stash", "show", "0", "new.txt"); !strings.Contains(out, "+n") {
+		t.Fatalf("show new file:\n%s", out)
+	}
+	if out := e.gsIn(api, "stash", "show", "0", "f.txt"); !strings.Contains(out, "-1") || !strings.Contains(out, "+ONE") {
+		t.Fatalf("show f:\n%s", out)
+	}
+	if out := e.gsIn(api, "stash", "--json"); !strings.Contains(out, `"kind":"stash"`) || !strings.Contains(out, `"untracked":true`) {
+		t.Fatalf("json:\n%s", out)
+	}
+
+	// Undo the save: the changes are back and the stash is gone.
+	e.gsIn(api, "undo", "-y")
+	if status() != before || stashes() != "" {
+		t.Fatalf("undo save: status %q (want %q), stash %q", status(), before, stashes())
+	}
+
+	// Only chosen files.
+	e.gsIn(api, "stash", "save", "-m", "just f", "f.txt")
+	if status() != "?? new.txt" || stashes() != "On main: just f" {
+		t.Fatalf("path save: status %q, stash %q", status(), stashes())
+	}
+	e.gsErr(api, "uncommitted changes", "stash", "apply", "0") // new.txt is uncommitted
+
+	// Apply keeps the stash; pop removes it.
+	must(t, os.Remove(filepath.Join(api, "new.txt")))
+	e.gsIn(api, "stash", "apply", "0")
+	if status() != "M f.txt" || stashes() != "On main: just f" {
+		t.Fatalf("apply: status %q, stash %q", status(), stashes())
+	}
+	e.gitIn(api, "checkout", "-q", "--", "f.txt")
+	e.gsIn(api, "stash", "pop", "0")
+	if status() != "M f.txt" || stashes() != "" {
+		t.Fatalf("pop: status %q, stash %q", status(), stashes())
+	}
+
+	// A clash on apply changes nothing and keeps the stash.
+	e.gsIn(api, "stash", "save", "-m", "clashing")
+	e.commitFile(api, "f.txt", "CLASH\n2\n3\n", "moved on")
+	e.gsErr(api, "nothing changed and the stash stays", "stash", "apply", "0")
+	if status() != "" || stashes() != "On main: clashing" {
+		t.Fatalf("clash: status %q, stash %q", status(), stashes())
+	}
+
+	// A new branch from the stash, then drop and undo.
+	e.gsIn(api, "stash", "branch", "0", "from-stash")
+	if got := e.gitIn(api, "branch", "--show-current"); got != "from-stash" || status() != "M f.txt" || stashes() != "" {
+		t.Fatalf("branch: on %s, status %q, stash %q", got, status(), stashes())
+	}
+	e.gitIn(api, "stash", "push", "-q", "-m", "to drop")
+	e.gsErr(api, "add -y", "stash", "drop", "0")
+	e.gsIn(api, "stash", "drop", "0", "-y")
+	if stashes() != "" {
+		t.Fatalf("drop: %q", stashes())
+	}
+	e.gsIn(api, "undo", "-y")
+	if stashes() != "On from-stash: to drop" {
+		t.Fatalf("undo drop: %q", stashes())
+	}
+
+	// Parked changes are in the list with their kind.
+	e.gitIn(api, "stash", "drop", "-q")
+	write("f.txt", "parked\n")
+	e.gsIn(api, "switch", "main", "--park")
+	if out := e.gsIn(api, "stash"); !strings.Contains(out, "changes parked on from-stash") {
+		t.Fatalf("parked in list:\n%s", out)
+	}
+	e.gsErr(api, "start the message with other words", "stash", "save", "-m", "gitswitch park: x")
+}
+
+// Hunks from the command line: list them, stage and unstage some by number,
+// discard one (asks first, keeps the file in a stash that git restore reads).
+func TestHunksCommands(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	var rows []string
+	for i := 1; i <= 30; i++ {
+		rows = append(rows, fmt.Sprintf("row %d", i))
+	}
+	put := func(lines []string) {
+		must(t, os.WriteFile(filepath.Join(api, "src.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o644))
+	}
+	put(rows)
+	e.gitIn(api, "add", "src.txt")
+	e.gitIn(api, "commit", "-q", "-m", "src")
+	edit := append([]string{}, rows...)
+	edit[1], edit[14], edit[27] = "ROW 2", "ROW 15", "ROW 28"
+	put(edit)
+
+	out := e.gsIn(api, "hunks", "src.txt")
+	if !strings.Contains(out, "3 hunk(s), not staged") || !strings.Contains(out, "#3  @@") || !strings.Contains(out, "+ROW 28") {
+		t.Fatalf("hunks:\n%s", out)
+	}
+	if out := e.gsIn(api, "hunks", "src.txt", "--json"); !strings.Contains(out, `"fingerprint":"`) || !strings.Contains(out, `"kind":"add"`) {
+		t.Fatalf("hunks --json:\n%s", out)
+	}
+	if out := e.gsIn(api, "stage", "src.txt", "--hunk", "1,3"); !strings.Contains(out, "Staged hunk 1,3") {
+		t.Fatalf("stage --hunk:\n%s", out)
+	}
+	cached := e.gitIn(api, "diff", "--cached")
+	if !strings.Contains(cached, "+ROW 2") || !strings.Contains(cached, "+ROW 28") || strings.Contains(cached, "ROW 15") {
+		t.Fatalf("staged:\n%s", cached)
+	}
+	if out := e.gsIn(api, "hunks", "src.txt", "--staged"); !strings.Contains(out, "2 hunk(s), staged") {
+		t.Fatalf("hunks --staged:\n%s", out)
+	}
+	if out := e.gsIn(api, "unstage", "src.txt", "--hunk=1"); !strings.Contains(out, "Unstaged hunk 1") {
+		t.Fatalf("unstage --hunk:\n%s", out)
+	}
+	if got := e.gitIn(api, "diff", "--cached"); strings.Contains(got, "ROW 2\n") || !strings.Contains(got, "+ROW 28") {
+		t.Fatalf("after unstage:\n%s", got)
+	}
+	if out, err := e.run(api, gsBin, "stage", "src.txt", "--hunk", "9"); err == nil || !strings.Contains(out, "no hunk 9") {
+		t.Fatalf("a hunk that is not there: %v\n%s", err, out)
+	}
+	if out, err := e.run(api, gsBin, "stage", "src.txt", "--hunk", "0"); err == nil || !strings.Contains(out, "from 1") {
+		t.Fatalf("hunk 0: %v\n%s", err, out)
+	}
+	if out, err := e.run(api, gsBin, "discard", "src.txt", "--hunk", "1"); err == nil || !strings.Contains(out, "-y") {
+		t.Fatalf("discard without -y and no terminal: %v\n%s", err, out)
+	}
+	out = e.gsIn(api, "discard", "src.txt", "--hunk", "1", "-y")
+	if !strings.Contains(out, "Discarded hunk 1") || !strings.Contains(out, "git restore --source='stash@{0}' -- src.txt") {
+		t.Fatalf("discard --hunk:\n%s", out)
+	}
+	b, _ := os.ReadFile(filepath.Join(api, "src.txt"))
+	if strings.Contains(string(b), "ROW 2\n") || !strings.Contains(string(b), "ROW 15") {
+		t.Fatalf("file after discarding hunk 1:\n%s", b)
+	}
+	e.gitIn(api, "restore", "--source=stash@{0}", "--", "src.txt")
+	if b, _ := os.ReadFile(filepath.Join(api, "src.txt")); !strings.Contains(string(b), "ROW 2\n") {
+		t.Fatalf("restore from the stash:\n%s", b)
+	}
+	// Not a text change.
+	must(t, os.WriteFile(filepath.Join(api, "bin.dat"), []byte{0, 1, 2, 0, 3}, 0o644))
+	e.gitIn(api, "add", "bin.dat")
+	e.gitIn(api, "commit", "-q", "-m", "bin")
+	must(t, os.WriteFile(filepath.Join(api, "bin.dat"), []byte{0, 9, 9, 0, 3}, 0o644))
+	if out, err := e.run(api, gsBin, "stage", "bin.dat", "--hunk", "1"); err == nil || !strings.Contains(out, "binary") {
+		t.Fatalf("binary: %v\n%s", err, out)
+	}
+}

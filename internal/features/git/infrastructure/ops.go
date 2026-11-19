@@ -48,3 +48,45 @@ func InProgress(gitDir string) string {
 	}
 	return ""
 }
+
+// Output runs git and returns its standard output untouched, trailing
+// newlines and carriage returns included: a diff that is turned back into a
+// patch must keep every byte of its last line.
+func (r *Runner) Output(args ...string) (string, error) {
+	return r.RunIn("", nil, "", true, args...)
+}
+
+// RunIn runs git with extra environment variables (KEY=value) and text on
+// standard input; dir "" is the current folder. The output is trimmed like
+// Run's unless raw. A failure carries git's message and exit code.
+func (r *Runner) RunIn(dir string, env []string, stdin string, raw bool, args ...string) (string, error) {
+	if dir != "" {
+		args = append([]string{"-C", dir}, args...)
+	}
+	cmd := exec.Command(Program(), args...)
+	cmd.Env = append(append(os.Environ(), "GIT_EDITOR=:", "GIT_TERMINAL_PROMPT=0"), env...)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	var out, errb strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	process.HideWindow(cmd)
+	err := cmd.Run()
+	text := out.String()
+	if !raw {
+		text = strings.TrimRight(text, "\r\n")
+	}
+	if err != nil {
+		msg := strings.TrimSpace(errb.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		code := -1
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		}
+		return text, &Error{Msg: msg, Code: code}
+	}
+	return text, nil
+}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -462,6 +463,20 @@ func (s *server) routes() map[string]handler {
 			paths, all := pathList(b)
 			return a.Workspace.Discard(gd, paths, all)
 		}),
+		// Single hunks and lines of one file: {gitDir, path, fingerprint (from
+		// GET /api/repo/diff), hunks:[0,2] and/or lines:{"1":[3,4]}} (line
+		// indexes count every line of the hunk). Stage and discard read the
+		// change that is not staged, unstage the staged one. discard keeps the
+		// file as it was in a stash first and returns how to restore it.
+		"POST /api/repo/stage-hunks": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Workspace.StageHunks(gd, str(b, "path"), str(b, "fingerprint"), hunkSelection(b))
+		}),
+		"POST /api/repo/unstage-hunks": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Workspace.UnstageHunks(gd, str(b, "path"), str(b, "fingerprint"), hunkSelection(b))
+		}),
+		"POST /api/repo/discard-hunks": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Workspace.DiscardHunks(gd, str(b, "path"), str(b, "fingerprint"), hunkSelection(b))
+		}),
 		// Ignore a file (kind file), its extension (ext) or its folder
 		// (folder) in .gitignore, or with local in .git/info/exclude; untrack
 		// also takes tracked files out of git (git rm --cached), keeping them.
@@ -596,6 +611,59 @@ func (s *server) routes() map[string]handler {
 				return nil, err
 			}
 			return a.Merge.Merge(gd, str(b, "branch"), mode)
+		}),
+		// Stash manager: every stash, parked and discarded ones too. A stash
+		// is named by its commit hash (indexes shift); a hash no longer in
+		// the list is refused with "the stash list changed; reload".
+		"GET /api/stashes": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			all, err := a.Refs.Stashes(gd)
+			if all == nil {
+				all = []refs.Stash{}
+			}
+			return all, err
+		},
+		// One stash with its files (no path), or the diff of one file.
+		"GET /api/stash/show": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			if q.Get("path") != "" {
+				return a.Refs.StashDiff(gd, q.Get("hash"), q.Get("path"))
+			}
+			return a.Refs.StashShow(gd, q.Get("hash"))
+		},
+		"POST /api/stash/save": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			o := refs.StashOptions{Message: str(b, "message"), Untracked: true}
+			if v, ok := b["untracked"].(bool); ok {
+				o.Untracked = v
+			}
+			o.KeepIndex, _ = b["keepIndex"].(bool)
+			if ps, ok := b["paths"].([]any); ok {
+				for _, p := range ps {
+					if t, ok := p.(string); ok {
+						o.Paths = append(o.Paths, t)
+					}
+				}
+			}
+			return a.Refs.StashSave(gd, o)
+		}),
+		"POST /api/stash/apply": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.StashApply(gd, str(b, "hash"))
+		}),
+		"POST /api/stash/pop": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.StashPop(gd, str(b, "hash"))
+		}),
+		"POST /api/stash/drop": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.StashDrop(gd, str(b, "hash"))
+		}),
+		"POST /api/stash/branch": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Refs.StashBranch(gd, str(b, "hash"), str(b, "name"))
 		}),
 		"GET /api/operation": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
@@ -840,4 +908,28 @@ func pathList(b map[string]any) (paths []string, all bool) {
 func str(m map[string]any, k string) string {
 	s, _ := m[k].(string)
 	return strings.TrimSpace(s)
+}
+
+// hunkSelection reads {"hunks":[0,2],"lines":{"1":[3,4]}}.
+func hunkSelection(b map[string]any) workspace.Selection {
+	sel := workspace.Selection{Lines: map[int][]int{}}
+	ints := func(v any) (out []int) {
+		list, _ := v.([]any)
+		for _, x := range list {
+			if f, ok := x.(float64); ok {
+				out = append(out, int(f))
+			}
+		}
+		return out
+	}
+	sel.Hunks = ints(b["hunks"])
+	lines, _ := b["lines"].(map[string]any)
+	for k, v := range lines {
+		if i, err := strconv.Atoi(k); err == nil {
+			sel.Lines[i] = ints(v)
+		} else {
+			sel.Lines[-1] = nil // names no hunk: refused with the others
+		}
+	}
+	return sel
 }

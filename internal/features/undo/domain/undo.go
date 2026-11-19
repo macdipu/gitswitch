@@ -39,6 +39,12 @@ const (
 	// Record.Base is the commit merged in). After == Base when it was a
 	// fast-forward; otherwise After is the merge commit.
 	Merge Action = "merge"
+	// StashSave: the working changes were stashed (Record.Before and After
+	// are the stash commit, Record.To its list subject).
+	StashSave Action = "stash-save"
+	// StashDrop: a stash entry was dropped (same fields); its commit stays
+	// reachable through the undo ref until the next action.
+	StashDrop Action = "stash-drop"
 )
 
 // Deleted is a branch an action deleted: enough to bring it back.
@@ -101,6 +107,10 @@ func (r Record) Effect() string {
 	switch r.Action {
 	case Switch:
 		return "Switches back to " + r.Branch + "."
+	case StashSave:
+		return "Puts the stashed changes back in your working folder and removes the stash, while the folder is still clean."
+	case StashDrop:
+		return "Puts the dropped stash back in the stash list. Your files are not changed."
 	case Rename:
 		return "Renames " + r.To + " back to " + r.Branch + "."
 	case Prune:
@@ -138,7 +148,7 @@ func (r Record) FastForward() bool { return r.Action == Merge && r.After == r.Ba
 // Rewinds reports whether undoing moves the branch back to Before, taking
 // commits off it (every action but a switch, a move, a prune or a rename).
 func (r Record) Rewinds() bool {
-	return r.Action != Switch && r.Action != Move && r.Action != Prune && r.Action != Rename
+	return r.Action != Switch && r.Action != Move && r.Action != Prune && r.Action != Rename && r.Action != StashSave && r.Action != StashDrop
 }
 
 // ErrNothing means there is no action to undo in the repo.
@@ -153,7 +163,7 @@ func (r Record) Check(now Mark) error {
 	if now.Worktree != r.Worktree {
 		return fmt.Errorf("the last action (%s) was made in another working folder, %s; undo it there", r.Label, r.Worktree)
 	}
-	if r.Action == Prune || r.Action == Rename {
+	if r.Action == Prune || r.Action == Rename || r.Action == StashSave || r.Action == StashDrop {
 		return nil // any branch may be checked out: the branches only come back or get their name back
 	}
 	if r.Action == Switch {
@@ -222,6 +232,20 @@ type Git interface {
 	// Rename renames a local branch, keeping its upstream; refused when to
 	// exists.
 	Rename(gitDir, from, to string) error
+}
+
+// StashGit is what undoing a stash needs; the Git implementation may offer
+// it (the undo service checks at run time, so other fakes need nothing).
+type StashGit interface {
+	// HasStash reports whether the stash list holds the commit.
+	HasStash(gitDir, hash string) bool
+	// Dirty reports whether the working folder has uncommitted changes.
+	Dirty(worktree string) bool
+	// StashStore puts a commit back in the stash list with its subject.
+	StashStore(gitDir, hash, subject string) error
+	// StashPopBack puts the stash's changes back in a clean working folder
+	// and removes the entry; on a clash nothing changes and it stays.
+	StashPopBack(worktree, hash string) error
 }
 
 // Recorder remembers actions so they can be undone. Use cases call Before

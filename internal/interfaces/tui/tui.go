@@ -123,6 +123,7 @@ type tui struct {
 	flagged   bool
 	filter    history.Filter
 	changes   *changesView // the History page's list of uncommitted changes, while open
+	stashes   *stashView   // the History page's stash manager, while open
 
 	msg    string
 	msgErr bool
@@ -222,6 +223,7 @@ func (t *tui) reload() {
 	if t.tab == tabSettings {
 		t.checks = t.app.Doctor.Run(false)
 	}
+	t.loadStashes() // after an undo or any action: the open stash list may have changed
 	t.clampSel()
 }
 
@@ -433,6 +435,7 @@ func (t *tui) handle(k string) {
 		t.handlePicker(k)
 	case t.form != nil:
 		t.handleForm(k)
+	case t.stashes != nil && t.tab == tabHistory && t.keyStashes(k):
 	case t.changes != nil && t.tab == tabHistory && t.keyChanges(k):
 	default:
 		t.handleMain(k)
@@ -703,6 +706,7 @@ History
   U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
+  h stashes: every git stash (see Stashes below)
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
   M committed on the wrong branch: move the commits not pushed to a new branch
   D delete the branches merged into the remote's default branch
@@ -716,6 +720,10 @@ Changes (s on History)
   s stage   u unstage   x discard: back to the last commit (asks first; the changes are kept in git stash)
   a stage all   A unstage all   X discard all (asks first)   C commit (the staged files, or every change when none is staged) or amend
   i ignore the file, its extension or its folder, in .gitignore or only for me (offers to untrack a tracked file)
+Stashes (h on History)
+  ↑↓ or j/k move   Enter the stash's files, then a file's diff (new files too)   Esc or q back (one level)
+  a apply (keeps the stash)   p pop (apply, then remove it)   both need no uncommitted changes; a clash changes nothing
+  d delete (asks; U brings it back)   n new branch from the stash   s stash the uncommitted changes (message form)   r read again
 Rules
   a add rule   x remove rule
 Settings
@@ -1179,7 +1187,7 @@ func (t *tui) browseGitHub() {
 // openHistory shows a repo's history and records it as recently opened.
 func (t *tui) openHistory(gitDir string) {
 	t.histDir = gitDir
-	t.changes = nil
+	t.changes, t.stashes = nil, nil
 	// The fetch-on-open setting: once per repo while the app runs. A failed
 	// fetch (offline) is not an error here; F says why when asked.
 	if t.app.Refs.FetchOnOpen() && !t.fetched[gitDir] {
@@ -1616,6 +1624,8 @@ func (t *tui) keyHistory(k string) {
 		t.resolve()
 	case "P":
 		t.pickParked()
+	case "h":
+		t.openStashes()
 	case "n":
 		t.newBranch("")
 	case "N":
@@ -3137,7 +3147,9 @@ func (t *tui) draw() {
 	case tabRepos:
 		lines, sel = t.drawRepos()
 	case tabHistory:
-		if t.changes != nil {
+		if t.stashes != nil {
+			lines, sel = t.drawStashes()
+		} else if t.changes != nil {
 			lines, sel = t.drawChanges()
 		} else {
 			lines, sel = t.drawHistory()
@@ -3232,6 +3244,9 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
+		if t.stashes != nil {
+			return "↑↓ move · Enter files, then a file's diff · a apply · p pop · d drop · n new branch · s stash changes · U undo · r reload · Esc back · ? help"
+		}
 		if t.changes != nil {
 			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · a stage all · A unstage all · X discard all · i ignore · C commit · r reload · Esc back · ? help"
 		}
@@ -3624,4 +3639,325 @@ func orNone(s string) string {
 		return "(not set)"
 	}
 	return s
+}
+
+// ---------------- stashes ----------------
+
+// stashView is the History page's stash manager: every stash of the repo
+// (parked and discarded changes too), and the files of the selected one.
+type stashView struct {
+	gd    string
+	all   []refs.Stash
+	sel   int
+	files bool // the selected stash's files are open
+	fsel  int
+}
+
+// openStashes shows the selected repo's stashes.
+func (t *tui) openStashes() {
+	if t.histDir == "" {
+		t.say(fmt.Errorf("choose a repo first (o)"), "")
+		return
+	}
+	t.stashes = &stashView{gd: t.histDir}
+	t.msg = ""
+	t.loadStashes()
+}
+
+// loadStashes reads the list again, keeping the selection on the same stash
+// (by its commit) while it is still there.
+func (t *tui) loadStashes() {
+	v := t.stashes
+	if v == nil {
+		return
+	}
+	var was string
+	if v.sel < len(v.all) {
+		was = v.all[v.sel].Hash
+	}
+	all, err := t.app.Refs.Stashes(v.gd)
+	if err != nil {
+		t.stashes = nil
+		t.say(err, "")
+		return
+	}
+	if h, err := t.app.Refs.Head(v.gd); err == nil {
+		t.head = &h
+	}
+	v.all = all
+	moved := false
+	for i, st := range all {
+		if st.Hash == was {
+			v.sel, moved = i, true
+		}
+	}
+	if !moved {
+		v.sel, v.files = max(0, min(v.sel, len(all)-1)), false
+	}
+	if v.sel < len(all) {
+		v.fsel = max(0, min(v.fsel, len(all[v.sel].Files)-1))
+	}
+}
+
+func (t *tui) closeStashes() {
+	t.stashes = nil
+	sel := t.sel[tabHistory]
+	t.readHistory() // an apply or a pop changed the uncommitted changes
+	t.sel[tabHistory] = max(0, min(sel, len(t.histLines)-1))
+}
+
+// stashDone says how a stash action went and reads the list again; a stale
+// stash (the list changed) is reloaded too.
+func (t *tui) stashDone(err error, ok string) error {
+	t.loadStashes()
+	t.say(err, ok)
+	return nil
+}
+
+// keyStashes handles a key while the stashes are shown. Keys it does not use
+// (switching page, help, quit with Ctrl+C) go to the main handler.
+func (t *tui) keyStashes(k string) bool {
+	v := t.stashes
+	n := len(v.all)
+	var st *refs.Stash
+	if v.sel < n {
+		st = &v.all[v.sel]
+	}
+	move := func(d int) {
+		if v.files && st != nil {
+			v.fsel = max(0, min(len(st.Files)-1, v.fsel+d))
+		} else {
+			v.sel, v.fsel = max(0, min(n-1, v.sel+d)), 0
+		}
+	}
+	page := max(1, t.h-6)
+	switch k {
+	case "tab", "backtab", "left", "right", "1", "2", "3", "4", "5", "6", "?":
+		return false
+	case "esc", "q":
+		if v.files {
+			v.files = false
+		} else {
+			t.closeStashes()
+		}
+	case "up", "k":
+		move(-1)
+	case "down", "j":
+		move(1)
+	case "pgup":
+		move(-page)
+	case "pgdn":
+		move(page)
+	case "home", "g":
+		move(-1 << 20)
+	case "end", "G":
+		move(1 << 20)
+	case "r":
+		t.loadStashes()
+	case "enter":
+		switch {
+		case st == nil:
+		case !v.files:
+			if len(st.Files) == 0 {
+				t.say(nil, "That stash holds no files.")
+			} else {
+				v.files, v.fsel = true, 0
+			}
+		default:
+			t.showStashDiff(*st, st.Files[v.fsel])
+		}
+	case "a", "p":
+		if st != nil {
+			t.stashApply(*st, k == "p")
+		}
+	case "d":
+		if st != nil {
+			t.stashDrop(*st)
+		}
+	case "n":
+		if st != nil {
+			t.stashBranch(*st)
+		}
+	case "s":
+		t.stashSave()
+	case "U":
+		t.undoLast() // the list is read again once it is confirmed (reload)
+	}
+	return true
+}
+
+func (t *tui) stashApply(st refs.Stash, pop bool) {
+	gd := t.stashes.gd
+	if pop {
+		err := t.app.Refs.StashPop(gd, st.Hash)
+		t.stashDone(err, "Popped "+st.Label()+" and removed it from the list. It can't be undone: the changes are in your files.")
+		return
+	}
+	err := t.app.Refs.StashApply(gd, st.Hash)
+	t.stashDone(err, "Applied "+st.Label()+"; it is still in the list.")
+}
+
+func (t *tui) stashDrop(st refs.Stash) {
+	gd := t.stashes.gd
+	t.confirm = &confirmBox{fmt.Sprintf("Delete %s: %s? U brings it back. (y/n)", history.CleanText(st.Label()), refs.FileList(stashFilePaths(st))),
+		map[string]func() error{"y": func() error {
+			err := t.app.Refs.StashDrop(gd, st.Hash)
+			if err == nil {
+				t.loadStashes()
+				t.say(nil, "Deleted "+st.Label()+"."+undoHint)
+				return nil
+			}
+			return t.stashDone(err, "")
+		}}}
+}
+
+func (t *tui) stashBranch(st refs.Stash) {
+	gd := t.stashes.gd
+	t.form = &form{title: "New branch from " + history.CleanText(st.Label()), fields: []field{{label: "Name", value: t.app.Refs.BranchPrefix(),
+		hint: "the stash goes onto it and is removed; needs no uncommitted changes"}},
+		submit: func(v []string) error {
+			name := strings.TrimSpace(v[0])
+			if name == "" || name == t.app.Refs.BranchPrefix() {
+				return fmt.Errorf("type a name for the branch")
+			}
+			if err := t.app.Refs.StashBranch(gd, st.Hash, name); err != nil {
+				t.loadStashes()
+				return err
+			}
+			t.loadStashes()
+			t.say(nil, "Made branch "+name+" from "+st.Label()+" and switched to it.")
+			return nil
+		}}
+}
+
+// stashSave asks for a message and stashes every uncommitted change.
+func (t *tui) stashSave() {
+	gd := t.stashes.gd
+	t.form = &form{title: "Stash the uncommitted changes", fields: []field{
+		{label: "Message", hint: "optional"},
+		{label: "New files", value: "include", options: []string{"include", "leave"}, hint: "←→ untracked files too, or only tracked ones"},
+		{label: "Staged", value: "stash too", options: []string{"stash too", "keep staged"}, hint: "←→ keep the staged changes in your files"},
+	}, submit: func(v []string) error {
+		st, err := t.app.Refs.StashSave(gd, refs.StashOptions{Message: v[0], Untracked: v[1] == "include", KeepIndex: v[2] == "keep staged"})
+		if err != nil {
+			return err
+		}
+		t.loadStashes()
+		hint := ""
+		if v[2] != "keep staged" {
+			hint = undoHint
+		}
+		t.say(nil, "Stashed "+refs.FileList(stashFilePaths(st))+" as "+st.Label()+"."+hint)
+		return nil
+	}}
+}
+
+func stashFilePaths(st refs.Stash) []string {
+	p := make([]string, len(st.Files))
+	for i, f := range st.Files {
+		p[i] = f.Path
+	}
+	return p
+}
+
+// showStashDiff shows one file of a stash; new files show their whole
+// content.
+func (t *tui) showStashDiff(st refs.Stash, f refs.StashFile) {
+	d, err := t.app.Refs.StashDiff(t.stashes.gd, st.Hash, f.Path)
+	if err != nil {
+		t.loadStashes()
+		t.say(err, "")
+		return
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimRight(d.Text, "\n"), "\n") {
+		l = history.CleanText(l)
+		switch {
+		case strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+			l = cBold + l + cReset
+		case strings.HasPrefix(l, "+"):
+			l = cGreen + l + cReset
+		case strings.HasPrefix(l, "-"):
+			l = cRed + l + cReset
+		case strings.HasPrefix(l, "@@"):
+			l = cYellow + l + cReset
+		case strings.HasPrefix(l, "diff "), strings.HasPrefix(l, "index "):
+			l = cDim + l + cReset
+		}
+		lines = append(lines, l)
+	}
+	if d.Truncated {
+		lines = append(lines, "", cDim+fmt.Sprintf("… cut at %d KB; git stash show -p shows all of it", refs.MaxStashDiffBytes>>10)+cReset)
+	}
+	t.view = &viewer{title: history.CleanText(f.Path) + " · " + st.Ref, lines: lines}
+}
+
+// drawStashes lists the stashes, newest first, and under the selected one
+// its files when they are open.
+func (t *tui) drawStashes() ([]string, int) {
+	v := t.stashes
+	path := v.gd
+	if t.hist != nil {
+		path = t.hist.Repo.Path
+	}
+	branch := "(detached)"
+	if t.head != nil && t.head.Branch != "" {
+		branch = t.head.Branch
+	}
+	l := []string{"\x00 " + cBold + "Stashes" + cReset + "  " + path + "  branch: " + cBold + history.CleanText(branch) + cReset, "\x00"}
+	if len(v.all) == 0 {
+		return append(l, " No stashes. s stashes the uncommitted changes; Esc goes back to the commits."), -1
+	}
+	hdr, selLine := len(l), -1
+	now := time.Now().Unix()
+	for i, st := range v.all {
+		on := i == v.sel && !v.files
+		if i == v.sel && !v.files {
+			selLine = len(l) - hdr
+		}
+		kind := ""
+		switch st.Kind {
+		case refs.StashPark:
+			kind = cYellow + " parked on " + history.CleanText(st.ParkedOn) + cReset
+		case refs.StashDiscard:
+			kind = cYellow + " discarded on " + history.CleanText(st.ParkedOn) + cReset
+		}
+		files := fmt.Sprintf("%d files", len(st.Files))
+		if len(st.Files) == 1 {
+			files = "1 file"
+		}
+		if st.Untracked > 0 {
+			files += fmt.Sprintf(", %d new", st.Untracked)
+		}
+		from := st.Branch
+		if from == "" {
+			from = "detached HEAD"
+		}
+		l = append(l, fmt.Sprintf("%s%s  %s%s%s  %s%s", mark(on), history.CleanText(st.Ref), boldIf(on), history.CleanText(st.Message), cReset+kind,
+			cDim, history.CleanText(from)+" · "+refs.Ago(now, st.Time)+" · "+files+cReset))
+		if i == v.sel && v.files {
+			for j, f := range st.Files {
+				fon := j == v.fsel
+				if fon {
+					selLine = len(l) - hdr
+				}
+				col := cYellow
+				switch f.Status {
+				case "A", "?":
+					col = cGreen
+				case "D":
+					col = cRed
+				}
+				extra := fmt.Sprintf("+%d -%d", f.Added, f.Deleted)
+				if f.Binary {
+					extra = "binary"
+				}
+				if f.Staged {
+					extra += " · staged"
+				}
+				l = append(l, fmt.Sprintf("  %s%s%s%s %s%s%s  %s", mark(fon), col, f.Status, cReset, boldIf(fon), history.CleanText(f.Path), cReset, cDim+extra+cReset))
+			}
+		}
+	}
+	return l, selLine
 }

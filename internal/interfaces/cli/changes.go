@@ -156,6 +156,12 @@ func (x *CLI) cmdStage(args []string) error {
 	if err != nil {
 		return err
 	}
+	if rest, hunks, ok, err := hunkFlag(args, "gitswitch stage <path> --hunk <n>[,<n>...]"); ok || err != nil {
+		if err != nil {
+			return err
+		}
+		return x.hunkAction(gd, rest, hunks, "stage", false)
+	}
 	paths, all, _, err := x.pathsArg(gd, args, "gitswitch stage <path>... | --all", false)
 	if err != nil {
 		return err
@@ -173,6 +179,12 @@ func (x *CLI) cmdUnstage(args []string) error {
 	if err != nil {
 		return err
 	}
+	if rest, hunks, ok, err := hunkFlag(args, "gitswitch unstage <path> --hunk <n>[,<n>...]"); ok || err != nil {
+		if err != nil {
+			return err
+		}
+		return x.hunkAction(gd, rest, hunks, "unstage", false)
+	}
 	paths, all, _, err := x.pathsArg(gd, args, "gitswitch unstage <path>... | --all", false)
 	if err != nil {
 		return err
@@ -189,6 +201,12 @@ func (x *CLI) cmdDiscard(args []string) error {
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
+	}
+	if rest, hunks, ok, err := hunkFlag(args, "gitswitch discard <path> --hunk <n>[,<n>...] [-y]"); ok || err != nil {
+		if err != nil {
+			return err
+		}
+		return x.hunkAction(gd, rest, hunks, "discard", true)
 	}
 	paths, all, yes, err := x.pathsArg(gd, args, "gitswitch discard <path>... | --all [-y]", true)
 	if err != nil {

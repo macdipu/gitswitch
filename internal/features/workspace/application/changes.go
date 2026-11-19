@@ -36,13 +36,32 @@ func (s *Service) Diff(gitDir, path string, staged bool) (workspace.Diff, error)
 		}
 		d.Path, paths = p, []string{p}
 	}
-	text, err := s.Changes.Diff(gitDir, staged, paths)
+	raw, err := s.Changes.Diff(gitDir, staged, paths)
 	if err != nil {
 		return d, err
 	}
-	d.Text = text
+	d.Text = strings.TrimRight(raw, "\r\n")
 	if len(d.Text) > workspace.MaxDiffBytes {
 		d.Text, d.Truncated = d.Text[:workspace.MaxDiffBytes], true
+	}
+	d.Hunks = []workspace.Hunk{}
+	switch {
+	case path == "" || raw == "":
+	case d.Truncated:
+		d.NoHunks = "this diff is too big to pick lines from: stage or discard the whole file"
+	default:
+		if fd, err := workspace.ParseDiff(raw); err != nil {
+			d.NoHunks = err.Error()
+		} else {
+			d.Fingerprint = workspace.Fingerprint(raw)
+			d.Hunks = append(d.Hunks, fd.Hunks...)
+			switch {
+			case fd.Binary:
+				d.NoHunks = "binary file: stage or discard the whole file"
+			case fd.ModeOnly:
+				d.NoHunks = "only the file mode changed: stage or discard the whole file"
+			}
+		}
 	}
 	return d, nil
 }

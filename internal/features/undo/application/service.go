@@ -99,6 +99,20 @@ func (s *Service) Renamed(gitDir string, before undo.Mark, from, to, hash, label
 	}
 }
 
+// Stashed remembers a stash that was saved (undo.StashSave) or dropped
+// (undo.StashDrop): hash is its commit and subject its stash list line.
+func (s *Service) Stashed(gitDir string, before undo.Mark, a undo.Action, hash, subject, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r := undo.Record{Action: a, Label: label, Worktree: before.Worktree, Branch: before.Branch, To: subject,
+		Before: hash, After: hash, Time: now().Unix()}
+	if hash == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Status is the last action and whether it can be undone now.
 type Status struct {
 	undo.Record
@@ -137,6 +151,9 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 		if s.Git.Tip(gitDir, r.Branch) != "" {
 			return fmt.Errorf("there is a branch %s again, so %s can't get that name back; rename or delete it, then undo again", r.Branch, r.To)
 		}
+	}
+	if r.Action == undo.StashSave || r.Action == undo.StashDrop {
+		return s.checkStash(gitDir, r)
 	}
 	if r.Action == undo.Move && s.Git.Tip(gitDir, r.Branch) != r.After {
 		return fmt.Errorf("%s has changed since the last action (%s): a pull, new commits or another git command. Putting the commits back now would lose that, so GitSwitch won't; merge %s into it instead", r.Branch, r.Label, r.To)
@@ -184,6 +201,27 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 	return nil
 }
 
+func (s *Service) checkStash(gitDir string, r undo.Record) error {
+	g, ok := s.Git.(undo.StashGit)
+	if !ok {
+		return errors.New("stashes cannot be undone here")
+	}
+	has := g.HasStash(gitDir, r.Before)
+	if r.Action == undo.StashDrop {
+		if has {
+			return errors.New("that stash is in the stash list again, so there is nothing to bring back")
+		}
+		return nil
+	}
+	if !has {
+		return errors.New("the stash is gone from the list (applied, popped or dropped since), so it can't be put back")
+	}
+	if g.Dirty(r.Worktree) {
+		return errors.New("there are uncommitted changes in the working folder now. Undoing would mix the stash with them, so GitSwitch won't; commit or stash them first")
+	}
+	return nil
+}
+
 // Undo undoes the repo's last action and forgets it. It returns what was
 // undone.
 func (s *Service) Undo(gitDir string) (undo.Record, error) {
@@ -204,6 +242,10 @@ func (s *Service) Undo(gitDir string) (undo.Record, error) {
 		return r, s.unmove(gitDir, r)
 	case undo.Rename:
 		err = s.Git.Rename(gitDir, r.To, r.Branch)
+	case undo.StashDrop:
+		err = s.Git.(undo.StashGit).StashStore(gitDir, r.Before, r.To)
+	case undo.StashSave:
+		err = s.Git.(undo.StashGit).StashPopBack(r.Worktree, r.Before)
 	case undo.Prune:
 		var gone []undo.Deleted // those made again at the same commit stay
 		for _, d := range r.Deleted {

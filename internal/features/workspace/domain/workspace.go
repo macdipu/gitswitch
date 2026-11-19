@@ -193,6 +193,14 @@ type Diff struct {
 	Staged    bool   `json:"staged"`    // the staged change; otherwise the one not staged
 	Text      string `json:"text"`      // a unified diff; "" when there is no change
 	Truncated bool   `json:"truncated"` // cut at MaxDiffBytes
+
+	// Hunks is the diff of one file taken apart, to stage, unstage or
+	// discard single hunks and lines; Fingerprint identifies the diff, and
+	// goes back with such a request. Both are empty for a diff of every
+	// file, a cut one and a binary file; NoHunks says why.
+	Hunks       []Hunk `json:"hunks"`
+	Fingerprint string `json:"fingerprint"`
+	NoHunks     string `json:"noHunks,omitempty"`
 }
 
 // MaxDiffBytes is how much of a diff is returned, as for a commit's diff.
@@ -216,4 +224,23 @@ type Changes interface {
 	// keeping what it removes as a stash with this message; every change
 	// when paths is empty.
 	Discard(worktree, message string, paths []string) error
+	// Apply applies a patch (git apply --recount) to the index (cached),
+	// or to the working folder; reverse undoes it instead; check only
+	// tests that it would apply.
+	Apply(worktree, patch string, o ApplyOptions) error
+	// IntentToAdd makes git track a new file (git add -N) with nothing
+	// staged of it yet, so a patch can add its lines to the index.
+	IntentToAdd(worktree, path string) error
+	// Backup keeps the working folder's current version of one tracked
+	// file as a stash entry with this message, without touching the folder
+	// or the index. git stash apply (or checking the file out of the
+	// stash) brings it back.
+	Backup(worktree, message, path string) error
+}
+
+// ApplyOptions are how Changes.Apply applies a patch.
+type ApplyOptions struct {
+	Cached  bool // to the index, not the working folder
+	Reverse bool
+	Check   bool // only test
 }

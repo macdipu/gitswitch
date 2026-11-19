@@ -2,6 +2,9 @@ package infrastructure
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
@@ -71,7 +74,8 @@ func (g *Git) Diff(gitDir string, staged bool, paths []string) (string, error) {
 	if staged {
 		args = append(args, "--cached")
 	}
-	out, err := g.Git.Run(append(append(args, "--"), paths...)...)
+	// Raw: a diff turned back into a patch must keep its last byte.
+	out, err := g.Git.Output(append(append(args, "--"), paths...)...)
 	if err != nil {
 		return "", err
 	}
@@ -97,11 +101,11 @@ func (g *Git) Diff(gitDir string, staged bool, paths []string) (string, error) {
 			break
 		}
 		// --no-index exits 1 when the files differ, which they do.
-		d, err := g.Git.Run("-C", wt, "diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", f.Path)
+		d, err := g.Git.Output("-C", wt, "diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", f.Path)
 		if err != nil && gitinfra.ExitCode(err) != 1 {
 			continue
 		}
-		if b.Len() > 0 && d != "" {
+		if b.Len() > 0 && d != "" && !strings.HasSuffix(b.String(), "\n") {
 			b.WriteString("\n")
 		}
 		b.WriteString(d)
@@ -130,4 +134,92 @@ func withPaths(args, paths []string) []string {
 		return args
 	}
 	return append(append(append([]string{"--literal-pathspecs"}, args...), "--"), paths...)
+}
+
+func (g *Git) Apply(wt, patch string, o workspace.ApplyOptions) error {
+	args := []string{"apply", "--recount", "--whitespace=nowarn"}
+	if o.Cached {
+		args = append(args, "--cached")
+	}
+	if o.Reverse {
+		args = append(args, "--reverse")
+	}
+	if o.Check {
+		args = append(args, "--check")
+	}
+	_, err := g.Git.RunIn(wt, nil, patch, false, append(args, "-")...)
+	if err != nil {
+		return fmt.Errorf("the change could not be applied (the file may have changed): %v", err)
+	}
+	return nil
+}
+
+func (g *Git) IntentToAdd(wt, path string) error {
+	return g.Git.Change(wt, "--literal-pathspecs", "add", "--intent-to-add", "--", path)
+}
+
+// Backup builds the stash entry with plumbing, on a scratch index, so the
+// real index and the working folder are never touched: a commit whose tree
+// is HEAD with this one file as it is now, on top of an "index" commit, the
+// way git stash lays them out.
+func (g *Git) Backup(wt, message, path string) error {
+	gitDir, err := g.Git.RunIn(wt, nil, "", false, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(gitDir, "gitswitch-backup-index-*")
+	if err != nil {
+		return err
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	env := []string{"GIT_INDEX_FILE=" + tmp.Name()}
+	// Each step is a git call in the working folder, on the scratch index.
+	step := func(stdin string, args ...string) (string, error) {
+		return g.Git.RunIn(wt, env, stdin, false, args...)
+	}
+	if _, err := step("", "read-tree", "HEAD"); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(wt, filepath.FromSlash(path))); err == nil {
+		ls, err := g.Git.RunIn(wt, nil, "", false, "--literal-pathspecs", "ls-files", "--stage", "--", path)
+		if err != nil {
+			return err
+		}
+		mode := "100644"
+		if f := strings.Fields(ls); len(f) > 0 {
+			mode = f[0]
+		}
+		blob, err := g.Git.RunIn(wt, nil, "", false, "--literal-pathspecs", "hash-object", "-w", "--", path)
+		if err != nil {
+			return err
+		}
+		if _, err := step("", "update-index", "--add", "--cacheinfo", mode+","+blob+","+path); err != nil {
+			return err
+		}
+	} else if _, err := step("", "--literal-pathspecs", "update-index", "--force-remove", "--", path); err != nil {
+		return err
+	}
+	tree, err := step("", "write-tree")
+	if err != nil {
+		return err
+	}
+	headTree, err := g.Git.RunIn(wt, nil, "", false, "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		return err
+	}
+	head, err := g.Git.RunIn(wt, nil, "", false, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	idx, err := g.Git.RunIn(wt, nil, "", false, "commit-tree", headTree, "-p", head, "-m", "index on "+message)
+	if err != nil {
+		return err
+	}
+	wip, err := g.Git.RunIn(wt, nil, "", false, "commit-tree", tree, "-p", head, "-p", idx, "-m", message)
+	if err != nil {
+		return err
+	}
+	_, err = g.Git.RunIn(wt, nil, "", false, "stash", "store", "-m", message, wip)
+	return err
 }

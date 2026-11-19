@@ -988,3 +988,222 @@ func TestMergeOperationConflict(t *testing.T) {
 		t.Fatalf("dirty = %d %v", w.Code, m)
 	}
 }
+
+// The stash manager: save (with a message, chosen paths, new files), list,
+// show a file's diff, refuse a stale hash, apply, pop, branch, drop and undo.
+func TestStashManager(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	write("changed\n")
+
+	if w, m := call(t, h, "POST", "/api/stash/save", `{`+gd+`,"paths":["../x"]}`); w.Code != 400 {
+		t.Fatalf("bad path = %d %v", w.Code, m)
+	}
+	w, m := call(t, h, "POST", "/api/stash/save", `{`+gd+`,"message":"my stash"}`)
+	st, _ := m["data"].(map[string]any)
+	if w.Code != 200 || st["message"] != "my stash" || st["kind"] != "stash" || st["branch"] != "main" || git("status", "--porcelain") != "" {
+		t.Fatalf("save = %d %v", w.Code, m)
+	}
+	hash := fmt.Sprint(st["hash"])
+	if w, m := call(t, h, "POST", "/api/stash/save", `{`+gd+`}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "nothing to stash") {
+		t.Fatalf("nothing = %d %v", w.Code, m)
+	}
+
+	_, m = call(t, h, "GET", "/api/stashes?gitDir="+url.QueryEscape(dir), "")
+	list, _ := m["data"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("stashes = %v", m)
+	}
+	files, _ := list[0].(map[string]any)["files"].([]any)
+	if len(files) != 2 || files[1].(map[string]any)["untracked"] != true || files[0].(map[string]any)["status"] != "M" {
+		t.Fatalf("files = %v", files)
+	}
+	_, m = call(t, h, "GET", "/api/stash/show?gitDir="+url.QueryEscape(dir)+"&hash="+hash+"&path=new.txt", "")
+	if d, _ := m["data"].(map[string]any); d["untracked"] != true || !strings.Contains(fmt.Sprint(d["text"]), "+hello") {
+		t.Fatalf("show new.txt = %v", m)
+	}
+	_, m = call(t, h, "GET", "/api/stash/show?gitDir="+url.QueryEscape(dir)+"&hash="+hash, "")
+	if d, _ := m["data"].(map[string]any); d["hash"] != hash {
+		t.Fatalf("show = %v", m)
+	}
+	if w, m := call(t, h, "GET", "/api/stash/show?gitDir="+url.QueryEscape(dir)+"&hash=nope", ""); w.Code != 400 || m["error"] != "the stash list changed; reload" {
+		t.Fatalf("stale show = %d %v", w.Code, m)
+	}
+
+	// Apply keeps it, pop removes it; both need a clean folder.
+	if w, m := call(t, h, "POST", "/api/stash/apply", `{`+gd+`,"hash":"`+hash+`"}`); w.Code != 200 {
+		t.Fatalf("apply = %d %v", w.Code, m)
+	}
+	if git("status", "--porcelain") == "" || git("stash", "list") == "" {
+		t.Fatal("apply must keep the stash and change the files")
+	}
+	if w, m := call(t, h, "POST", "/api/stash/pop", `{`+gd+`,"hash":"`+hash+`"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "uncommitted changes") {
+		t.Fatalf("pop on dirty = %d %v", w.Code, m)
+	}
+	git("add", "-A")
+	git("stash", "push", "-q", "-m", "second") // folder clean again
+	_, m = call(t, h, "GET", "/api/stashes?gitDir="+url.QueryEscape(dir), "")
+	list, _ = m["data"].([]any)
+	second := fmt.Sprint(list[0].(map[string]any)["hash"])
+	if w, m := call(t, h, "POST", "/api/stash/pop", `{`+gd+`,"hash":"`+hash+`"}`); w.Code != 200 {
+		t.Fatalf("pop = %d %v", w.Code, m)
+	}
+	if git("stash", "list", "--format=%H") != second {
+		t.Fatalf("pop must remove only that stash: %q", git("stash", "list", "--format=%H"))
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "popped")
+
+	// Branch from the remaining stash; the stale hash is refused after.
+	if w, m := call(t, h, "POST", "/api/stash/branch", `{`+gd+`,"hash":"`+second+`","name":"from-stash"}`); w.Code != 200 || git("branch", "--show-current") != "from-stash" {
+		t.Fatalf("branch = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/stash/drop", `{`+gd+`,"hash":"`+second+`"}`); w.Code != 400 || m["error"] != "the stash list changed; reload" {
+		t.Fatalf("stale drop = %d %v", w.Code, m)
+	}
+
+	// Drop and undo: the stash comes back, with its message.
+	git("add", "-A")
+	git("commit", "-q", "-m", "on the new branch")
+	write("third\n")
+	w, m = call(t, h, "POST", "/api/stash/save", `{`+gd+`,"message":"third"}`)
+	st, _ = m["data"].(map[string]any)
+	third := fmt.Sprint(st["hash"])
+	if w.Code != 200 || third == "" {
+		t.Fatalf("save third = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/stash/drop", `{`+gd+`,"hash":"`+third+`"}`); w.Code != 200 || git("stash", "list") != "" {
+		t.Fatalf("drop = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/undo", `{`+gd+`}`); w.Code != 200 {
+		t.Fatalf("undo = %d %v", w.Code, m)
+	}
+	if got := git("stash", "list", "--format=%H %gs"); got != third+" On from-stash: third" {
+		t.Fatalf("after undo: %q", got)
+	}
+}
+
+// Hunks and lines: the diff returns them with a fingerprint; stage, unstage
+// and discard take hunk and line indexes and refuse a stale fingerprint.
+func TestHunkRoutes(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	q := "gitDir=" + url.QueryEscape(dir)
+	var base []string
+	for i := 1; i <= 30; i++ {
+		base = append(base, fmt.Sprintf("row %d", i))
+	}
+	put := func(lines []string) {
+		if err := os.WriteFile(filepath.Join(dir, "h.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(base)
+	git("add", "h.txt")
+	git("commit", "-q", "-m", "h")
+	edit := append([]string{}, base...)
+	edit[1], edit[14], edit[27] = "ROW 2", "ROW 15", "ROW 28"
+	put(edit)
+
+	diff := func(staged string) map[string]any {
+		t.Helper()
+		w, m := call(t, h, "GET", "/api/repo/diff?"+q+"&path=h.txt"+staged, "")
+		d, _ := m["data"].(map[string]any)
+		if w.Code != 200 {
+			t.Fatalf("diff = %d %v", w.Code, m)
+		}
+		return d
+	}
+	d := diff("")
+	hunks, _ := d["hunks"].([]any)
+	fp, _ := d["fingerprint"].(string)
+	if len(hunks) != 3 || fp == "" || !strings.Contains(fmt.Sprint(d["text"]), "+ROW 15") {
+		t.Fatalf("diff: %v", d)
+	}
+	first, _ := hunks[0].(map[string]any)
+	lines, _ := first["lines"].([]any)
+	l0, _ := lines[0].(map[string]any)
+	if first["index"].(float64) != 0 || !strings.HasPrefix(fmt.Sprint(first["header"]), "@@ ") || l0["kind"] != "context" || l0["old"].(float64) != 1 {
+		t.Fatalf("hunk 0: %v", first)
+	}
+
+	// A stale fingerprint is refused and changes nothing.
+	w, m := call(t, h, "POST", "/api/repo/stage-hunks", `{`+gd+`,"path":"h.txt","fingerprint":"0000","hunks":[0]}`)
+	if w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "the file changed since you looked: reload") || git("diff", "--cached", "--name-only") != "" {
+		t.Fatalf("stale = %d %v", w.Code, m)
+	}
+	// Stage hunk 1, then only the added line of hunk 2.
+	if w, m := call(t, h, "POST", "/api/repo/stage-hunks", `{`+gd+`,"path":"h.txt","fingerprint":"`+fp+`","hunks":[1]}`); w.Code != 200 || !strings.Contains(git("diff", "--cached"), "+ROW 15") {
+		t.Fatalf("stage hunk = %d %v", w.Code, m)
+	}
+	// The same fingerprint is stale now: the diff changed.
+	if w, _ := call(t, h, "POST", "/api/repo/stage-hunks", `{`+gd+`,"path":"h.txt","fingerprint":"`+fp+`","hunks":[0]}`); w.Code != 400 {
+		t.Fatalf("a used fingerprint must be refused, got %d", w.Code)
+	}
+	d = diff("")
+	fp, _ = d["fingerprint"].(string)
+	hs, _ := d["hunks"].([]any)
+	last, _ := hs[1].(map[string]any)
+	add := -1
+	for j, l := range last["lines"].([]any) {
+		if l.(map[string]any)["kind"] == "add" {
+			add = j
+		}
+	}
+	body := fmt.Sprintf(`{%s,"path":"h.txt","fingerprint":%q,"lines":{"1":[%d]}}`, gd, fp, add)
+	if w, m := call(t, h, "POST", "/api/repo/stage-hunks", body); w.Code != 200 || !strings.Contains(git("diff", "--cached"), "+ROW 28") || strings.Contains(git("diff", "--cached"), "-row 28") {
+		t.Fatalf("stage line = %d %v\n%s", w.Code, m, git("diff", "--cached"))
+	}
+	// Unstage hunk 0 of the staged diff.
+	sd := diff("&staged=1")
+	sfp, _ := sd["fingerprint"].(string)
+	if w, m := call(t, h, "POST", "/api/repo/unstage-hunks", `{`+gd+`,"path":"h.txt","fingerprint":"`+sfp+`","hunks":[0]}`); w.Code != 200 || strings.Contains(git("diff", "--cached"), "ROW 15") {
+		t.Fatalf("unstage hunk = %d %v", w.Code, m)
+	}
+	// Discard hunk 0 of the unstaged diff: kept in a stash, with the way back.
+	d = diff("")
+	fp, _ = d["fingerprint"].(string)
+	w, m = call(t, h, "POST", "/api/repo/discard-hunks", `{`+gd+`,"path":"h.txt","fingerprint":"`+fp+`","hunks":[0]}`)
+	r, _ := m["data"].(map[string]any)
+	if w.Code != 200 || !strings.Contains(fmt.Sprint(r["stash"]), "gitswitch discard:") || !strings.Contains(fmt.Sprint(r["restore"]), "git restore --source=") {
+		t.Fatalf("discard hunk = %d %v", w.Code, m)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "h.txt")); strings.Contains(string(b), "ROW 2\n") {
+		t.Fatalf("hunk 0 is still in the file:\n%s", b)
+	}
+	if !strings.Contains(git("stash", "list"), "gitswitch discard:") || !strings.Contains(git("show", "stash@{0}:h.txt"), "ROW 2") {
+		t.Fatal("the discarded hunk is not in the stash")
+	}
+	// Bad requests are refused: no hunk, a context line, a new file's discard.
+	d = diff("")
+	fp, _ = d["fingerprint"].(string)
+	for _, b := range []string{
+		`{` + gd + `,"path":"h.txt","fingerprint":"` + fp + `"}`,
+		`{` + gd + `,"path":"h.txt","fingerprint":"` + fp + `","hunks":[9]}`,
+		`{` + gd + `,"path":"h.txt","fingerprint":"` + fp + `","lines":{"0":[0]}}`,
+		`{` + gd + `,"path":"h.txt","fingerprint":"` + fp + `","lines":{"x":[1]}}`,
+		`{` + gd + `,"path":"../h.txt","fingerprint":"` + fp + `","hunks":[0]}`,
+	} {
+		if w, m := call(t, h, "POST", "/api/repo/stage-hunks", b); w.Code != 400 || m["error"] == nil {
+			t.Errorf("%s = %d %v, want an error", b, w.Code, m)
+		}
+	}
+	// A new file: lines can be staged; discarding in parts is refused.
+	if err := os.WriteFile(filepath.Join(dir, "n.txt"), []byte("n1\nn2\nn3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w, m = call(t, h, "GET", "/api/repo/diff?"+q+"&path=n.txt", "")
+	nd, _ := m["data"].(map[string]any)
+	nfp, _ := nd["fingerprint"].(string)
+	if w, m := call(t, h, "POST", "/api/repo/discard-hunks", `{`+gd+`,"path":"n.txt","fingerprint":"`+nfp+`","hunks":[0]}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "whole file") {
+		t.Fatalf("discard part of a new file = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/stage-hunks", `{`+gd+`,"path":"n.txt","fingerprint":"`+nfp+`","lines":{"0":[0,2]}}`); w.Code != 200 || git("show", ":n.txt") != "n1\nn3" {
+		t.Fatalf("stage lines of a new file = %d %v", w.Code, m)
+	}
+}

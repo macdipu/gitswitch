@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	gitinfra "github.com/macdipu/gitswitch/internal/features/git/infrastructure"
+	refsinfra "github.com/macdipu/gitswitch/internal/features/refs/infrastructure"
 	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 )
 
@@ -186,4 +187,51 @@ func (g *Git) Recreate(gitDir string, branches []undo.Deleted) error {
 func (g *Git) Rename(gitDir, from, to string) error {
 	_, err := g.Git.Run("--git-dir="+gitDir, "branch", "-m", "--", from, to)
 	return err
+}
+
+func (g *Git) HasStash(gitDir, hash string) bool {
+	out, err := g.Git.Run("--git-dir="+gitDir, "stash", "list", "--format=%H")
+	if err != nil {
+		return false
+	}
+	for _, h := range strings.Fields(out) {
+		if h == hash {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Git) Dirty(worktree string) bool {
+	out, err := g.Git.Run("-C", worktree, "status", "--porcelain")
+	return err != nil || out != ""
+}
+
+func (g *Git) StashStore(gitDir, hash, subject string) error {
+	if g.HasStash(gitDir, hash) {
+		return nil
+	}
+	args := []string{"--git-dir=" + gitDir, "stash", "store"}
+	if subject != "" {
+		args = append(args, "-m", subject)
+	}
+	_, err := g.Git.Run(append(args, hash)...)
+	return err
+}
+
+// StashPopBack applies the stash like restoring parked changes does: a clash
+// is cleaned up completely and leaves the stash in place.
+func (g *Git) StashPopBack(worktree, hash string) error {
+	r := &refsinfra.Git{Git: g.Git}
+	files, err := r.Apply(worktree, hash)
+	if err != nil {
+		return err
+	}
+	if len(files) > 0 {
+		if derr := r.Discard(worktree, hash); derr != nil {
+			return fmt.Errorf("the stash clashes with %s and the files could not be cleaned up (%v); `git reset --hard` cleans up", strings.Join(files, ", "), derr)
+		}
+		return fmt.Errorf("the stash clashes with %s, so nothing changed", strings.Join(files, ", "))
+	}
+	return r.DropStash(worktree, hash)
 }
