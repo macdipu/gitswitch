@@ -72,6 +72,10 @@ func (s *Service) Update(acc account.Account) error {
 	if acc.User == "" {
 		acc.User = old.User
 	}
+	if acc.SigningFormat == "" && acc.SigningKey == "" {
+		// Editing the other fields keeps how it signs; SetSigning changes it.
+		acc.SigningFormat, acc.SigningKey = old.SigningFormat, old.SigningKey
+	}
 	return s.Store.Save(acc)
 }
 

@@ -300,6 +300,12 @@ type Filter struct {
 	NoMerges    bool   `json:"noMerges"`
 	// Cherry marks, with a Ref, the commits not cherry-picked onto HEAD.
 	Cherry bool `json:"cherry"`
+	// Pickaxe shows only the commits that added or removed this text
+	// (git log -S); with PickaxeRegex it is a regular expression and
+	// matches changed lines (-G). PickaxeIgnoreCase ignores case.
+	Pickaxe           string `json:"pickaxe"`
+	PickaxeRegex      bool   `json:"pickaxeRegex"`
+	PickaxeIgnoreCase bool   `json:"pickaxeIgnoreCase"`
 }
 
 // Active reports whether the filter narrows anything.
@@ -402,7 +408,7 @@ func (f Filter) Keep(cs []Commit) []Commit {
 // Describe is a short summary, e.g. `author "ana", since 2024-05-01`.
 func (f Filter) Describe() string {
 	var parts []string
-	for _, p := range [][2]string{{"author", f.Author}, {"text", f.Text}, {"since", f.Since}, {"until", f.Until}, {"account", f.Account}} {
+	for _, p := range [][2]string{{"author", f.Author}, {"text", f.Text}, {"since", f.Since}, {"until", f.Until}, {"account", f.Account}, {"code", f.Pickaxe}} {
 		if p[1] != "" {
 			parts = append(parts, fmt.Sprintf("%s %q", p[0], p[1]))
 		}

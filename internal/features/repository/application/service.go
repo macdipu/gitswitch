@@ -25,6 +25,7 @@ type Service struct {
 	Reader       repo.Reader
 	Locator      repo.Locator
 	Cloner       repo.Cloner
+	Initializer  repo.Initializer // starts repos (init.go); nil: not available
 	RepoAccounts account.RepoAccounts
 	DryRun       bool // clones are only printed
 }

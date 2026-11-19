@@ -16,6 +16,8 @@ import (
 	historyinfra "github.com/macdipu/gitswitch/internal/features/history/infrastructure"
 	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
 	hostinginfra "github.com/macdipu/gitswitch/internal/features/hosting/infrastructure"
+	inspectapp "github.com/macdipu/gitswitch/internal/features/inspect/application"
+	inspectinfra "github.com/macdipu/gitswitch/internal/features/inspect/infrastructure"
 	mergeapp "github.com/macdipu/gitswitch/internal/features/merge/application"
 	mergeinfra "github.com/macdipu/gitswitch/internal/features/merge/infrastructure"
 	refsapp "github.com/macdipu/gitswitch/internal/features/refs/application"
@@ -51,6 +53,7 @@ type App struct {
 	Undo      *undoapp.Service
 	Workspace *workspaceapp.Service
 	Merge     *mergeapp.Service
+	Inspect   *inspectapp.Service // compare, reflog, bisect
 	Hosting   *hostingapp.Service
 	Setup     *setup.Installer
 	Doctor    *doctor.Doctor
@@ -81,11 +84,12 @@ func New(dryRun bool, out io.Writer) *App {
 	return &App{
 		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader, Tokens: hostinginfra.Tokens{Secrets: secrets}},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
-		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git},
+		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git}, Initializer: &repoinfra.Initializer{Git: git},
 			RepoAccounts: store, DryRun: dryRun},
 		History:   &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
 		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Undo:      undos,
+		Inspect:   &inspectapp.Service{Git: &inspectinfra.Git{Git: git}, Locator: git, FS: fs},
 		Merge:     &mergeapp.Service{Git: &mergeinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos},
 		Workspace: &workspaceapp.Service{Git: wsGit, Changes: wsGit, Ignorer: wsGit, Messages: wsGit, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Hosting: &hostingapp.Service{Accounts: store, Secrets: secrets, API: hostinginfra.NewHosts(Version),

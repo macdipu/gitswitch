@@ -625,6 +625,9 @@ func (x *CLI) moveToNewBranch(gd, name string) error {
 // to push show that account: when some don't, it offers to fix them, and
 // without a terminal it needs -y to push them anyway.
 func (x *CLI) cmdPush(args []string) error {
+	if hasFlag(args, "--force-with-lease") {
+		return x.cmdPushLease(args)
+	}
 	open, yes := false, false
 	for _, a := range args {
 		switch a {
@@ -731,12 +734,16 @@ func (x *CLI) cmdUpdate(args []string) error {
 
 // cmdFetch reads the remote's new commits and says what is waiting.
 func (x *CLI) cmdFetch(args []string) error {
-	asJSON := false
+	asJSON, prune := false, false
 	for _, a := range args {
-		if a != "--json" {
-			return usageErr("gitswitch fetch [--json]")
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--prune":
+			prune = true
+		default:
+			return usageErr("gitswitch fetch [--prune] [--json]")
 		}
-		asJSON = true
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
@@ -747,7 +754,12 @@ func (x *CLI) cmdFetch(args []string) error {
 			x.say(" ", l)
 		}
 	}
-	f, err := x.app.Refs.Fetch(gd, logLine)
+	var f refs.Fetched
+	if prune { // --prune is the question: it is typed on purpose
+		f, err = x.app.Refs.FetchWith(gd, true, logLine)
+	} else {
+		f, err = x.app.Refs.Fetch(gd, logLine)
+	}
 	if err != nil {
 		return err
 	}
@@ -768,6 +780,7 @@ func (x *CLI) cmdFetch(args []string) error {
 	default:
 		x.say("Fetched: nothing new on", h.Upstream+".")
 	}
+	x.sayPruned(f)
 	return nil
 }
 

@@ -63,6 +63,9 @@ func (s *Service) build(c *account.Config, gitDir string, limit int, f history.F
 	if err := history.CheckRef(f.Ref); err != nil {
 		return nil, err
 	}
+	if err := f.CheckPickaxe(); err != nil {
+		return nil, err
+	}
 	gf, none, err := gf.ForGit(time.Now())
 	if err != nil {
 		return nil, err

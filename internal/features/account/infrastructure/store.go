@@ -79,6 +79,10 @@ func (s *Store) LoadChecked() (*account.Config, error) {
 				a.Key = v
 			case "user":
 				a.User = v
+			case "signingkey":
+				a.SigningKey = v
+			case "signingformat":
+				a.SigningFormat = v
 			}
 		case k == "gitswitch.default":
 			c.Default = v
@@ -140,7 +144,7 @@ func (s *Store) Save(a account.Account) error {
 	}
 	// A line break would end the value early in the identity file, and the
 	// rest of it would be read as more git settings.
-	for _, f := range [][2]string{{"host", a.Host}, {"name", a.Name}, {"email", a.Email}, {"key", a.Key}, {"user", a.User}} {
+	for _, f := range [][2]string{{"host", a.Host}, {"name", a.Name}, {"email", a.Email}, {"key", a.Key}, {"user", a.User}, {"signing key", a.SigningKey}} {
 		if strings.IndexFunc(f[1], unicode.IsControl) >= 0 {
 			return fmt.Errorf("the %s %q contains a line break or other control character", f[0], f[1])
 		}
@@ -160,8 +164,12 @@ func (s *Store) Save(a account.Account) error {
 			return err
 		}
 	}
+	if err := a.ValidateSigning(); err != nil {
+		return err
+	}
 	sec := "gitswitch-account." + a.ID + "."
-	for _, f := range [][2]string{{"host", a.Host}, {"name", a.Name}, {"email", a.Email}, {"key", a.Key}, {"user", a.User}} {
+	for _, f := range [][2]string{{"host", a.Host}, {"name", a.Name}, {"email", a.Email}, {"key", a.Key}, {"user", a.User},
+		{"signingkey", a.SigningKey}, {"signingformat", a.SigningFormat}} {
 		if f[1] == "" {
 			_, _ = s.Git.Global("--unset", sec+f[0])
 			continue
@@ -173,6 +181,7 @@ func (s *Store) Save(a account.Account) error {
 	if err := s.writeIdentityFile(a); err != nil {
 		return err
 	}
+	s.writeSignersFile(a)
 	return nil
 }
 
@@ -238,6 +247,7 @@ func (s *Store) Remove(id string) error {
 	if strings.EqualFold(c.Default, id) {
 		_, _ = s.Git.Global("--unset", "gitswitch.default")
 	}
+	_ = s.FS.Remove(SignersFile(id))
 	return s.FS.Remove(IdentityFile(id))
 }
 
@@ -515,6 +525,10 @@ func (s *Store) Rename(oldID, newID string) error {
 		_, err := s.Git.Global("gitswitch.default", newID)
 		keep(err)
 	}
+	if _, err := os.Stat(SignersFile(oldID)); err == nil {
+		s.writeSignersFile(na)
+		_ = s.FS.Remove(SignersFile(oldID))
+	}
 	if len(errs) == 0 {
 		if _, err := os.Stat(oldFile); err == nil {
 			keep(s.FS.Remove(oldFile))
@@ -555,6 +569,7 @@ func (s *Store) ApplyIdentity(gitDir string, a *account.Account) {
 	if a.Name != "" && s.Git.RepoGet(gitDir, "user.name") != a.Name {
 		_ = s.Git.RepoSet(gitDir, "user.name", a.Name)
 	}
+	s.applySigning(gitDir, a)
 }
 
 // SetRepoAccount saves the account for a repo, applies its identity, and

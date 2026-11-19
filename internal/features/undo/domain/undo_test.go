@@ -120,3 +120,56 @@ func TestStashActions(t *testing.T) {
 		}
 	}
 }
+
+func TestRedoSupportAndChecks(t *testing.T) {
+	for _, a := range []Action{Revert, Drop, Rollback, CherryPick, FixAuthor, Switch, Move, Commit, Amend, Prune, Update, Rename, Merge, StashDrop} {
+		r := Record{Action: a, Label: "x", Worktree: "/r", Branch: "main", To: "feat", Before: "a", After: "b", Deleted: []Deleted{{Name: "x", Hash: "h"}}}
+		if r.RedoUnsupported() != "" || r.RedoEffect() == "" {
+			t.Errorf("%s must be redoable with an effect", a)
+		}
+	}
+	for _, a := range []Action{StashSave, "something-new"} {
+		if (Record{Action: a}).RedoUnsupported() == "" {
+			t.Errorf("%s must say why it cannot be redone", a)
+		}
+	}
+	for _, a := range []Action{Commit, Amend, Rollback} {
+		if !(Record{Action: a}).Mixed() {
+			t.Errorf("%s only moves the branch", a)
+		}
+	}
+	if (Record{Action: Drop}).Mixed() {
+		t.Error("drop moves files")
+	}
+
+	r := Record{Action: Commit, Label: "Committed", Worktree: "/r", Branch: "main", Before: "a", After: "b"}
+	ok := Mark{Worktree: "/r", Branch: "main", Head: "a"}
+	if err := r.CheckRedo(ok); err != nil {
+		t.Errorf("redo where undo left it: %v", err)
+	}
+	for name, now := range map[string]Mark{
+		"busy":     {Worktree: "/r", Branch: "main", Head: "a", Busy: "rebase"},
+		"folder":   {Worktree: "/other", Branch: "main", Head: "a"},
+		"branch":   {Worktree: "/r", Branch: "feat", Head: "a"},
+		"detached": {Worktree: "/r", Head: "a"},
+		"moved":    {Worktree: "/r", Branch: "main", Head: "z"},
+	} {
+		if err := r.CheckRedo(now); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+	sw := Record{Action: Switch, Worktree: "/r", Branch: "main", To: "feat"}
+	if sw.CheckRedo(Mark{Worktree: "/r", Branch: "main", Head: "q"}) != nil {
+		t.Error("a switch redo needs only to be on the branch left")
+	}
+	if sw.CheckRedo(Mark{Worktree: "/r", Branch: "feat"}) == nil {
+		t.Error("already on the target")
+	}
+	pr := Record{Action: Prune, Worktree: "/r", Branch: "main"}
+	if pr.CheckRedo(Mark{Worktree: "/r", Branch: "anything", Head: "q"}) != nil {
+		t.Error("prune redo works from any branch")
+	}
+	if err := (Record{Action: StashSave, Worktree: "/r"}).CheckRedo(ok); err == nil || !strings.Contains(err.Error(), "can't be redone") {
+		t.Errorf("stash save: %v", err)
+	}
+}

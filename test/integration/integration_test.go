@@ -3341,3 +3341,538 @@ func TestHunksCommands(t *testing.T) {
 		t.Fatalf("binary: %v\n%s", err, out)
 	}
 }
+
+// Blame, file history across a rename and the code search, with real git.
+func TestBlameFileLogAndCodeSearch(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(name, text string) { must(t, os.WriteFile(filepath.Join(api, name), []byte(text), 0o644)) }
+	write("old.txt", "alpha line\nbeta line\ngamma line\n")
+	e.gitIn(api, "add", "old.txt")
+	e.gitIn(api, "commit", "-q", "-m", "add old")
+	e.gitIn(api, "mv", "old.txt", "new.txt")
+	e.gitIn(api, "commit", "-q", "-m", "rename old to new")
+	write("new.txt", "alpha line\nBETA line\ngamma line\n")
+	e.gitIn(api, "commit", "-q", "-am", "shout beta")
+
+	out := e.gsIn(api, "blame", "new.txt")
+	if !strings.Contains(out, "alpha line") || !strings.Contains(out, "BETA line") || strings.Count(out, "dipu@") != 0 {
+		t.Fatalf("blame:\n%s", out)
+	}
+	var b struct {
+		Lines []struct {
+			Line     int
+			Account  string
+			OrigPath string
+			Summary  string
+		}
+		Chunks    []struct{ Count int }
+		Truncated bool
+	}
+	if err := json.Unmarshal([]byte(e.gsIn(api, "blame", "new.txt", "--rev", "HEAD", "-w", "-M", "--json")), &b); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Lines) != 3 || len(b.Chunks) != 3 || b.Lines[0].OrigPath != "old.txt" || b.Lines[0].Account != "client" || b.Lines[1].Summary != "shout beta" {
+		t.Fatalf("blame json: %+v", b)
+	}
+	e.gsErr(api, "no file", "blame", "missing.txt")
+	e.gsErr(api, "not a branch or tag name", "blame", "new.txt", "--rev", "--output=x")
+
+	out = e.gsIn(api, "log", "--file", "new.txt")
+	if !strings.Contains(out, "shout beta") || !strings.Contains(out, "renamed from old.txt to new.txt") || !strings.Contains(out, "add old") || !strings.Contains(out, "R100") {
+		t.Fatalf("log --file:\n%s", out)
+	}
+	out = e.gsIn(api, "log", "--code", "BETA")
+	if !strings.Contains(out, "(1 commit(s))") || strings.Contains(out, "add old") || !strings.Contains(out, `code "BETA"`) {
+		t.Fatalf("log --code:\n%s", out)
+	}
+	out = e.gsIn(api, "log", "--code", "^alpha", "--regex")
+	if !strings.Contains(out, "add old") || !strings.Contains(out, "(1 commit(s))") {
+		t.Fatalf("log --code --regex:\n%s", out)
+	}
+}
+
+// Compare, reflog with recovery and a guided bisect from the command line.
+func TestCompareReflogAndBisect(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	write := func(name, text string) { must(t, os.WriteFile(filepath.Join(api, name), []byte(text), 0o644)) }
+	commit := func(name, text, msg string) {
+		write(name, text)
+		e.gitIn(api, "add", "--all")
+		e.gitIn(api, "commit", "-q", "-m", msg)
+	}
+	commit("base.txt", "base\n", "base")
+	e.gitIn(api, "switch", "-q", "-c", "feature")
+	commit("f.txt", "feature\n", "feature work")
+	e.gitIn(api, "switch", "-q", "-")
+	commit("m.txt", "main\n", "main work")
+	main := e.gitIn(api, "symbolic-ref", "--short", "HEAD")
+
+	// compare: both modes, one file, JSON, refusals.
+	out := e.gsIn(api, "compare", main, "feature")
+	for _, want := range []string{"Only on " + main + " (1):", "main work", "Only on feature (1):", "feature work", "since they went apart", "A  f.txt  +1 -0"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("compare missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "m.txt") {
+		t.Fatalf("since-fork must not list what only %s changed:\n%s", main, out)
+	}
+	if out = e.gsIn(api, "compare", main, "feature", "--direct"); !strings.Contains(out, "D  m.txt") || !strings.Contains(out, "A  f.txt") {
+		t.Fatalf("compare --direct:\n%s", out)
+	}
+	var c struct {
+		Mode    string
+		OnlyB   []struct{ Subject string }
+		Files   []struct{ Path, Status string }
+		Same    bool
+		Base    string
+		AHash   string
+		BHash   string
+		Summary string
+	}
+	if err := json.Unmarshal([]byte(e.gsIn(api, "compare", main, "feature", "--json")), &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Mode != "since-fork" || len(c.OnlyB) != 1 || c.OnlyB[0].Subject != "feature work" || len(c.Files) != 1 || c.Files[0].Path != "f.txt" || c.Files[0].Status != "added" || c.Base == "" {
+		t.Fatalf("compare json: %+v", c)
+	}
+	if out = e.gsIn(api, "compare", main, "feature", "--file", "f.txt"); !strings.Contains(out, "+feature") {
+		t.Fatalf("compare --file:\n%s", out)
+	}
+	write("m.txt", "changed on disk\n")
+	if out = e.gsIn(api, "compare", "HEAD", "--working", "--direct"); !strings.Contains(out, "M  m.txt") {
+		t.Fatalf("compare --working:\n%s", out)
+	}
+	e.gitIn(api, "checkout", "--", "m.txt")
+	if out = e.gsIn(api, "compare", "HEAD"); !strings.Contains(out, "are the same") {
+		t.Fatalf("compare HEAD HEAD:\n%s", out)
+	}
+	e.gsErr(api, "usage: gitswitch compare", "compare")
+	e.gsErr(api, "usage: gitswitch compare", "compare", "--output=x")
+	e.gsErr(api, "no branch, tag or commit called nope", "compare", "nope")
+
+	// reflog: reset loses a commit, recover brings it back as a branch.
+	commit("lost.txt", "x\n", "about to be lost")
+	lost := e.gitIn(api, "rev-parse", "HEAD")
+	e.gitIn(api, "reset", "-q", "--hard", "HEAD~1")
+	out = e.gsIn(api, "reflog", "-n", "5")
+	if !strings.Contains(out, "reset") || !strings.Contains(out, "about to be lost") || !strings.Contains(out, "[lost]") {
+		t.Fatalf("reflog:\n%s", out)
+	}
+	out = e.gsIn(api, "reflog", "--lost")
+	if !strings.Contains(out, lost[:7]) || strings.Contains(out, "main work") {
+		t.Fatalf("reflog --lost:\n%s", out)
+	}
+	var rl struct {
+		Entries []struct {
+			Index  int
+			Ref    string
+			Hash   string
+			Action string
+			Lost   bool
+		}
+		More bool
+	}
+	if err := json.Unmarshal([]byte(e.gsIn(api, "reflog", "--json", "--lost")), &rl); err != nil {
+		t.Fatal(err)
+	}
+	if len(rl.Entries) != 1 || rl.Entries[0].Hash != lost || !rl.Entries[0].Lost || rl.Entries[0].Action != "commit" {
+		t.Fatalf("reflog json: %+v", rl)
+	}
+	head := e.gitIn(api, "rev-parse", "HEAD")
+	out = e.gsIn(api, "reflog", "recover", fmt.Sprint(rl.Entries[0].Index), "rescued")
+	if !strings.Contains(out, "Made branch rescued") || e.gitIn(api, "rev-parse", "rescued") != lost || e.gitIn(api, "rev-parse", "HEAD") != head {
+		t.Fatalf("recover:\n%s", out)
+	}
+	e.gsErr(api, "already exists", "reflog", "recover", lost, "rescued")
+	e.gsErr(api, "can't be a branch name", "reflog", "recover", "0", "bad name")
+	if out = e.gsIn(api, "reflog", "--lost"); !strings.Contains(out, "No lost commits") {
+		t.Fatalf("after recovery:\n%s", out)
+	}
+
+	// bisect: 12 commits, broken from the 7th.
+	e.gitIn(api, "switch", "-q", "-c", "bis", main)
+	var first string
+	for i := 1; i <= 12; i++ {
+		state := "ok"
+		if i >= 7 {
+			state = "broken"
+		}
+		write("state.txt", state+"\n")
+		commit("n.txt", fmt.Sprint(i, "\n"), fmt.Sprintf("step %d", i))
+		if i == 1 {
+			first = e.gitIn(api, "rev-parse", "HEAD")
+		}
+	}
+	write("state.txt", "dirty\n")
+	e.gsErr(api, "commit, park or discard", "bisect", "start", "HEAD", first)
+	e.gitIn(api, "checkout", "--", "state.txt")
+	e.gsErr(api, "no bisect is running", "bisect", "good")
+	out = e.gsIn(api, "bisect", "start", "HEAD", first)
+	if !strings.Contains(out, "Test ") || !strings.Contains(out, "steps left") {
+		t.Fatalf("bisect start:\n%s", out)
+	}
+	e.gsErr(api, "already running", "bisect", "start", "HEAD", first)
+	if out = e.gsIn(api, "bisect", "status"); !strings.Contains(out, "So far:") || !strings.Contains(out, "bad") {
+		t.Fatalf("bisect status:\n%s", out)
+	}
+	for i := 0; i < 10 && !strings.Contains(out, "The first bad commit is"); i++ {
+		b, _ := os.ReadFile(filepath.Join(api, "state.txt"))
+		mark := "good"
+		if strings.TrimSpace(string(b)) == "broken" {
+			mark = "bad"
+		}
+		out = e.gsIn(api, "bisect", mark)
+	}
+	if !strings.Contains(out, "The first bad commit is") || !strings.Contains(out, "step 7") || !strings.Contains(out, "by ") || !strings.Contains(out, "changed  state.txt") {
+		t.Fatalf("bisect result:\n%s", out)
+	}
+	var st struct {
+		Running  bool
+		Culprit  struct{ Subject string }
+		Original string
+	}
+	if err := json.Unmarshal([]byte(e.gsIn(api, "bisect", "status", "--json")), &st); err != nil {
+		t.Fatal(err)
+	}
+	if !st.Running || st.Culprit.Subject != "step 7" || st.Original != "bis" {
+		t.Fatalf("bisect json: %+v", st)
+	}
+	if out = e.gsIn(api, "bisect", "reset"); !strings.Contains(out, "back on bis") {
+		t.Fatalf("bisect reset:\n%s", out)
+	}
+	if e.gitIn(api, "symbolic-ref", "--short", "HEAD") != "bis" {
+		t.Fatal("reset did not return to the branch")
+	}
+	if out = e.gsIn(api, "bisect", "status"); !strings.Contains(out, "No bisect is running") {
+		t.Fatalf("after reset:\n%s", out)
+	}
+	e.gsErr(api, "usage: gitswitch bisect", "bisect")
+	e.gsErr(api, "usage: gitswitch bisect start", "bisect", "start", "HEAD")
+}
+
+// gitswitch remote: list, add, rename, set-url and remove. A URL is checked
+// as on clone, the account it would use is named, and a remote that
+// branches track is not removed without --force.
+func TestRemoteCommands(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.gs("rule", "add", "owner:dipu", "me")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+
+	out := e.gsIn(api, "remote")
+	if !strings.Contains(out, "origin") || !strings.Contains(out, "[as client]") || !strings.Contains(out, "the current branch pulls from and pushes to it") || !strings.Contains(out, "tracked by main") {
+		t.Fatalf("remote list:\n%s", out)
+	}
+	// A URL whose owner your rules give to another account than the repo's.
+	e.gsIn(api, "use", "client")
+	out = e.gsIn(api, "remote", "add", "fork", "git@github.com:dipu/notes.git")
+	if !strings.Contains(out, "Added the remote fork at git@github.com:dipu/notes.git") || !strings.Contains(out, "uses the account") || !strings.Contains(out, "gitswitch use me") {
+		t.Fatalf("add:\n%s", out)
+	}
+	if e.gitIn(api, "remote", "get-url", "fork") != "git@github.com:dipu/notes.git" {
+		t.Fatal("not added")
+	}
+	e.gsErr(api, "already a remote called fork", "remote", "add", "fork", "git@github.com:dipu/other.git")
+	e.gsErr(api, "not a repo URL", "remote", "add", "local", "/tmp/some/folder")
+	e.gsErr(api, "not supported", "remote", "add", "local", "file:///tmp/x")
+	e.gsErr(api, "can't be a remote name", "remote", "add", "bad name", "git@github.com:dipu/x.git")
+	e.gsErr(api, "usage: gitswitch remote", "remote", "add", "only-a-name")
+	if out := e.gsIn(api, "--dry-run", "remote", "add", "ghost", "git@github.com:dipu/ghost.git"); !strings.Contains(out, "[dry-run]") || strings.Contains(e.gitIn(api, "remote"), "ghost") {
+		t.Fatalf("dry run:\n%s", out)
+	}
+
+	out = e.gsIn(api, "remote", "set-url", "fork", "git@github.com:dipu/notes2.git")
+	if !strings.Contains(out, "now points at git@github.com:dipu/notes2.git (it was git@github.com:dipu/notes.git)") {
+		t.Fatalf("set-url:\n%s", out)
+	}
+	e.gsErr(api, "already points at", "remote", "set-url", "fork", "git@github.com:dipu/notes2.git")
+	e.gsErr(api, "no remote called", "remote", "set-url", "nope", "git@github.com:dipu/notes2.git")
+	if out := e.gsIn(api, "remote", "rename", "fork", "mine"); !strings.Contains(out, "Renamed the remote fork to mine") {
+		t.Fatalf("rename:\n%s", out)
+	}
+	var rs []struct {
+		Name, FetchURL, Host, Account string
+		Upstream                      bool
+		Tracking                      []string
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "remote", "list", "--json")), &rs))
+	if len(rs) != 2 || rs[0].Name != "mine" || rs[0].Host != "github.com" || rs[1].Name != "origin" || !rs[1].Upstream || strings.Join(rs[1].Tracking, ",") != "main" {
+		t.Fatalf("json: %+v", rs)
+	}
+
+	// Renaming the remote main tracks keeps it tracking.
+	e.gsIn(api, "remote", "rename", "origin", "upstream")
+	if up := e.gitIn(api, "rev-parse", "--abbrev-ref", "main@{upstream}"); up != "upstream/main" {
+		t.Fatalf("upstream after rename = %q", up)
+	}
+	e.gsErr(api, "main pulls from upstream", "remote", "remove", "upstream")
+	e.gsErr(api, "--force", "remote", "remove", "upstream")
+	// Not a terminal: asking needs -y.
+	e.gsErr(api, "add -y to confirm", "remote", "remove", "mine")
+	if out := e.gsIn(api, "remote", "remove", "mine", "-y"); !strings.Contains(out, "Removed the remote mine") || !strings.Contains(out, "gitswitch remote add mine git@github.com:dipu/notes2.git") {
+		t.Fatalf("remove:\n%s", out)
+	}
+	out = e.gsIn(api, "remote", "remove", "upstream", "--force", "-y")
+	if !strings.Contains(out, "No upstream any more: main") || e.gitIn(api, "remote") != "" {
+		t.Fatalf("forced remove:\n%s", out)
+	}
+	if out := e.gsIn(api, "remote"); !strings.Contains(out, "no remote") {
+		t.Fatalf("empty list:\n%s", out)
+	}
+}
+
+// branch delete-remote runs as the repo's account, asks first, and keeps
+// away from the default branch and the branch you are on; fetch --prune
+// forgets what the server deleted and says so; set fetch-prune does it on
+// every fetch.
+func TestDeleteRemoteBranchAndFetchPrune(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	bare := filepath.Join(e.server, "acme-corp", "api.git")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	e.gitIn(api, "remote", "set-head", "origin", "main")
+
+	e.gsIn(api, "branch", "new", "feature/x")
+	e.commitFile(api, "x.txt", "x\n", "x")
+	e.gsIn(api, "push")
+	e.gsIn(api, "switch", "main")
+	hash := e.gitIn(api, "rev-parse", "origin/feature/x")
+
+	e.gsErr(api, "add -y to confirm", "branch", "delete-remote", "origin/feature/x")
+	e.gsErr(api, "default branch", "branch", "delete-remote", "origin/main", "-y")
+	e.gsErr(api, "--force", "branch", "delete-remote", "origin/main", "-y")
+	e.gsErr(api, "not a remote branch", "branch", "delete-remote", "feature/x", "-y")
+	e.gsErr(api, "no remote branch origin/ghost", "branch", "delete-remote", "origin/ghost", "-y")
+	if e.gitIn(api, "ls-remote", "--heads", "origin", "feature/x") == "" {
+		t.Fatal("a refusal deleted it")
+	}
+	// On the branch that pulls from it.
+	e.gsIn(api, "switch", "feature/x")
+	e.gsErr(api, "you are on feature/x", "branch", "delete-remote", "origin/feature/x", "-y")
+	e.gsIn(api, "switch", "main")
+
+	if out := e.gsIn(api, "--dry-run", "branch", "delete-remote", "origin/feature/x"); !strings.Contains(out, "[dry-run] delete the branch feature/x on origin as client") || e.gitIn(api, "ls-remote", "--heads", "origin", "feature/x") == "" {
+		t.Fatalf("dry run:\n%s", out)
+	}
+	e.resetLog()
+	out := e.gsIn(api, "branch", "delete-remote", "origin/feature/x", "-y")
+	if !strings.Contains(out, "Deleted the branch feature/x on origin (it was at "+hash[:7]+")") || !strings.Contains(out, "feature/x pulled from it") ||
+		!strings.Contains(out, "git push origin "+hash+":refs/heads/feature/x") {
+		t.Fatalf("delete:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("deleted with keys %v, want the repo's account", k)
+	}
+	if e.gitIn(bare, "for-each-ref", "refs/heads/feature/x") != "" || e.gitIn(api, "for-each-ref", "refs/remotes/origin/feature/x") != "" {
+		t.Fatal("still there")
+	}
+	// The restore line works.
+	e.gitIn(api, "push", "-q", "origin", hash+":refs/heads/feature/x")
+	if e.gitIn(bare, "rev-parse", "refs/heads/feature/x") != hash {
+		t.Fatal("not restored")
+	}
+
+	// Prune: someone deletes branches on the server.
+	e.gitIn(api, "branch", "--track", "gone1", "origin/feature/x")
+	e.gitIn(api, "fetch", "-q")
+	e.gitIn(bare, "update-ref", "-d", "refs/heads/feature/x")
+	if out := e.gsIn(api, "fetch"); strings.Contains(out, "Forgot") || e.gitIn(api, "for-each-ref", "refs/remotes/origin/feature/x") == "" {
+		t.Fatalf("a plain fetch pruned:\n%s", out)
+	}
+	e.resetLog()
+	out = e.gsIn(api, "fetch", "--prune")
+	if !strings.Contains(out, "Forgot 1 remote branch(es) the server no longer has: origin/feature/x") || !strings.Contains(out, "pulled from them: feature/x, gone1") {
+		t.Fatalf("prune:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("pruned with keys %v", k)
+	}
+	var f struct{ Pruned, Gone []string }
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "fetch", "--prune", "--json")), &f))
+	if len(f.Pruned) != 0 || f.Gone == nil {
+		t.Fatalf("second prune json: %+v", f)
+	}
+
+	// The setting: off by default, global or per repo.
+	e.gitIn(bare, "update-ref", "refs/heads/feature/y", hash)
+	e.gitIn(api, "fetch", "-q")
+	e.gitIn(bare, "update-ref", "-d", "refs/heads/feature/y")
+	if v, err := e.gitMay(e.root, "config", "--global", "--get", "gitswitch.fetchPrune"); err == nil {
+		t.Fatalf("on by default: %q", v)
+	}
+	e.gsErr(api, "is not a choice: on or off", "set", "fetch-prune", "maybe")
+	e.gsErr(api, "usage: gitswitch set fetch-prune", "set", "fetch-prune")
+	if out := e.gs("set", "fetch-prune", "on"); !strings.Contains(out, "also forgets the remote branches") || e.cfg(e.root, "gitswitch.fetchPrune") != "true" {
+		t.Fatalf("set on:\n%s", out)
+	}
+	if out := e.gsIn(api, "fetch"); !strings.Contains(out, "origin/feature/y") {
+		t.Fatalf("fetch with the setting on:\n%s", out)
+	}
+	e.gsIn(api, "set", "fetch-prune", "off", "--repo")
+	if e.cfg(api, "gitswitch.fetchPrune") != "false" {
+		t.Fatal("repo setting not saved")
+	}
+	e.gsIn(api, "set", "fetch-prune", "global", "--repo")
+	e.gs("set", "fetch-prune", "off")
+}
+
+// push --force-with-lease lists the commits that would be lost, asks, and
+// pushes only while the remote branch is where the last fetch saw it.
+func TestForcePushWithLease(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	bare := filepath.Join(e.server, "acme-corp", "api.git")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.commitFile(api, "b.txt", "b\n", "to be reworded")
+	e.gitIn(api, "push", "-q", "origin", "main")
+	remote := func() string { return e.gitIn(bare, "rev-parse", "refs/heads/main") }
+
+	// Nothing to overwrite: a normal push is all it needs.
+	e.gsErr(api, "normal push", "push", "--force-with-lease", "-y")
+	e.gsErr(api, "usage: gitswitch push --force-with-lease", "push", "--force-with-lease", "--open")
+
+	e.gitIn(api, "commit", "-q", "--amend", "-m", "reworded")
+	old := remote()
+	e.gsErr(api, "never forces", "push") // the ordinary push still refuses
+	out, err := e.run(api, gsBin, "push", "--force-with-lease")
+	if err == nil || !strings.Contains(out, "1 commit would be overwritten") || !strings.Contains(out, "to be reworded") || !strings.Contains(out, "reworded") ||
+		!strings.Contains(out, "add -y to confirm") || remote() != old {
+		t.Fatalf("without -y: err=%v\n%s", err, out)
+	}
+	if out := e.gsIn(api, "--dry-run", "push", "--force-with-lease"); !strings.Contains(out, "[dry-run] force push main to origin/main as client, only if it is still at "+old[:7]) || remote() != old {
+		t.Fatalf("dry run:\n%s", out)
+	}
+	e.resetLog()
+	out = e.gsIn(api, "push", "--force-with-lease", "-y")
+	if !strings.Contains(out, "Force pushed 1 commit to origin/main as client") || !strings.Contains(out, "git push --force-with-lease origin "+old+":refs/heads/main") {
+		t.Fatalf("force push:\n%s", out)
+	}
+	if remote() != e.gitIn(api, "rev-parse", "HEAD") {
+		t.Fatal("remote not updated")
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("pushed with keys %v", k)
+	}
+
+	// Someone pushes after your last fetch: the lease fails, nothing is overwritten.
+	e.clone("git@github.com:acme-corp/api.git", "other")
+	other := filepath.Join(e.root, "other")
+	e.commitFile(other, "o.txt", "o\n", "from other")
+	e.gitIn(other, "push", "-q")
+	theirs := remote()
+	e.gitIn(api, "commit", "-q", "--amend", "-m", "reworded again")
+	out, err = e.run(api, gsBin, "push", "--force-with-lease", "-y")
+	if err == nil || !strings.Contains(out, "someone pushed to origin/main since you fetched") || !strings.Contains(out, "fetch") || remote() != theirs {
+		t.Fatalf("lease failure: err=%v\n%s", err, out)
+	}
+	// After fetching, the plan shows their commit, and the push goes.
+	e.gsIn(api, "fetch")
+	out = e.gsIn(api, "push", "--force-with-lease", "-y")
+	if !strings.Contains(out, "from other") || !strings.Contains(out, "Force pushed") || remote() != e.gitIn(api, "rev-parse", "HEAD") {
+		t.Fatalf("after fetch:\n%s", out)
+	}
+}
+
+// checkout looks at a commit or tag with HEAD detached, says what that
+// means, remembers the branch, and back returns to it; changes are asked
+// about like a switch, and commits made while detached are not left behind
+// silently.
+func TestCheckoutDetachedAndBack(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:dipu", "me")
+	e.clone("git@github.com:dipu/notes.git", "notes")
+	n := filepath.Join(e.root, "notes")
+	e.commitFile(n, "a.txt", "one\n", "first")
+	e.gitIn(n, "tag", "v1")
+	e.commitFile(n, "a.txt", "two\n", "second")
+	second := e.gitIn(n, "rev-parse", "HEAD")
+
+	e.gsErr(n, "usage: gitswitch checkout", "checkout")
+	e.gsErr(n, "is a branch: switch to it", "checkout", "main")
+	e.gsErr(n, "no commit, tag or remote branch", "checkout", "v9")
+	e.gsErr(n, "not detached", "back")
+	out := e.gsIn(n, "checkout", "v1")
+	if !strings.Contains(out, "Checked out v1 (") || !strings.Contains(out, "not on a branch") || !strings.Contains(out, "gitswitch branch new <name>") || !strings.Contains(out, "gitswitch back") {
+		t.Fatalf("checkout:\n%s", out)
+	}
+	if _, err := e.gitMay(n, "symbolic-ref", "-q", "HEAD"); err == nil {
+		t.Fatal("HEAD is on a branch")
+	}
+	if e.cfg(n, "gitswitch.detachedFrom") != "main" {
+		t.Fatalf("detachedFrom = %q", e.cfg(n, "gitswitch.detachedFrom"))
+	}
+	if out := e.gsIn(n, "status", "--json"); !strings.Contains(out, `"branch":""`) {
+		t.Fatalf("status does not say detached:\n%s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(n, "a.txt")); string(b) != "one\n" {
+		t.Fatalf("files at v1: %q", b)
+	}
+	out = e.gsIn(n, "back")
+	if !strings.Contains(out, "Back on main") || e.gitIn(n, "branch", "--show-current") != "main" || e.cfg(n, "gitswitch.detachedFrom") != "" {
+		t.Fatalf("back:\n%s", out)
+	}
+	e.gsErr(n, "not detached", "back")
+
+	// Uncommitted changes: asked about, like a switch.
+	must(t, os.WriteFile(filepath.Join(n, "a.txt"), []byte("two, edited\n"), 0o644))
+	e.gsErr(n, "say what to do with them", "checkout", "v1")
+	// They clash with the files at v1: nothing changes.
+	e.gsErr(n, "your changes clash with", "checkout", "v1", "--smart")
+	if b, _ := os.ReadFile(filepath.Join(n, "a.txt")); string(b) != "two, edited\n" || e.gitIn(n, "branch", "--show-current") != "main" {
+		t.Fatalf("a clash changed things: %q", b)
+	}
+	e.gitIn(n, "checkout", "-q", "--", "a.txt")
+	// A new file is carried along.
+	must(t, os.WriteFile(filepath.Join(n, "z.txt"), []byte("z\n"), 0o644))
+	out = e.gsIn(n, "checkout", "v1", "--smart")
+	if !strings.Contains(out, "taking your uncommitted changes along") {
+		t.Fatalf("smart:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(n, "z.txt")); err != nil {
+		t.Fatalf("changes not carried: %v", err)
+	}
+	e.gsErr(n, "say what to do with them", "back")
+	must(t, os.Remove(filepath.Join(n, "z.txt")))
+	e.gsIn(n, "back")
+	must(t, os.WriteFile(filepath.Join(n, "a.txt"), []byte("two, edited\n"), 0o644))
+	out = e.gsIn(n, "checkout", second[:7], "--park") // the commit main is at
+	if !strings.Contains(out, "Parked your changes on main") || e.gitIn(n, "status", "--porcelain") != "" {
+		t.Fatalf("park:\n%s", out)
+	}
+	out = e.gsIn(n, "back")
+	if !strings.Contains(out, "Back on main") || !strings.Contains(out, "You parked changes on main") {
+		t.Fatalf("back with parked changes:\n%s", out)
+	}
+	e.gsIn(n, "parked", "drop", "-y")
+
+	// Commits made while detached are not left behind silently.
+	e.gsIn(n, "checkout", "v1")
+	e.commitFile(n, "d.txt", "d\n", "detached work")
+	e.gsErr(n, "1 commit you made here", "back")
+	if out := e.gsIn(n, "back", "--force"); !strings.Contains(out, "Back on main") {
+		t.Fatalf("back --force:\n%s", out)
+	}
+	// ...and New branch here keeps them.
+	e.gsIn(n, "checkout", "v1")
+	e.commitFile(n, "e.txt", "e\n", "kept work")
+	e.gsIn(n, "branch", "new", "rescue")
+	if e.subjects(n, "rescue", 1) != "kept work" {
+		t.Fatal("work not on the new branch")
+	}
+	if out := e.gsIn(n, "--dry-run", "checkout", "v1"); !strings.Contains(out, "[dry-run] check out v1") {
+		t.Fatalf("dry run:\n%s", out)
+	}
+}

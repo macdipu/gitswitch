@@ -236,3 +236,53 @@ func TestRepoAccount(t *testing.T) {
 		t.Errorf("use once must apply the identity without saving: err=%v applied=%v saved=%v", err, ra.applied, ra.saved)
 	}
 }
+
+func TestSetSigning(t *testing.T) {
+	s, st, _, _ := newService()
+	if _, err := s.SetSigning("work", "", ""); err == nil {
+		t.Error("nothing to set must be refused")
+	}
+	if _, err := s.SetSigning("nobody", "ssh", ""); err == nil {
+		t.Error("unknown account")
+	}
+	// ssh with no key given uses the account's own key.
+	r, err := s.SetSigning("work", "ssh", "")
+	if err != nil || r.Account.SigningFormat != "ssh" || r.Account.EffectiveSigningKey() != "~/.ssh/work.pub" || len(r.Steps) == 0 {
+		t.Fatalf("ssh default key: %+v %v", r, err)
+	}
+	// A key alone guesses the format; a gpg id is gpg.
+	if r, err = s.SetSigning("work", "", "ABCD1234"); err != nil || r.Account.SigningFormat != "ssh" || r.Account.SigningKey != "ABCD1234" {
+		t.Fatalf("key on an ssh account: %+v %v", r, err)
+	}
+	if _, err = s.SetSigning("work", "off", ""); err != nil {
+		t.Fatal(err)
+	}
+	if r, err = s.SetSigning("work", "", "3AA5C34371567BD2"); err != nil || r.Account.SigningFormat != "gpg" {
+		t.Fatalf("gpg guessed: %+v %v", r, err)
+	}
+	// Switching format drops the key of the other kind.
+	if r, err = s.SetSigning("work", "ssh", ""); err != nil || r.Account.SigningKey != "" {
+		t.Fatalf("switch to ssh: %+v %v", r, err)
+	}
+	// Off clears both.
+	r, err = s.SetSigning("work", "off", "")
+	if err != nil || r.Account.Signs() || r.Account.SigningKey != "" || r.Public != "" {
+		t.Fatalf("off: %+v %v", r, err)
+	}
+	if a := st.c.Accounts[0]; a.Signs() || a.SigningKey != "" {
+		t.Errorf("stored = %+v", a)
+	}
+	// gpg without a key id is refused before saving.
+	saves := st.saves
+	if _, err := s.SetSigning("work", "gpg", ""); err == nil || st.saves != saves {
+		t.Errorf("gpg without a key: %v, saves %d->%d", err, saves, st.saves)
+	}
+	// Editing other fields keeps how it signs.
+	_, _ = s.SetSigning("work", "gpg", "KEY1")
+	if err := s.Update(account.Account{ID: "work", Email: "new@x.com", Key: "~/.ssh/work"}); err != nil {
+		t.Fatal(err)
+	}
+	if a := st.c.Accounts[0]; a.SigningFormat != "gpg" || a.SigningKey != "KEY1" || a.Email != "new@x.com" {
+		t.Errorf("after Update = %+v", a)
+	}
+}

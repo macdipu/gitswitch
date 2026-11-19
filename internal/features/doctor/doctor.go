@@ -47,7 +47,8 @@ func (d *Doctor) Run(deep bool) []Check {
 		cs = append(cs, Check{id, title, ok, detail, canFix && !ok})
 	}
 	gv, err := d.Git.Run("--version")
-	add("git", "Git is installed", err == nil, gv, false)
+	gi := repo.CheckGit(gv, err)
+	add("git", "Git is installed and recent enough", gi.OK, map[bool]string{true: gv, false: gi.Why}[gi.OK], false)
 
 	hook, _ := d.Git.Global("--get", "core.sshCommand")
 	dest := setup.InstalledPath()
@@ -78,6 +79,10 @@ func (d *Doctor) Run(deep bool) []Check {
 	add("accounts", "At least one account", len(c.Accounts) > 0, fmt.Sprintf("%d account(s)", len(c.Accounts)), false)
 	for _, a := range c.Accounts {
 		add("key-"+a.ID, "Key for "+a.ID, d.Keys.Exists(&a), orNone(a.Key), false)
+		if a.Signs() {
+			ok, detail, fixable := d.signingCheck(a)
+			add("signing-"+a.ID, "Signing key for "+a.ID, ok, detail, fixable)
+		}
 	}
 	// Things that silently bypass gitswitch.
 	env := ""
@@ -127,6 +132,32 @@ func (d *Doctor) Run(deep bool) []Check {
 			"Needed to remember key passphrases. Fix (admin PowerShell): Get-Service ssh-agent | Set-Service -StartupType Automatic; Start-Service ssh-agent", false)
 	}
 	return cs
+}
+
+// signingCheck looks at an account's signing key: the file for ssh (and
+// the allowed signers file git verifies with), the secret key for gpg.
+// fixable: only the allowed signers file is missing, which is written again.
+func (d *Doctor) signingCheck(a account.Account) (ok bool, detail string, fixable bool) {
+	if a.SigningFormat == account.SigningGPG {
+		gpg, err := exec.LookPath("gpg")
+		if err != nil {
+			return false, "signs with gpg key " + a.SigningKey + ", but gpg is not installed", false
+		}
+		cmd := exec.Command(gpg, "--list-secret-keys", "--with-colons", a.SigningKey)
+		process.HideWindow(cmd)
+		if cmd.Run() != nil {
+			return false, "gpg has no secret key " + a.SigningKey + " (see `gpg --list-secret-keys`); fix it with `gitswitch account edit " + a.ID + " --signing-key <key id>` or turn signing off with --signing-format off", false
+		}
+		return true, "gpg key " + a.SigningKey, false
+	}
+	pub, err := accountinfra.PublicSigningKey(a)
+	if err != nil {
+		return false, err.Error() + "; fix it with `gitswitch account edit " + a.ID + " --signing-key <public key file>` or turn signing off with --signing-format off", false
+	}
+	if _, err := os.Stat(accountinfra.SignersFile(a.ID)); err != nil {
+		return false, "the allowed signers file for local verification is missing", true
+	}
+	return true, "ssh key " + strings.Fields(pub)[0] + " (add the public key to " + a.Host + " as a signing key, or commits show as unverified there)", false
 }
 
 func uniqueHosts(c *account.Config) []string {
@@ -243,6 +274,17 @@ func (d *Doctor) Fix(id string) error {
 		}
 		_, err := d.Git.Global("--unset", "user.email")
 		return err
+	}
+	if acc, ok := strings.CutPrefix(id, "signing-"); ok {
+		// The allowed signers file is written again from the account.
+		a := d.Store.Load().Account(acc)
+		if a == nil {
+			return fmt.Errorf("no account %q", acc)
+		}
+		if _, err := accountinfra.PublicSigningKey(*a); err != nil {
+			return err
+		}
+		return d.Store.Save(*a)
 	}
 	return fmt.Errorf("no automatic fix for %s", id)
 }

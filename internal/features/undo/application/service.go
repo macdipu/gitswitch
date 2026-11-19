@@ -222,9 +222,19 @@ func (s *Service) checkStash(gitDir string, r undo.Record) error {
 	return nil
 }
 
-// Undo undoes the repo's last action and forgets it. It returns what was
-// undone.
+// Undo undoes the repo's last action and forgets it, keeping it so Redo
+// can do it again. It returns what was undone.
 func (s *Service) Undo(gitDir string) (undo.Record, error) {
+	r, err := s.undo(gitDir)
+	if err == nil && !(s.FS != nil && s.FS.DryRun) {
+		if rs, ok := s.Store.(undo.RedoStore); ok {
+			_ = rs.SaveRedo(gitDir, r) // best effort: the undo itself worked
+		}
+	}
+	return r, err
+}
+
+func (s *Service) undo(gitDir string) (undo.Record, error) {
 	r, err := s.Store.Load(gitDir)
 	if err != nil {
 		return r, err

@@ -242,6 +242,11 @@ func (s SwitchSetting) Describe() string {
 type Fetched struct {
 	Head   Head `json:"head"`
 	Gained int  `json:"gained"` // new commits to pull; 0: nothing new (or no upstream)
+	// Pruned lists the remote branches this fetch forgot because the server
+	// no longer has them (e.g. origin/feature-x); only with prune. Gone
+	// lists the local branches that pulled from them.
+	Pruned []string `json:"pruned"`
+	Gone   []string `json:"gone"`
 }
 
 // Pushed is the result of a push.

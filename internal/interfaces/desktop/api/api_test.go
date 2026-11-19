@@ -1207,3 +1207,321 @@ func TestHunkRoutes(t *testing.T) {
 		t.Fatalf("stage lines of a new file = %d %v", w.Code, m)
 	}
 }
+
+// Blame, file history across a rename, and the code search of /api/history.
+func TestBlameFileHistoryAndCodeSearch(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gq := "gitDir=" + url.QueryEscape(dir)
+	git("mv", "f.txt", "g.txt")
+	git("commit", "-q", "-m", "rename f to g")
+	if err := os.WriteFile(filepath.Join(dir, "g.txt"), []byte("base\nneedle99\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("commit", "-q", "-am", "add needle")
+	_ = write
+
+	_, m := call(t, h, "GET", "/api/blame?"+gq+"&path=g.txt", "")
+	d, _ := m["data"].(map[string]any)
+	lines, _ := d["lines"].([]any)
+	chunks, _ := d["chunks"].([]any)
+	if len(lines) != 2 || len(chunks) != 2 || d["truncated"] != false {
+		t.Fatalf("blame = %v", m)
+	}
+	l0 := lines[0].(map[string]any)
+	if l0["line"] != float64(1) || l0["text"] != "base" || l0["origPath"] != "f.txt" || l0["summary"] != "base" || l0["email"] != "t@x.example" || l0["boundary"] != true {
+		t.Fatalf("line 1 = %v", l0)
+	}
+	if c1 := chunks[1].(map[string]any); c1["startLine"] != float64(2) || c1["count"] != float64(1) || c1["summary"] != "add needle" {
+		t.Fatalf("chunk 2 = %v", c1)
+	}
+	if w, m := call(t, h, "GET", "/api/blame?"+gq+"&path=g.txt&rev=--output%3Dx", ""); w.Code != 400 || m["error"] == nil {
+		t.Fatalf("option-like rev = %d %v", w.Code, m)
+	}
+	if w, _ := call(t, h, "GET", "/api/blame?"+gq+"&path=missing.txt", ""); w.Code != 400 {
+		t.Fatalf("missing file = %d", w.Code)
+	}
+
+	_, m = call(t, h, "GET", "/api/file/history?"+gq+"&path=g.txt&n=2", "")
+	d, _ = m["data"].(map[string]any)
+	cs, _ := d["commits"].([]any)
+	if len(cs) != 2 || d["more"] != true || cs[0].(map[string]any)["status"] != "M" {
+		t.Fatalf("file history = %v", m)
+	}
+	_, m = call(t, h, "GET", "/api/file/history?"+gq+"&path=g.txt&n=2&skip=1", "")
+	d, _ = m["data"].(map[string]any)
+	cs, _ = d["commits"].([]any)
+	if len(cs) != 2 || d["more"] != false {
+		t.Fatalf("page 2 = %v", m)
+	}
+	if r := cs[0].(map[string]any); r["status"] != "R" || r["oldPath"] != "f.txt" || r["path"] != "g.txt" {
+		t.Fatalf("rename row = %v", r)
+	}
+
+	_, m = call(t, h, "GET", "/api/history?"+gq+"&code=needle99", "")
+	d, _ = m["data"].(map[string]any)
+	if got, _ := d["commits"].([]any); len(got) != 1 || got[0].(map[string]any)["subject"] != "add needle" {
+		t.Fatalf("code search = %v", m)
+	}
+	_, m = call(t, h, "GET", "/api/history?"+gq+"&code=needle%5B0-9%5D%2B&codeRegex=1", "")
+	d, _ = m["data"].(map[string]any)
+	if got, _ := d["commits"].([]any); len(got) != 1 {
+		t.Fatalf("regex search = %v", m)
+	}
+}
+
+// Compare, the reflog with recovery, and a bisect over the API.
+func TestCompareReflogBisect(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	q := "gitDir=" + url.QueryEscape(dir)
+	get := func(path string) (int, map[string]any) {
+		w, m := call(t, h, "GET", path, "")
+		d, _ := m["data"].(map[string]any)
+		if d == nil {
+			d = m
+		}
+		return w.Code, d
+	}
+
+	// compare main (base) with side (one commit changing f.txt)
+	code, d := get("/api/compare?" + q + "&a=main&b=side")
+	files, _ := d["files"].([]any)
+	onlyB, _ := d["onlyB"].([]any)
+	if code != 200 || d["mode"] != "since-fork" || len(files) != 1 || len(onlyB) != 1 || d["onlyACount"] != 0.0 || d["onlyBCount"] != 1.0 {
+		t.Fatalf("compare = %d %v", code, d)
+	}
+	f0, _ := files[0].(map[string]any)
+	if f0["path"] != "f.txt" || f0["status"] != "modified" || f0["added"] != 1.0 || f0["deleted"] != 1.0 {
+		t.Fatalf("file = %v", f0)
+	}
+	if code, d = get("/api/compare?" + q + "&a=main&b=side&mode=direct"); code != 200 || d["mode"] != "direct" {
+		t.Fatalf("direct = %d %v", code, d)
+	}
+	if code, d = get("/api/compare?" + q + "&a=main&b=side&mode=sideways"); code != 400 || d["error"] == nil {
+		t.Fatalf("bad mode = %d %v", code, d)
+	}
+	if code, d = get("/api/compare?" + q + "&a=--output%3Dx&b=side"); code != 400 {
+		t.Fatalf("option-like side = %d %v", code, d)
+	}
+	if code, d = get("/api/compare?gitDir=" + url.QueryEscape(t.TempDir()) + "&a=main"); code != 400 {
+		t.Fatalf("not a repo = %d", code)
+	}
+	code, d = get("/api/compare/file?" + q + "&a=main&b=side&path=f.txt")
+	if text, _ := d["text"].(string); code != 200 || !strings.Contains(text, "+side") || d["truncated"] != false {
+		t.Fatalf("file diff = %d %v", code, d)
+	}
+	if code, _ = get("/api/compare/file?" + q + "&a=main&b=side&path=..%2Fx"); code != 400 {
+		t.Fatalf("path outside = %d", code)
+	}
+
+	// reflog: reset away from a commit, then recover it
+	write("second\n")
+	git("commit", "-q", "-am", "second")
+	lost := git("rev-parse", "HEAD")
+	git("reset", "-q", "--hard", "HEAD~1")
+	code, d = get("/api/reflog?" + q + "&n=10&lost=1")
+	es, _ := d["entries"].([]any)
+	if code != 200 || len(es) != 1 {
+		t.Fatalf("lost reflog = %d %v", code, d)
+	}
+	e0, _ := es[0].(map[string]any)
+	if e0["hash"] != lost || e0["lost"] != true || e0["action"] != "commit" || e0["subject"] != "second" || e0["ref"] == nil {
+		t.Fatalf("entry = %v", e0)
+	}
+	if code, d = get("/api/reflog?" + q + "&n=2"); len(d["entries"].([]any)) != 2 || d["more"] != true || d["next"] != 2.0 {
+		t.Fatalf("page = %v", d)
+	}
+	w, m := call(t, h, "POST", "/api/reflog/recover", `{`+gd+`,"index":`+fmt.Sprint(e0["index"])+`,"name":"rescued"}`)
+	rd, _ := m["data"].(map[string]any)
+	if w.Code != 200 || rd["hash"] != lost || rd["lost"] != true || git("rev-parse", "rescued") != lost || git("symbolic-ref", "--short", "HEAD") != "main" {
+		t.Fatalf("recover = %d %v", w.Code, m)
+	}
+	if w, m = call(t, h, "POST", "/api/reflog/recover", `{`+gd+`,"hash":"`+lost+`","name":"rescued"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "already exists") {
+		t.Fatalf("recover again = %d %v", w.Code, m)
+	}
+
+	// bisect: three commits, the middle one breaks
+	for i, c := range []string{"ok", "broken", "broken"} {
+		write(c + fmt.Sprint(i) + "\n")
+		git("commit", "-q", "-am", "b"+fmt.Sprint(i))
+	}
+	if code, d = get("/api/bisect?" + q); code != 200 || d["running"] != false {
+		t.Fatalf("idle bisect = %d %v", code, d)
+	}
+	w, m = call(t, h, "POST", "/api/bisect", `{`+gd+`,"action":"start","bad":"HEAD","good":"HEAD~2"}`)
+	st, _ := m["data"].(map[string]any)
+	next, _ := st["next"].(map[string]any)
+	if w.Code != 200 || st["running"] != true || next == nil || next["subject"] != "b1" || st["original"] != "main" {
+		t.Fatalf("start = %d %v", w.Code, m)
+	}
+	if w, m = call(t, h, "POST", "/api/bisect", `{`+gd+`,"action":"bad"}`); w.Code != 200 {
+		t.Fatalf("bad = %d %v", w.Code, m)
+	}
+	st, _ = m["data"].(map[string]any)
+	cul, _ := st["culprit"].(map[string]any)
+	if cul == nil || cul["subject"] != "b1" || cul["author"] != "T" || st["next"] != nil {
+		t.Fatalf("culprit = %v", st)
+	}
+	if w, m = call(t, h, "POST", "/api/bisect", `{`+gd+`,"action":"dance"}`); w.Code != 400 {
+		t.Fatalf("unknown action = %d %v", w.Code, m)
+	}
+	if w, m = call(t, h, "POST", "/api/bisect", `{`+gd+`,"action":"reset"}`); w.Code != 200 || git("symbolic-ref", "--short", "HEAD") != "main" {
+		t.Fatalf("reset = %d %v", w.Code, m)
+	}
+	if w, m = call(t, h, "POST", "/api/bisect", `{`+gd+`,"action":"good"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "no bisect is running") {
+		t.Fatalf("good without a bisect = %d %v", w.Code, m)
+	}
+}
+
+// Remotes: list, add, rename, set-url and remove; remote branches deleted
+// and pruned; a force push with lease after its plan; a detached checkout
+// and the way back.
+func TestRemotesForceLeaseAndDetached(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	server := filepath.Join(filepath.Dir(dir), "server.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", "-b", "main", server).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	git("remote", "add", "origin", server)
+	git("push", "-q", "-u", "origin", "main")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	post := func(path, body string) (int, map[string]any) {
+		w, m := call(t, h, "POST", path, body)
+		d, _ := m["data"].(map[string]any)
+		if d == nil {
+			d = m
+		}
+		return w.Code, d
+	}
+	bare := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"--git-dir=" + server}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// 1. Remotes.
+	w, m := call(t, h, "GET", "/api/remotes?gitDir="+url.QueryEscape(dir), "")
+	list, _ := m["data"].([]any)
+	o, _ := list[0].(map[string]any)
+	if w.Code != 200 || len(list) != 1 || o["name"] != "origin" || o["fetchURL"] != server || o["upstream"] != true || fmt.Sprint(o["tracking"]) != "[main]" {
+		t.Fatalf("remotes = %d %v", w.Code, m)
+	}
+	if code, d := post("/api/remote/add", `{`+gd+`,"name":"origin","url":"git@github.com:me/x.git"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "already a remote called origin") {
+		t.Errorf("duplicate = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/add", `{`+gd+`,"name":"fork","url":"/tmp/some/folder"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "not a repo URL") {
+		t.Errorf("bad url = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/add", `{`+gd+`,"name":"fork","url":"git@github.com:me/x.git"}`); code != 200 || d["name"] != "fork" || d["host"] != "github.com" {
+		t.Fatalf("add = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/rename", `{`+gd+`,"name":"fork","newName":"mine"}`); code != 200 || d["newName"] != "mine" {
+		t.Fatalf("rename = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/set-url", `{`+gd+`,"name":"mine","url":"git@github.com:me/y.git"}`); code != 200 || d["was"] != "git@github.com:me/x.git" || git("remote", "get-url", "mine") != "git@github.com:me/y.git" {
+		t.Fatalf("set-url = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/remove", `{`+gd+`,"name":"origin"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "main pulls from origin") || git("remote") != "mine\norigin" {
+		t.Errorf("remove tracked = %d %v", code, d)
+	}
+	if code, d := post("/api/remote/remove", `{`+gd+`,"name":"mine"}`); code != 200 || d["was"] != "git@github.com:me/y.git" || git("remote") != "origin" {
+		t.Fatalf("remove = %d %v", code, d)
+	}
+
+	// 2. Delete a remote branch, and prune one someone else deleted.
+	git("push", "-q", "origin", "side:feature")
+	git("push", "-q", "origin", "side:stale")
+	git("fetch", "-q")
+	if code, d := post("/api/remote-branch/delete", `{`+gd+`,"ref":"origin/main"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "default branch") {
+		t.Errorf("default branch = %d %v", code, d)
+	}
+	side := git("rev-parse", "side")
+	if code, d := post("/api/remote-branch/delete", `{`+gd+`,"ref":"origin/feature","preview":true}`); code != 200 || d["hash"] != side || d["restore"] != "git push origin "+side+":refs/heads/feature" || bare("for-each-ref", "refs/heads/feature") == "" {
+		t.Fatalf("preview = %d %v", code, d)
+	}
+	if code, d := post("/api/remote-branch/delete", `{`+gd+`,"ref":"origin/feature"}`); code != 200 || d["branch"] != "feature" || bare("for-each-ref", "refs/heads/feature") != "" {
+		t.Fatalf("delete = %d %v", code, d)
+	}
+	bare("update-ref", "-d", "refs/heads/stale")
+	if code, d := post("/api/repo/fetch", `{`+gd+`}`); code != 200 || fmt.Sprint(d["pruned"]) != "[]" {
+		t.Errorf("plain fetch pruned: %d %v", code, d)
+	}
+	if code, d := post("/api/repo/fetch", `{`+gd+`,"prune":true}`); code != 200 || fmt.Sprint(d["pruned"]) != "[origin/stale]" {
+		t.Errorf("fetch prune = %d %v", code, d)
+	}
+	if code, d := post("/api/fetch-prune-setting", `{`+gd+`,"value":"on"}`); code != 200 || d["on"] != true || d["repo"] != "on" {
+		t.Errorf("setting = %d %v", code, d)
+	}
+
+	// 3. Force push with lease.
+	w, m = call(t, h, "GET", "/api/repo/push-plan?gitDir="+url.QueryEscape(dir), "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["canForce"] != false || !strings.Contains(fmt.Sprint(d["why"]), "normal push") {
+		t.Fatalf("plan before any rewrite = %d %v", w.Code, m)
+	}
+	git("commit", "-q", "--amend", "-m", "base, reworded")
+	w, m = call(t, h, "GET", "/api/repo/push-plan?gitDir="+url.QueryEscape(dir), "")
+	d, _ := m["data"].(map[string]any)
+	over, _ := d["toOverwrite"].([]any)
+	push, _ := d["toPush"].([]any)
+	if w.Code != 200 || d["canForce"] != true || d["upstream"] != "origin/main" || len(over) != 1 || len(push) != 1 || d["expect"] != bare("rev-parse", "refs/heads/main") {
+		t.Fatalf("plan = %d %v", w.Code, m)
+	}
+	if o, _ := over[0].(map[string]any); o["subject"] != "base" {
+		t.Errorf("overwritten commit = %v", o)
+	}
+	expect := fmt.Sprint(d["expect"])
+	if code, d := post("/api/repo/push", `{`+gd+`,"force":"lease","expect":"`+expect+`"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "confirmation") || bare("rev-parse", "refs/heads/main") != expect {
+		t.Errorf("unconfirmed = %d %v", code, d)
+	}
+	if code, d := post("/api/repo/push", `{`+gd+`,"force":"yes","confirm":true}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), `"lease"`) || bare("rev-parse", "refs/heads/main") != expect {
+		t.Errorf("plain force = %d %v", code, d)
+	}
+	// Someone pushed since the fetch: the page's list is out of date.
+	other := filepath.Join(filepath.Dir(dir), "other")
+	if out, err := exec.Command("git", "clone", "-q", server, other).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	for _, args := range [][]string{{"commit", "-q", "--allow-empty", "-m", "theirs"}, {"push", "-q", "origin", "main"}} {
+		if out, err := exec.Command("git", append([]string{"-C", other}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+	}
+	theirs := bare("rev-parse", "refs/heads/main")
+	if code, d := post("/api/repo/push", `{`+gd+`,"force":"lease","confirm":true}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "someone pushed") || bare("rev-parse", "refs/heads/main") != theirs {
+		t.Fatalf("lease failure = %d %v", code, d)
+	}
+	git("fetch", "-q")
+	if code, d := post("/api/repo/push", `{`+gd+`,"force":"lease","confirm":true,"expect":"`+expect+`"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "moved since you looked") {
+		t.Errorf("stale list = %d %v", code, d)
+	}
+	git("rebase", "-q", "origin/main") // now ahead only: no force needed
+	if _, m := call(t, h, "GET", "/api/repo/push-plan?gitDir="+url.QueryEscape(dir), ""); m["data"].(map[string]any)["canForce"] != false {
+		t.Errorf("ahead only: %v", m)
+	}
+
+	// 4. Detached checkout and the way back.
+	if code, d := post("/api/repo/checkout", `{`+gd+`,"rev":"side"}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "is a branch") {
+		t.Errorf("branch name = %d %v", code, d)
+	}
+	if code, d := post("/api/repo/checkout", `{`+gd+`,"rev":"`+side+`"}`); code != 200 || d["hash"] != side || d["from"] != "main" || d["back"] != "main" || !strings.Contains(fmt.Sprint(d["words"]), "not on a branch") {
+		t.Fatalf("checkout = %d %v", code, d)
+	}
+	w, m = call(t, h, "GET", "/api/repo/detached?gitDir="+url.QueryEscape(dir), "")
+	if s, _ := m["data"].(map[string]any); w.Code != 200 || s["detached"] != true || s["back"] != "main" || s["hash"] != side {
+		t.Fatalf("detached = %d %v", w.Code, m)
+	}
+	if _, m := call(t, h, "GET", "/api/refs?gitDir="+url.QueryEscape(dir), ""); m["data"].(map[string]any)["head"].(map[string]any)["branch"] != "" {
+		t.Errorf("refs does not report detached: %v", m)
+	}
+	if code, d := post("/api/repo/back", `{`+gd+`}`); code != 200 || d["branch"] != "main" || git("branch", "--show-current") != "main" {
+		t.Fatalf("back = %d %v", code, d)
+	}
+	if code, d := post("/api/repo/back", `{`+gd+`}`); code != 400 || !strings.Contains(fmt.Sprint(d["error"]), "not detached") {
+		t.Errorf("back again = %d %v", code, d)
+	}
+}

@@ -29,6 +29,10 @@ Setup
 Accounts
   gitswitch account add <id> --email E [--name N] [--host H] [--key PATH|new] [--default]
   gitswitch account edit <id> [--email E] [--name N] [--host H] [--key PATH]
+                                    [--signing-key PATH|ID] [--signing-format ssh|gpg|off]
+                                    sign this account's commits (ssh: the public key file, default the
+                                    account's own key; gpg: a key id); add the PUBLIC key to the host
+                                    as a signing key. Repos pick it up on their next use of the account
   gitswitch account list
   gitswitch account remove <id> [--delete-keys] [-y]
   gitswitch account rename <old> <new>
@@ -60,6 +64,8 @@ Repos and rules
   gitswitch rule list | remove owner:<org>|folder:<path>|<n>
   gitswitch repo list [--pinned] [--by account|owner|folder|group] [--sort name|recent|account] [--json]
                                     repos in your project folders plus ones you added
+  gitswitch init [<folder>] [--account <id>] [-b <branch>]   start a repo (git init) with an account's
+                                    commit name and email, and add it to the list
   gitswitch repo clone <url> [folder] [--account <id>]   clone with the right account from the start
   gitswitch repo add [path]         add an existing repo to the list (nothing in it changes)
   gitswitch repo remove [path]      take a repo off the list (its files are not touched)
@@ -77,6 +83,11 @@ History and branches
   gitswitch log [--author TEXT] [--grep TEXT] [--since DATE] [--until DATE] [--account ID]
                                     only matching commits (author name or email, message, dates
                                     like 2024-05-01 or "2 weeks ago", gitswitch account)
+  gitswitch log --code <text> [--regex] [--ignore-case]   only commits that added or removed that text
+                                    (--regex: a regular expression matching changed lines)
+  gitswitch log --file <path> [-n N] [--json]   the commits that changed a file, following renames
+  gitswitch blame <path> [--rev <rev>] [-w] [-M] [--json]   who last changed each line (-w ignores
+                                    whitespace, -M follows moved and copied lines)
   gitswitch branch [--json]         current branch, HEAD and the branch list
   gitswitch branch new <name> [--from <commit>] [--no-prefix]   start a branch here (or at a
                                     commit, branch or tag) and switch to it, bringing uncommitted
@@ -137,6 +148,20 @@ History and branches
                                     after showing what will happen (fast-forward, merge commit, clashes
                                     likely); --squash stages the changes without committing; undo takes
                                     the merge back off while it is not pushed. --plan [--json]: only show
+  gitswitch compare <A> [<B>] [--since-fork|--direct] [--working] [--json]   how B (default HEAD) differs
+                                    from A: the commits only on each side and the changed files; the
+                                    default is what B changed since they went apart, --direct is the
+                                    difference as they are now, --working compares with the files on disk
+  gitswitch compare <A> [<B>] --file <path> [--direct]   one file's diff between the two
+  gitswitch reflog [-n N] [--skip N] [--branch <name>] [--lost] [--json]   where HEAD (or a branch)
+                                    has been, newest first; [lost] marks commits on no branch
+  gitswitch reflog recover <n|hash> <branch-name>   make a branch at a reflog entry; nothing moves
+  gitswitch bisect start <bad> <good>   find the commit that broke something: checks out commits for
+                                    you to test; needs no uncommitted changes to tracked files
+  gitswitch bisect good|bad|skip    say how the commit under test behaved; the next one, or the first
+                                    bad commit, is shown
+  gitswitch bisect status [--json]  the commit to test now, the steps left and the log so far
+  gitswitch bisect reset            end the bisect and go back to the branch you were on
   gitswitch continue                after fixing the conflicts: finish the merge, rebase, cherry-pick
                                     or revert git stopped in the middle of (also: merge --continue)
   gitswitch skip [-y]               leave out the commit a rebase, cherry-pick or revert stopped at
@@ -144,13 +169,30 @@ History and branches
   gitswitch conflict [<path>] [--ours|--theirs|--done] [--json]   the files in conflict, or one
                                     file's base, ours and theirs; keep one side, or mark it fixed
                                     once its conflict markers are gone
-  gitswitch fetch [--json]          read the remote's new commits with the repo's account, so "to pull"
-                                    and compare are up to date; no branch or file changes
+  gitswitch fetch [--prune] [--json]   read the remote's new commits with the repo's account, so "to pull"
+                                    and compare are up to date; no branch or file changes. --prune also
+                                    forgets remote branches the server deleted (lists them); always: set fetch-prune on
   gitswitch update [--rebase]       pull the current branch with the repo's account: fast-forward only,
                                     or with --rebase put your not-pushed commits on top of the new ones
   gitswitch push [--open] [-y]      push the current branch with the repo's account, never forced
                                     (-u the first time); --open opens the pull request page. Commits
                                     made as another account are offered a fix first (-y: push anyway)
+  gitswitch push --force-with-lease [-y]   replace the remote branch's commits with yours, after
+                                    listing the ones that would be lost; only if nobody pushed since your
+                                    last fetch (never a plain --force); asks first (-y: no question)
+  gitswitch remote [list] [--json]  the remotes: URLs, the account each would use, which one the branch tracks
+  gitswitch remote add <name> <url>   add a remote (SSH or HTTPS URL; says which account it would use)
+  gitswitch remote remove <name> [--force] [-y]   remove one from this clone (refused while branches track it,
+                                    unless --force; asks first); the server is not touched
+  gitswitch remote rename <old> <new>   rename a remote; the branches that track it keep tracking
+  gitswitch remote set-url <name> <url>   point a remote at another URL
+  gitswitch branch delete-remote <remote>/<branch> [--force] [-y]   delete a branch on the server as the
+                                    repo's account (asks first; not the default branch or the one you are
+                                    on unless --force; prints how to restore it)
+  gitswitch checkout <commit|tag|remote/branch> [--smart|--park] [--force]   look at a commit with HEAD on
+                                    no branch ("detached"); changes are asked about like a switch;
+                                    keep work by starting a branch here: gitswitch branch new <name>
+  gitswitch back [--smart|--park] [--force]   leave a detached HEAD for the branch you came from
   gitswitch revert <commit>         add a commit that undoes one (safe for pushed commits)
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
@@ -158,6 +200,8 @@ History and branches
   gitswitch undo [-y] [--show [--json]]   undo the last commit, amend, switch, new branch, move, prune,
                                     branch delete or rename, revert, drop, rollback, cherry-pick or fix-author
                                     (--show: only say what it would do)
+  gitswitch redo [-y] [--show [--json]]   do again what undo just took back (commit, amend, switch,
+                                    branch delete or rename, merge, drop, ...) while nothing has changed since
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
   gitswitch tag [list] [--json]     the tags, newest first
@@ -328,6 +372,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdStatus(hasFlag(rest, "--json"))
 	case "log":
 		return x.cmdLog(rest)
+	case "blame":
+		return x.cmdBlame(rest)
 	case "fix-author":
 		return x.cmdFixAuthor()
 	case "branch", "branches":
@@ -342,6 +388,9 @@ func (x *CLI) dispatch(args []string) error {
 		}
 		if len(rest) > 0 && rest[0] == "delete" {
 			return x.cmdBranchDelete(rest[1:])
+		}
+		if len(rest) > 0 && rest[0] == "delete-remote" {
+			return x.cmdBranchDeleteRemote(rest[1:])
 		}
 		if len(rest) > 0 && rest[0] == "rename" {
 			return x.cmdBranchRename(rest[1:])
@@ -373,6 +422,12 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdIgnore(rest)
 	case "switch":
 		return x.cmdSwitch(rest)
+	case "checkout":
+		return x.cmdCheckout(rest)
+	case "back":
+		return x.cmdBack(rest)
+	case "remote", "remotes":
+		return x.cmdRemote(rest)
 	case "fetch":
 		return x.cmdFetch(rest)
 	case "update", "pull":
@@ -389,8 +444,18 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdCherryPick(rest)
 	case "undo":
 		return x.cmdUndo(rest)
+	case "redo":
+		return x.cmdRedo(rest)
+	case "init":
+		return x.cmdInit(rest)
 	case "merge":
 		return x.cmdMerge(rest)
+	case "compare":
+		return x.cmdCompare(rest)
+	case "reflog":
+		return x.cmdReflog(rest)
+	case "bisect":
+		return x.cmdBisect(rest)
 	case "continue", "skip", "abort":
 		return x.cmdOperation(cmd, rest)
 	case "conflict", "conflicts":

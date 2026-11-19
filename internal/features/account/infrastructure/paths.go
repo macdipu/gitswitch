@@ -15,3 +15,9 @@ func DefaultKeyPath(id string) string {
 func IdentityFile(id string) string {
 	return filepath.Join(filesystem.ConfigDir(), "accounts", id+".gitconfig")
 }
+
+// SignersFile is the allowed signers file of an account that signs with
+// ssh: its email and public key, so git can verify its signatures here.
+func SignersFile(id string) string {
+	return filepath.Join(filesystem.ConfigDir(), "signers", id+".allowed")
+}

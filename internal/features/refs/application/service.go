@@ -693,9 +693,15 @@ func (s *Service) Update(gitDir string, progress func(string)) (refs.Head, error
 
 // Fetch reads the remote's new commits, through the repo's account, so
 // "to pull" and Compare are up to date. It changes no local branch and no
-// file, never prunes, and is safe in the middle of anything. Git's progress
-// lines go to progress.
+// file, and is safe in the middle of anything. It prunes (forgets remote
+// branches the server deleted) only when the fetch-prune setting is on
+// (see FetchWith). Git's progress lines go to progress.
 func (s *Service) Fetch(gitDir string, progress func(string)) (refs.Fetched, error) {
+	return s.FetchWith(gitDir, s.PruneSetting(gitDir).On, progress)
+}
+
+// fetch is Fetch with the git call to make: plain or pruning.
+func (s *Service) fetch(gitDir string, run func(wt string, progress func(string)) error, progress func(string)) (refs.Fetched, error) {
 	before, err := s.Refs.Head(gitDir)
 	if err != nil {
 		return refs.Fetched{}, err
@@ -706,7 +712,7 @@ func (s *Service) Fetch(gitDir string, progress func(string)) (refs.Fetched, err
 	if s.FS.Dry("fetch the remote's new commits (git fetch)") {
 		return refs.Fetched{Head: before}, nil
 	}
-	if err := s.Refs.Fetch(s.Locator.WorktreeOf(gitDir), progress); err != nil {
+	if err := run(s.Locator.WorktreeOf(gitDir), progress); err != nil {
 		return refs.Fetched{Head: before}, err
 	}
 	after, err := s.Refs.Head(gitDir)

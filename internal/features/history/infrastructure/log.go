@@ -109,6 +109,17 @@ func filterArgs(f history.Filter) []string {
 	if f.Until != "" {
 		args = append(args, "--until="+f.Until)
 	}
+	if f.Pickaxe != "" {
+		// One argument with the text attached, so it is never another option.
+		if f.PickaxeRegex {
+			args = append(args, "-G"+f.Pickaxe)
+		} else {
+			args = append(args, "-S"+f.Pickaxe)
+		}
+		if f.PickaxeIgnoreCase {
+			args = append(args, "--regexp-ignore-case")
+		}
+	}
 	return args
 }
 

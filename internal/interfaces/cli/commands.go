@@ -29,6 +29,8 @@ func (x *CLI) cmdAccount(args []string) error {
 	name := fs.String("name", "", "")
 	host := fs.String("host", "", "")
 	key := fs.String("key", "", "")
+	signKey := fs.String("signing-key", "", "")
+	signFormat := fs.String("signing-format", "", "")
 	def := fs.Bool("default", false, "")
 	delKeys := fs.Bool("delete-keys", false, "")
 	if err := fs.Parse(fl); err != nil {
@@ -46,7 +48,7 @@ func (x *CLI) cmdAccount(args []string) error {
 			if strings.EqualFold(a.ID, c.Default) {
 				mark = "*"
 			}
-			x.sayf("%s %-14s %-28s %-14s %s\n", mark, a.ID, a.Email, a.Host, a.Key)
+			x.sayf("%s %-14s %-28s %-14s %s%s\n", mark, a.ID, a.Email, a.Host, a.Key, signingNote(a))
 		}
 		if c.Default == "" {
 			x.say("(no default account: repos with nothing saved ask)")
@@ -80,7 +82,7 @@ func (x *CLI) cmdAccount(args []string) error {
 
 	case "edit":
 		if len(pos) != 1 {
-			return usageErr("gitswitch account edit <id> [--email E] [--name N] [--host H] [--key PATH]")
+			return usageErr("gitswitch account edit <id> [--email E] [--name N] [--host H] [--key PATH] [--signing-key PATH|ID] [--signing-format ssh|gpg|off]")
 		}
 		a, err := x.app.Accounts.Get(pos[0])
 		if err != nil {
@@ -102,6 +104,9 @@ func (x *CLI) cmdAccount(args []string) error {
 			_ = x.app.Accounts.SetDefault(upd.ID)
 		}
 		x.say("Updated", upd.ID)
+		if *signKey != "" || *signFormat != "" {
+			return x.setSigning(upd.ID, *signFormat, *signKey)
+		}
 		return nil
 
 	case "remove", "rm":
@@ -426,9 +431,13 @@ func (x *CLI) cmdLog(args []string) error {
 	if i := indexOf(args, "-n"); i >= 0 && i+1 < len(args) {
 		fmt.Sscan(args[i+1], &n)
 	}
+	if p := flagValue(args, "--file"); p != "" {
+		return x.cmdFileLog(gd, p, n, hasFlag(args, "--json"))
+	}
 	flagged := hasFlag(args, "--flagged")
 	f := history.Filter{Author: flagValue(args, "--author"), Text: flagValue(args, "--grep"),
-		Since: flagValue(args, "--since"), Until: flagValue(args, "--until"), Account: flagValue(args, "--account")}
+		Since: flagValue(args, "--since"), Until: flagValue(args, "--until"), Account: flagValue(args, "--account"),
+		Pickaxe: flagValue(args, "--code"), PickaxeRegex: hasFlag(args, "--regex"), PickaxeIgnoreCase: hasFlag(args, "--ignore-case")}
 	lines, h, err := x.app.History.Lines(gd, n, flagged, os.Getenv("NO_COLOR") == "", f)
 	if err != nil {
 		return err
@@ -514,6 +523,9 @@ func (x *CLI) cmdSet(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "pull" {
 		return x.setPull(args[1:])
+	}
+	if len(args) > 0 && args[0] == "fetch-prune" {
+		return x.setFetchPrune(args[1:])
 	}
 	if len(args) > 0 && args[0] == "signoff" {
 		return x.setSignoff(args[1:])

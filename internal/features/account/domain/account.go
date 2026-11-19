@@ -29,11 +29,14 @@
 //	                             (kept by the refs feature; absent: off)
 //	gitswitch.pull               ff-only | rebase: how update brings a branch up to date
 //	                             (kept by the refs feature)
-//	gitswitch-account.<id>.host|name|email|key|user
+//	gitswitch-account.<id>.host|name|email|key|user|signingkey|signingformat
 //
 // Per repo (.git/config):
 //
 //	gitswitch.account            the account saved for that repo
+//	gitswitch.signing            true: commit.gpgsign, gpg.format, user.signingkey and
+//	                             gpg.ssh.allowedSignersFile here were written by gitswitch
+//	                             (from the account's signing key) and may be kept in step
 //	gitswitch.switchChanges      this repo's own choice, before the global one
 //	gitswitch.pull               ff-only | rebase: this repo's own choice (kept by the refs feature)
 package domain
@@ -54,6 +57,12 @@ type Account struct {
 	Email string `json:"email"`
 	Key   string `json:"key"`
 	User  string `json:"user"` // host username, learned by testing the login
+	// SigningFormat is how commits are signed: "ssh", "gpg" or "" (not
+	// signed). SigningKey is the ssh public key file (or "key::<key>") or
+	// the gpg key id; with ssh and no SigningKey the account's own key is
+	// used. See signing.go.
+	SigningKey    string `json:"signingKey"`
+	SigningFormat string `json:"signingFormat"`
 }
 
 // Rule picks an account automatically by repo owner or by folder.

@@ -28,7 +28,12 @@ func (g *Git) Save(gitDir string, r undo.Record) error {
 	if err := g.Clear(gitDir); err != nil {
 		return err
 	}
-	if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: "+r.Label, ref, r.Before); err != nil {
+	return g.save(gitDir, r, section, ref, r.Before)
+}
+
+// save writes a record to a config section and points ref at keep.
+func (g *Git) save(gitDir string, r undo.Record, section, ref, keep string) error {
+	if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: "+r.Label, ref, keep); err != nil {
 		return err
 	}
 	for _, kv := range [][2]string{
@@ -43,8 +48,10 @@ func (g *Git) Save(gitDir string, r undo.Record) error {
 	return nil
 }
 
-func (g *Git) Load(gitDir string) (undo.Record, error) {
-	out, err := g.Git.Run("--git-dir="+gitDir, "config", "--local", "-z", "--get-regexp", `^gitswitch\.undo\.`)
+func (g *Git) Load(gitDir string) (undo.Record, error) { return g.load(gitDir, section) }
+
+func (g *Git) load(gitDir, section string) (undo.Record, error) {
+	out, err := g.Git.Run("--git-dir="+gitDir, "config", "--local", "-z", "--get-regexp", `^`+strings.ReplaceAll(section, ".", `\.`)+`\.`)
 	if err != nil || out == "" {
 		return undo.Record{}, undo.ErrNothing // exit 1: no such keys
 	}
@@ -84,7 +91,7 @@ func (g *Git) Clear(gitDir string) error {
 	// Both fail when there is nothing to remove; that is fine.
 	_, _ = g.Git.Run("--git-dir="+gitDir, "config", "--local", "--remove-section", section)
 	_, _ = g.Git.Run("--git-dir="+gitDir, "update-ref", "-d", ref)
-	return nil
+	return g.ClearRedo(gitDir) // a new action (or an undo, which saves it after) forgets the redo
 }
 
 func (g *Git) Mark(gitDir string) undo.Mark {

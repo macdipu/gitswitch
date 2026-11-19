@@ -59,3 +59,12 @@ type KeyChoice struct {
 	Interactive bool   // let ssh-keygen ask for the passphrase on the terminal
 	Passphrase  string // used when not interactive
 }
+
+// SigningKeys reads an account's ssh signing key. The infrastructure Store
+// offers it; the account service looks for it at run time, so other
+// Stores need nothing.
+type SigningKeys interface {
+	// PublicSigningKey is the public key ("type base64") of an ssh signing
+	// account.
+	PublicSigningKey(a Account) (string, error)
+}
