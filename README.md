@@ -21,6 +21,7 @@ gitswitch: work saved for this repo
 
 - **One-time install.** One command installs the terminal program and the desktop app on Windows, macOS and Linux. Keeps working after restarts and updates.
 - **Nothing running in the background.** Git starts GitSwitch for a moment on each network command (a few milliseconds and about 6 MB of memory, measured on Linux), then it exits.
+- **Switch branches without losing work: Park and Smart switch.** Switch with uncommitted changes and GitSwitch asks what to do: take them with you, or park them on their branch until you come back. No stash commands, no half-done state, and Undo if you change your mind.
 - **Two front ends, same settings:** a terminal app (`gitswitch`) and a desktop app (`gitswitch ui`).
 - **A full git client, with the right account behind every action:** the changes panel and commit box (stage whole files, hunks or single lines; amend; sign off), the commit graph with the account behind every commit, merge with a conflict editor, stashes and parked changes, blame, compare, reflog and bisect, remotes, rebase and reword, worktrees and submodules. Everything that rewrites history asks first, never touches commits that are already pushed, and can be undone.
 - **Works everywhere git runs:** Windows Terminal, PowerShell, cmd, macOS Terminal, iTerm, VS Code, Android Studio and other JetBrains IDEs, GitHub Desktop, SourceTree.
@@ -30,8 +31,37 @@ gitswitch: work saved for this repo
   <img alt="GitSwitch desktop app: History page with branch and sync status, search, the commit graph with the account behind every commit, and a selected commit's explained actions" src="docs/images/web-history-light.png">
 </picture>
 
+## Park and Smart switch
+
+The question every git user meets: *I have uncommitted work, and I need another branch.* GitSwitch asks, and every answer is safe.
+
+```
+You have uncommitted changes on feature-login (3 files, 1 new).
+  ● Smart switch: take them with me to main
+  ○ Park them on feature-login (restored when you come back)
+  ○ Cancel
+  ☐ Remember my choice for this repo
+```
+
+- **Smart switch** takes your changes along. If git can switch with them, it just switches. If not, they are set aside, applied on the new branch, and staged files stay staged. If some files clash with the new branch, you stay on it with those files marked, your original changes are kept safe, and you choose: fix them, **go back** exactly as before, or **park instead**.
+- **Park** leaves your changes on their branch, new files included, and switches clean. When you come back, GitSwitch offers them: **Restore**, **Look first**, or **Not now**. Parked changes are ordinary stashes named `gitswitch park: <branch>`, so `git stash list`, IntelliJ and VS Code show them too, and they are never deleted automatically.
+- **Nothing is ever half done, and it is all undoable.** A clash never leaves a mix: your changes are either on the new branch or still parked. Other actions wait until you decide, even if you close the app.
+- **Ask once, or never.** Tick *Remember my choice for this repo*, or set it for every repo: `gitswitch set switch-changes ask|smart|park`.
+- **Everywhere you switch:** the branch menu, double-clicking a branch pill in the log, checking out a commit, the terminal app, and `gitswitch switch <branch> --smart|--park`. Parked changes sit in a bar above the log and in *Stashes…*.
+
+```sh
+gitswitch switch main --smart      # take your uncommitted changes along
+gitswitch switch main --park       # leave them on this branch until you come back
+gitswitch parked                   # what is parked, newest first
+gitswitch resolve --done           # after a clash: the files are fixed
+```
+
+More in [Commit history and branches](#commit-history-and-branches).
+
+
 ## Contents
 
+- [Park and Smart switch](#park-and-smart-switch)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [How an account is chosen](#how-an-account-is-chosen)

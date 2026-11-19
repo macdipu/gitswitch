@@ -152,6 +152,7 @@
       <a href="#features">Features</a>
       <a href="#install">Install</a>
       <a href="#history">History</a>
+      <a href="#park">Park</a>
       <a href="#client">Git client</a>
       <a href="#apps">Apps</a>
       <a class="gh" href="https://github.com/macdipu/gitswitch">GitHub</a>
@@ -318,6 +319,47 @@ gitswitch cherry-pick 5d6e7f8 9a0b1c2
 gitswitch rollback 1a2b3c4
 gitswitch show 1a2b3c4
 gitswitch browse 1a2b3c4</pre><button class="copy">Copy</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="park">
+    <div class="wrap">
+      <h2>Switch branch without losing work</h2>
+      <p class="sub">You have uncommitted changes and need another branch. GitSwitch asks, and every answer is safe: take your changes along, or park them until you come back.</p>
+      <div class="features">
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+          <h3>Smart switch</h3>
+          <p>Takes your changes with you. If git can switch with them, it just switches; if not, they are set aside, applied on the new branch, and staged files stay staged. If files clash, you stay on the new branch with your original changes kept safe, and choose: fix them, go back exactly as before, or park instead.</p>
+        </div>
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg></div>
+          <h3>Park</h3>
+          <p>Leaves your changes on their branch, new files included, and switches clean. When you come back, restore them, look first, or leave them. Parked changes are ordinary stashes, so git, IntelliJ and VS Code show them too, and they are never deleted for you.</p>
+        </div>
+        <div class="card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></div>
+          <h3>Never half done</h3>
+          <p>A clash never leaves a mix: your changes are on the new branch or still parked. Other actions wait until you decide, even after you close the app. Ask once, or remember your choice for a repo or for all of them.</p>
+        </div>
+      </div>
+      <div class="steps">
+        <div>
+          <h3>One question, in every front end</h3>
+          <p>The same question in the desktop app, the terminal app and the CLI. Double-click a branch pill in the log, use the branch menu, or check out a commit: switching always asks the same way, and parked changes wait in a bar above the log.</p>
+        </div>
+        <div class="cmd"><pre>You have uncommitted changes on feature-login
+(3 files, 1 new).
+  ● Smart switch: take them with me to main
+  ○ Park them on feature-login
+  ○ Cancel
+  ☐ Remember my choice for this repo
+
+gitswitch switch main --smart
+gitswitch switch main --park
+gitswitch parked
+gitswitch resolve --done</pre><button class="copy">Copy</button></div>
       </div>
     </div>
   </section>
