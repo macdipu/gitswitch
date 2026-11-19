@@ -445,11 +445,16 @@ func (x *CLI) cmdBranchNew(args []string) error {
 // the repo's account. With --amend it amends the last commit instead; the
 // message is optional then (none keeps the old one).
 func (x *CLI) cmdCommit(args []string) error {
-	const usage = "gitswitch commit -m <message> [--all], or gitswitch commit --amend [-m <message>] [--all]"
+	const usage = "gitswitch commit -m <message> [--all] [--signoff|--no-signoff] [--co-author \"Name <email>\"]..., gitswitch commit --amend [-m <message>] [--all], or gitswitch commit --recent [--json]"
 	var msg string
 	all, hasMsg, amend := false, false, false
+	var ex commitExtras
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if n, ok := ex.parse(args, i); ok {
+			i += n
+			continue
+		}
 		switch {
 		case a == "--all" || a == "-a":
 			all = true
@@ -464,18 +469,24 @@ func (x *CLI) cmdCommit(args []string) error {
 			return usageErr(usage)
 		}
 	}
-	if !hasMsg && !amend {
+	if ex.recent {
+		if hasMsg || amend || all || ex.changes() {
+			return usageErr(usage)
+		}
+		return x.commitRecent(ex.asJSON)
+	}
+	if (!hasMsg && !amend) || ex.asJSON {
 		return usageErr(usage)
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	commit := x.app.Workspace.Commit
+	commit := x.app.Workspace.CommitWith
 	if amend {
-		commit = x.app.Workspace.Amend
+		commit = x.app.Workspace.AmendWith
 	}
-	r, err := commit(gd, msg, all)
+	r, err := commit(gd, msg, all, ex.options())
 	if err != nil || x.app.DryRun() {
 		return err
 	}

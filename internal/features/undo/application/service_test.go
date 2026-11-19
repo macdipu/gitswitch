@@ -286,3 +286,43 @@ func TestUndoRename(t *testing.T) {
 		t.Errorf("recorded a rename without a commit: %+v", st.rec)
 	}
 }
+
+// A merge is undone by moving the branch back (keeping uncommitted
+// changes). A merge commit is refused once it is pushed; a fast-forward
+// made no commit, so pushed commits it brought in don't block it.
+func TestUndoMerge(t *testing.T) {
+	for _, c := range []struct {
+		name, after string
+		pushed      []string
+		blocked     string
+	}{
+		{"merge commit", "m", nil, ""},
+		{"merge commit pushed", "m", []string{"m"}, "merge commit (m) is already pushed"},
+		{"fast-forward", "theirs", []string{"theirs"}, ""},
+	} {
+		s, st, g := newService()
+		m := s.Before("/r/.git")
+		g.mark.Head = c.after
+		s.Merged("/r/.git", m, "theirs", "side", "Merged side into main")
+		if st.rec == nil || st.rec.Action != undo.Merge || st.rec.To != "side" || st.rec.Base != "theirs" || st.rec.Before != "a" {
+			t.Fatalf("%s: record = %+v", c.name, st.rec)
+		}
+		g.pushed = c.pushed
+		last, err := s.Last("/r/.git")
+		if err != nil || !strings.Contains(last.Blocked, c.blocked) || (c.blocked == "") != (last.Blocked == "") {
+			t.Fatalf("%s: Last = %+v, %v", c.name, last, err)
+		}
+		if c.blocked != "" {
+			continue
+		}
+		if _, err := s.Undo("/r/.git"); err != nil || strings.Join(g.ran, ",") != "keep a" {
+			t.Errorf("%s: Undo = %v, ran %v", c.name, err, g.ran)
+		}
+	}
+	// HEAD did not move (a squash, or nothing merged): nothing to undo.
+	s, st, _ := newService()
+	s.Merged("/r/.git", s.Before("/r/.git"), "theirs", "side", "x")
+	if st.rec != nil {
+		t.Fatalf("recorded a merge that did not move the branch: %+v", st.rec)
+	}
+}

@@ -515,8 +515,11 @@ func (x *CLI) cmdSet(args []string) error {
 	if len(args) > 0 && args[0] == "pull" {
 		return x.setPull(args[1:])
 	}
+	if len(args) > 0 && args[0] == "signoff" {
+		return x.setSignoff(args[1:])
+	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | fetch-on-open on|off | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | fetch-on-open on|off | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo] | signoff on|off [--repo]")
 	}
 	if args[0] == "fetch-on-open" {
 		if args[1] != "on" && args[1] != "off" {

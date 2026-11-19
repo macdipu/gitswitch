@@ -772,3 +772,219 @@ func TestBranchAndTagManagement(t *testing.T) {
 		t.Fatalf("push a different v1 = %d %s", c, e)
 	}
 }
+
+// Live refresh: a long poll on /api/watch answers when a file changes,
+// and with the same seq and no kinds when nothing did.
+func TestWatch(t *testing.T) {
+	dir, _, write := testRepo(t)
+	app := bootstrap.New(false, nil)
+	app.Watch.MaxWait = 400 * time.Millisecond
+	app.Watch.Quiet = 30 * time.Millisecond
+	defer app.Watch.Close()
+	h := Handler(app, nil)
+	q := "/api/watch?gitDir=" + url.QueryEscape(dir)
+
+	w, m := call(t, h, "GET", q, "")
+	d, _ := m["data"].(map[string]any)
+	if w.Code != 200 || d["seq"] == nil {
+		t.Fatalf("start = %d %v", w.Code, m)
+	}
+	seq := fmt.Sprint(d["seq"])
+
+	// Nothing changes: the wait runs out.
+	t0 := time.Now()
+	_, m = call(t, h, "GET", q+"&since="+seq, "")
+	d, _ = m["data"].(map[string]any)
+	if kinds, ok := d["kinds"].([]any); !ok || len(kinds) != 0 || fmt.Sprint(d["seq"]) != seq || time.Since(t0) < 300*time.Millisecond {
+		t.Fatalf("timeout = %v after %v", m, time.Since(t0))
+	}
+
+	// A file changes while the page waits.
+	app.Watch.MaxWait = 10 * time.Second
+	got := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", q+"&since="+seq, nil))
+		got <- rec
+	}()
+	time.Sleep(100 * time.Millisecond)
+	write("touched\n")
+	var rec *httptest.ResponseRecorder
+	select {
+	case rec = <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the long poll did not answer a file change")
+	}
+	var res struct {
+		Data struct {
+			Seq     uint64   `json:"seq"`
+			Kinds   []string `json:"kinds"`
+			Partial bool     `json:"partial"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || rec.Code != 200 {
+		t.Fatalf("change = %d %s", rec.Code, rec.Body)
+	}
+	if fmt.Sprint(res.Data.Seq) == seq || !strings.Contains(strings.Join(res.Data.Kinds, ","), "files") || res.Data.Partial {
+		t.Fatalf("change = %+v, want files", res.Data)
+	}
+
+	if w, m := call(t, h, "GET", q+"&since=x", ""); w.Code != 400 || m["error"] == nil {
+		t.Fatalf("a bad since = %d %v", w.Code, m)
+	}
+	if w, _ := call(t, h, "GET", "/api/watch?gitDir="+url.QueryEscape(t.TempDir()), ""); w.Code != 400 {
+		t.Fatalf("a folder that is not a repo = %d", w.Code)
+	}
+}
+
+// The commit box's extras: recent messages, co-author suggestions, the
+// sign-off setting, a commit with trailers, and the draft a refused
+// commit leaves.
+func TestCommitInfoAndTrailers(t *testing.T) {
+	dir, git, write := testRepo(t)
+	git("config", "user.name", "T")
+	git("config", "user.email", "t@x.example")
+	git("-c", "user.name=Ada", "-c", "user.email=ada@x.example", "commit", "-q", "--allow-empty", "--author=Ada <ada@x.example>", "-m", "hers")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":` + quote(dir)
+	q := "gitDir=" + url.QueryEscape(dir)
+
+	w, m := call(t, h, "GET", "/api/repo/commit-info?"+q, "")
+	d, _ := m["data"].(map[string]any)
+	recent, _ := d["recent"].([]any)
+	co, _ := d["coauthors"].([]any)
+	id, _ := d["identity"].(map[string]any)
+	if w.Code != 200 || len(recent) != 2 || d["draft"] != "" || d["signoff"] != false || id["email"] != "t@x.example" || id["name"] != "T" ||
+		len(co) != 1 || co[0].(map[string]any)["email"] != "ada@x.example" || co[0].(map[string]any)["commits"] != float64(1) {
+		t.Fatalf("commit-info = %d %v", w.Code, m)
+	}
+	if r0, _ := recent[0].(map[string]any); r0["subject"] == nil || r0["message"] == nil || r0["time"] == nil {
+		t.Fatalf("recent[0] = %v", recent[0])
+	}
+	if st, _ := d["signoffSetting"].(map[string]any); st["global"] != false || st["repo"] != "" || st["mode"] != false {
+		t.Fatalf("signoffSetting = %v", d["signoffSetting"])
+	}
+
+	// A refused commit keeps its message as the draft.
+	write("mine\n")
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"Keep me"}`); w.Code != 400 {
+		t.Fatalf("refused = %d %v", w.Code, m)
+	}
+	_, m = call(t, h, "GET", "/api/repo/commit-info?"+q, "")
+	if d, _ := m["data"].(map[string]any); d["draft"] != "Keep me" {
+		t.Fatalf("draft = %v", m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"Mine","all":true,"coauthors":["Ada"]}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "Name <email>") {
+		t.Fatalf("bad co-author = %d %v", w.Code, m)
+	}
+
+	w, m = call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"Mine","all":true,"signoff":true,"coauthors":["Ada <ada@x.example>"]}`)
+	if w.Code != 200 || git("log", "-1", "--format=%(trailers:only,unfold)") != "Co-authored-by: Ada <ada@x.example>\nSigned-off-by: T <t@x.example>" {
+		t.Fatalf("commit with trailers = %d %v\n%s", w.Code, m, git("log", "-1", "--format=%B"))
+	}
+	_, m = call(t, h, "GET", "/api/repo/commit-info?"+q, "")
+	if d, _ := m["data"].(map[string]any); d["draft"] != "" || d["recent"].([]any)[0].(map[string]any)["message"] != "Mine" {
+		t.Fatalf("after the commit = %v", m)
+	}
+
+	// The setting: every repo on, this repo off, then following again.
+	if w, m := call(t, h, "POST", "/api/signoff-setting", `{"value":"sometimes"}`); w.Code != 400 {
+		t.Fatalf("bad value = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/signoff-setting", `{"value":"on"}`); w.Code != 200 || m["data"].(map[string]any)["global"] != true {
+		t.Fatalf("global on = %d %v", w.Code, m)
+	}
+	_, m = call(t, h, "POST", "/api/signoff-setting", `{`+gd+`,"value":"off"}`)
+	if d, _ := m["data"].(map[string]any); d["mode"] != false || d["repo"] != "off" || d["global"] != true {
+		t.Fatalf("repo off = %v", m)
+	}
+	_, m = call(t, h, "POST", "/api/signoff-setting", `{`+gd+`,"value":""}`)
+	if d, _ := m["data"].(map[string]any); d["mode"] != true || d["repo"] != "" {
+		t.Fatalf("repo follows = %v", m)
+	}
+	write("more\n")
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"message":"Signed by the setting","all":true}`); w.Code != 200 ||
+		git("log", "-1", "--format=%(trailers:only,unfold)") != "Signed-off-by: T <t@x.example>" {
+		t.Fatalf("setting = %d %v", w.Code, m)
+	}
+}
+
+// Merge from the page: the plan, a merge that stops on a clash, the
+// operation and the conflict (three versions), resolving and continuing,
+// undo of the merge, and abort.
+func TestMergeOperationConflict(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	q := "gitDir=" + url.QueryEscape(dir)
+	write("main\n")
+	git("commit", "-q", "-am", "main")
+	before := git("rev-parse", "HEAD")
+
+	w, m := call(t, h, "GET", "/api/merge/plan?"+q+"&branch=side", "")
+	d, _ := m["data"].(map[string]any)
+	if w.Code != 200 || d["fastForward"] != false || d["incomingCount"] != float64(1) || d["localCount"] != float64(1) ||
+		fmt.Sprint(d["bothChanged"]) != "[f.txt]" || d["blocked"] != "" || !strings.Contains(fmt.Sprint(d["summary"]), "gone apart") {
+		t.Fatalf("plan = %d %v", w.Code, m)
+	}
+	if d["predicted"] == true && fmt.Sprint(d["conflicts"]) != "[f.txt]" {
+		t.Fatalf("predicted conflicts = %v", d["conflicts"])
+	}
+	if w, m := call(t, h, "POST", "/api/merge", `{`+gd+`,"branch":"side","mode":"ff"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "can't fast-forward") {
+		t.Fatalf("ff-only = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/merge", `{`+gd+`,"branch":"side","mode":"octopus"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "unknown merge mode") {
+		t.Fatalf("bad mode = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "POST", "/api/merge", `{`+gd+`,"branch":"side","mode":"merge"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["outcome"] != "conflicts" || fmt.Sprint(d["conflicts"]) != "[f.txt]" {
+		t.Fatalf("merge = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "GET", "/api/operation?"+q, "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["kind"] != "merge" || d["canContinue"] != false || fmt.Sprint(d["actions"]) != "[continue abort]" {
+		t.Fatalf("operation = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/operation", `{`+gd+`,"action":"continue"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "still have conflicts") {
+		t.Fatalf("continue too early = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "GET", "/api/conflict?"+q+"&path=f.txt", "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["base"] != "base\n" || d["ours"] != "main\n" || d["theirs"] != "side\n" ||
+		d["markers"] != true || !strings.Contains(fmt.Sprint(d["text"]), "<<<<<<<") || d["kind"] != "both changed" {
+		t.Fatalf("conflict = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/conflict", `{`+gd+`,"path":"f.txt","action":"done"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "conflict markers") {
+		t.Fatalf("done with markers = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "POST", "/api/conflict", `{`+gd+`,"path":"f.txt","action":"save","text":"main and side\n"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["canContinue"] != true || d["conflicts"] != nil {
+		t.Fatalf("save = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "POST", "/api/operation", `{`+gd+`,"action":"continue"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["kind"] != "" || len(strings.Fields(git("log", "-1", "--format=%P"))) != 2 ||
+		git("show", "HEAD:f.txt") != "main and side" {
+		t.Fatalf("continue = %d %v", w.Code, m)
+	}
+	// Undo takes the merge commit off again.
+	if w, m := call(t, h, "POST", "/api/undo", `{`+gd+`}`); w.Code != 200 || git("rev-parse", "HEAD") != before || git("status", "--porcelain") != "" {
+		t.Fatalf("undo = %d %v", w.Code, m)
+	}
+	// Merge again, keep theirs... then abort instead.
+	call(t, h, "POST", "/api/merge", `{`+gd+`,"branch":"side"}`)
+	if w, m := call(t, h, "POST", "/api/conflict", `{`+gd+`,"path":"f.txt","action":"theirs"}`); w.Code != 200 {
+		t.Fatalf("theirs = %d %v", w.Code, m)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "f.txt")); string(b) != "side\n" {
+		t.Fatalf("f.txt = %q", b)
+	}
+	if w, m := call(t, h, "POST", "/api/operation", `{`+gd+`,"action":"skip"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "can't be skipped") {
+		t.Fatalf("skip = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/operation", `{`+gd+`,"action":"abort"}`); w.Code != 200 || git("rev-parse", "HEAD") != before || git("status", "--porcelain") != "" {
+		t.Fatalf("abort = %d %v", w.Code, m)
+	}
+	// Uncommitted changes: refused, nothing changed.
+	write("dirty\n")
+	if w, m := call(t, h, "POST", "/api/merge", `{`+gd+`,"branch":"side"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "commit, park or discard them first") {
+		t.Fatalf("dirty = %d %v", w.Code, m)
+	}
+}

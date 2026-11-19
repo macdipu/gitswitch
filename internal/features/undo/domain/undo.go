@@ -35,6 +35,10 @@ const (
 	// Rename: a branch was renamed from Record.Branch to Record.To (Before
 	// and After are the commit it points at).
 	Rename Action = "rename"
+	// Merge: a branch was merged into Record.Branch (Record.To names it,
+	// Record.Base is the commit merged in). After == Base when it was a
+	// fast-forward; otherwise After is the merge commit.
+	Merge Action = "merge"
 )
 
 // Deleted is a branch an action deleted: enough to bring it back.
@@ -117,10 +121,19 @@ func (r Record) Effect() string {
 		return "Puts " + r.Branch + " back as it was before the update: your commits as they were, without the new ones from the remote (they stay there)."
 	case Revert, CherryPick:
 		return "Removes the new commit(s) from " + r.Branch + ", as if they had never been made."
+	case Merge:
+		if r.FastForward() {
+			return "Moves " + r.Branch + " back to where it was before the fast-forward. " + r.To + " keeps its commits."
+		}
+		return "Takes the merge commit off " + r.Branch + ", as if the merge had never been made. " + r.To + " keeps its commits."
 	default:
 		return "Puts " + r.Branch + " back exactly as it was before."
 	}
 }
+
+// FastForward reports whether a merge only moved the branch to the
+// commit merged in, making no merge commit.
+func (r Record) FastForward() bool { return r.Action == Merge && r.After == r.Base }
 
 // Rewinds reports whether undoing moves the branch back to Before, taking
 // commits off it (every action but a switch, a move, a prune or a rename).

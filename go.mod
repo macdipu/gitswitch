@@ -3,6 +3,7 @@ module github.com/macdipu/gitswitch
 go 1.25.0
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/wailsapp/wails/v2 v2.16.0
 	golang.org/x/crypto v0.53.0
 )

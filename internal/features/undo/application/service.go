@@ -58,6 +58,21 @@ func (s *Service) Updated(gitDir string, before undo.Mark, base, label string) {
 	}
 }
 
+// Merged remembers a merge of the commit theirs (named from) into the
+// current branch: a fast-forward or a merge commit. Undo moves the branch
+// back while the merge commit is not pushed.
+func (s *Service) Merged(gitDir string, before undo.Mark, theirs, from, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r, ok := undo.New(undo.Merge, label, before, s.Git.Mark(gitDir), now().Unix())
+	r.To, r.Base = from, theirs
+	if !ok || theirs == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Pruned remembers deleted branches, so they can be brought back.
 func (s *Service) Pruned(gitDir string, before undo.Mark, branches []undo.Deleted, label string) {
 	now := time.Now
@@ -138,6 +153,23 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 		}
 		if len(pushed) > 0 {
 			return fmt.Errorf("your rebased commits are pushed already (%s); undoing the update now would rewrite pushed history", short(pushed))
+		}
+		return nil
+	}
+	if r.Action == undo.Merge {
+		if r.FastForward() {
+			// No commit was made: the commits stay on the merged branch,
+			// only this branch moves back.
+			return nil
+		}
+		// Only the merge commit goes; the merged commits stay where they
+		// came from.
+		pushed, err := s.Git.Pushed(gitDir, r.After+"^@", r.After)
+		if err != nil {
+			return err
+		}
+		if len(pushed) > 0 {
+			return fmt.Errorf("the merge commit (%s) is already pushed, so undoing it would rewrite pushed history; revert it instead", short(pushed))
 		}
 		return nil
 	}

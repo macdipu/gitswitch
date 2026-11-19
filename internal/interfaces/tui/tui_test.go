@@ -399,3 +399,322 @@ func TestChangesCommit(t *testing.T) {
 		t.Fatalf("last commit %q, changes open = %v (msg %q)", got, x.changes != nil, x.msg)
 	}
 }
+
+// typeKeys sends each rune of s as a key.
+func typeKeys(x *tui, s string) {
+	for _, r := range s {
+		x.handle(string(r))
+	}
+}
+
+// selectCommit puts the History selection on the newest commit line.
+func selectCommit(t *testing.T, x *tui) string {
+	t.Helper()
+	for i, r := range x.histRows {
+		if r.Hash != "" {
+			x.sel[tabHistory] = i
+			return r.Hash
+		}
+	}
+	t.Fatalf("no commit line in:\n%s", strings.Join(x.histLines, "\n"))
+	return ""
+}
+
+// withRemote gives the repo a bare origin with main pushed.
+func withRemote(t *testing.T, git func(...string) string) {
+	t.Helper()
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	git("remote", "add", "origin", bare)
+	git("push", "-q", "origin", "main")
+}
+
+// In the commit form, ↑ then → amends the last commit: its message is
+// filled in, ← back to a new commit clears it, and Esc changes nothing.
+func TestCommitFormAmends(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("C")
+	if x.form == nil || x.form.focus != 1 {
+		t.Fatalf("commit form: %+v (msg %q)", x.form, x.msg)
+	}
+	x.handle("up")
+	x.handle("right")
+	if f := x.form; !strings.HasPrefix(f.title, "Amend ") || f.fields[1].value != "base" {
+		t.Fatalf("amend chosen: title %q, message %q", f.title, f.fields[1].value)
+	}
+	x.handle("left")
+	if f := x.form; f.fields[1].value != "" || !strings.HasPrefix(f.title, "Commit the 1 staged") {
+		t.Fatalf("back to a new commit: title %q, message %q", f.title, f.fields[1].value)
+	}
+	x.handle("esc")
+	if x.form != nil || git("rev-list", "--count", "HEAD") != "1" {
+		t.Fatal("Esc should close the form and commit nothing")
+	}
+
+	x.handle("C")
+	x.handle("up")
+	x.handle("right")
+	x.handle("down")
+	x.handle("ctrl-u")
+	typeKeys(x, "base, reworded")
+	x.handle("enter")
+	if n, s := git("rev-list", "--count", "HEAD"), git("log", "-1", "--format=%s"); n != "1" || s != "base, reworded" {
+		t.Fatalf("after amend: %s commit(s), last %q (msg %q)", n, s, x.msg)
+	}
+	if got := git("show", "HEAD:a.txt"); got != "one more" || !strings.Contains(x.msg, "Amended") || !strings.Contains(x.msg, "U to undo") {
+		t.Fatalf("a.txt in the commit = %q, msg %q", got, x.msg)
+	}
+}
+
+// A pushed last commit can't be amended: the form says why and offers only
+// a new commit.
+func TestCommitFormSaysWhyNoAmend(t *testing.T) {
+	x, _, git := changesRepo(t)
+	withRemote(t, git)
+	git("branch", "-u", "origin/main")
+	x.loadHistory()
+	x.handle("C")
+	if x.form == nil {
+		t.Fatalf("no commit form (msg %q)", x.msg)
+	}
+	k := x.form.fields[0]
+	if len(k.options) != 1 || !strings.Contains(k.hint, "already pushed") {
+		t.Fatalf("amend offered for a pushed commit: %+v", k)
+	}
+	x.handle("up")
+	if box := history.StripANSI(strings.Join(x.overlay(), "\n")); !strings.Contains(box, "can't amend") {
+		t.Fatalf("the reason is not shown:\n%s", box)
+	}
+}
+
+// B lists the branches; r renames one (Undo is mentioned), Esc in the form
+// keeps the name.
+func TestBranchRename(t *testing.T) {
+	x, _, git := changesRepo(t)
+	git("branch", "feature")
+	x.handle("B")
+	if x.picker == nil {
+		t.Fatalf("B: no branch list (msg %q)", x.msg)
+	}
+	typeKeys(x, "feature")
+	x.handle("enter")
+	if x.confirm == nil || x.confirm.actions["r"] == nil || x.confirm.actions["s"] == nil {
+		t.Fatalf("no branch actions: %+v", x.confirm)
+	}
+	x.handle("r")
+	if x.form == nil || x.form.fields[0].value != "feature" || x.msg == "Done." {
+		t.Fatalf("rename form: %+v (msg %q)", x.form, x.msg)
+	}
+	x.handle("esc")
+	if !strings.Contains(git("branch"), "feature") {
+		t.Fatal("cancelled rename renamed")
+	}
+	x.handle("B")
+	typeKeys(x, "feature")
+	x.handle("enter")
+	x.handle("r")
+	x.handle("ctrl-u")
+	typeKeys(x, "feat2")
+	x.handle("enter")
+	if b := git("branch", "--list", "feat2"); b == "" || !strings.Contains(x.msg, "U to undo") {
+		t.Fatalf("not renamed: branches %q, msg %q", git("branch"), x.msg)
+	}
+}
+
+// d asks; a branch with commits on no other branch asks again before it
+// goes.
+func TestBranchDelete(t *testing.T) {
+	x, _, git := changesRepo(t)
+	git("branch", "merged")
+	side := git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "only here")
+	git("update-ref", "refs/heads/side", side)
+	open := func(name string) {
+		t.Helper()
+		x.handle("B")
+		typeKeys(x, name)
+		x.handle("enter")
+		x.handle("d")
+		if x.confirm == nil || !strings.Contains(x.confirm.text, "Delete the branch "+name) {
+			t.Fatalf("d did not ask: %+v (msg %q)", x.confirm, x.msg)
+		}
+	}
+	open("merged")
+	x.handle("n")
+	if git("branch", "--list", "merged") == "" {
+		t.Fatal("n deleted the branch")
+	}
+	open("merged")
+	x.handle("y")
+	if git("branch", "--list", "merged") != "" || !strings.Contains(x.msg, "U to undo") {
+		t.Fatalf("merged not deleted (msg %q)", x.msg)
+	}
+
+	open("side")
+	x.handle("y")
+	if x.confirm == nil || !strings.Contains(x.confirm.text, "anyway") {
+		t.Fatalf("no second question for commits on no other branch: %+v (msg %q)", x.confirm, x.msg)
+	}
+	x.handle("n")
+	if git("branch", "--list", "side") == "" {
+		t.Fatal("n at the second question deleted the branch")
+	}
+	open("side")
+	x.handle("y")
+	x.handle("y")
+	if git("branch", "--list", "side") != "" || !strings.Contains(x.msg, "Deleted the branch side") {
+		t.Fatalf("side not deleted (msg %q)", x.msg)
+	}
+}
+
+// u sets the remote branch a branch pulls from, or none.
+func TestBranchSetUpstream(t *testing.T) {
+	x, dir, git := changesRepo(t)
+	withRemote(t, git)
+	x.handle("B")
+	typeKeys(x, "main")
+	x.handle("enter")
+	x.handle("u")
+	if x.picker == nil {
+		t.Fatalf("u: no remote branch list (msg %q)", x.msg)
+	}
+	x.handle("esc")
+	if x.picker != nil {
+		t.Fatal("Esc should close the list")
+	}
+	if out, _ := exec.Command("git", "-C", dir, "config", "branch.main.merge").Output(); len(out) > 0 {
+		t.Fatal("Esc set an upstream")
+	}
+	x.handle("B")
+	typeKeys(x, "main")
+	x.handle("enter")
+	x.handle("u")
+	typeKeys(x, "origin/main")
+	x.handle("enter")
+	if got := git("rev-parse", "--abbrev-ref", "main@{upstream}"); got != "origin/main" || x.msgErr {
+		t.Fatalf("upstream %q (msg %q)", got, x.msg)
+	}
+	x.handle("B")
+	typeKeys(x, "main")
+	x.handle("enter")
+	x.handle("u")
+	typeKeys(x, "none")
+	x.handle("enter")
+	if out, _ := exec.Command("git", "-C", dir, "config", "branch.main.merge").Output(); len(out) > 0 || !strings.Contains(x.msg, "no remote branch") {
+		t.Fatalf("upstream not unset: %q (msg %q)", out, x.msg)
+	}
+}
+
+// t tags the selected commit (a message makes it annotated); T lists the
+// tags, to push or delete one (asks first).
+func TestTags(t *testing.T) {
+	x, _, git := changesRepo(t)
+	x.handle("T")
+	if x.picker != nil || !strings.Contains(x.msg, "no tags") {
+		t.Fatalf("T with no tags: picker %v, msg %q", x.picker != nil, x.msg)
+	}
+	hash := selectCommit(t, x)
+	x.handle("t")
+	if x.form == nil {
+		t.Fatalf("t: no tag form (msg %q)", x.msg)
+	}
+	typeKeys(x, "v0")
+	x.handle("esc")
+	if git("tag") != "" {
+		t.Fatal("Esc made a tag")
+	}
+	x.handle("t")
+	typeKeys(x, "v1")
+	x.handle("enter")
+	x.handle("enter")
+	if git("tag") != "v1" || git("cat-file", "-t", "v1") != "commit" || git("rev-parse", "v1") != hash {
+		t.Fatalf("lightweight v1: tags %q (msg %q)", git("tag"), x.msg)
+	}
+	selectCommit(t, x)
+	x.handle("t")
+	typeKeys(x, "v2")
+	x.handle("enter")
+	typeKeys(x, "Release")
+	x.handle("enter")
+	if git("cat-file", "-t", "v2") != "tag" || !strings.Contains(x.msg, "annotated") {
+		t.Fatalf("v2 not annotated (msg %q)", x.msg)
+	}
+
+	x.handle("T")
+	typeKeys(x, "v1")
+	x.handle("enter")
+	if x.confirm == nil || x.confirm.actions["p"] == nil || x.confirm.actions["d"] == nil {
+		t.Fatalf("no tag actions: %+v", x.confirm)
+	}
+	x.handle("d")
+	if x.confirm == nil || !strings.Contains(x.confirm.text, "Delete the tag v1") {
+		t.Fatalf("d did not ask: %+v", x.confirm)
+	}
+	x.handle("n")
+	if !strings.Contains(git("tag"), "v1") {
+		t.Fatal("n deleted the tag")
+	}
+	x.handle("T")
+	typeKeys(x, "v1")
+	x.handle("enter")
+	x.handle("d")
+	x.handle("y")
+	if git("tag") != "v2" || x.msgErr {
+		t.Fatalf("tags %q after deleting v1 (msg %q)", git("tag"), x.msg)
+	}
+}
+
+// i in the changes ignores the selected file, its extension or its folder,
+// in .gitignore or only for me; a tracked file is untracked only on yes.
+func TestChangesIgnore(t *testing.T) {
+	x, dir, git := changesRepo(t)
+	x.handle("s")
+	selectPath(t, x, "new.txt", "changed")
+	x.handle("i")
+	if x.form == nil || len(x.form.fields[0].options) != 2 { // the file, *.txt; no folder at the top
+		t.Fatalf("ignore form: %+v (msg %q)", x.form, x.msg)
+	}
+	x.handle("esc")
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); err == nil {
+		t.Fatal("Esc wrote .gitignore")
+	}
+	x.handle("i")
+	x.handle("enter")
+	x.handle("enter")
+	if b, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); !strings.Contains(string(b), "/new.txt") {
+		t.Fatalf(".gitignore = %q (msg %q)", b, x.msg)
+	}
+	if got := screen(x); strings.Contains(got, "new.txt") {
+		t.Fatalf("new.txt still listed:\n%s", got)
+	}
+
+	ignoreExtLocal := func() {
+		t.Helper()
+		selectPath(t, x, "b.txt", "changed")
+		x.handle("i")
+		x.handle("right") // *.txt
+		x.handle("down")
+		x.handle("right") // only for me
+		x.handle("enter")
+		if x.confirm == nil || !strings.Contains(x.confirm.text, "b.txt is tracked") {
+			t.Fatalf("no untrack question: %+v (msg %q)", x.confirm, x.msg)
+		}
+	}
+	ignoreExtLocal()
+	if b, _ := os.ReadFile(filepath.Join(dir, ".git", "info", "exclude")); !strings.Contains(string(b), "*.txt") {
+		t.Fatalf("exclude = %q", b)
+	}
+	x.handle("n")
+	if !strings.Contains(git("ls-files"), "b.txt") {
+		t.Fatal("n untracked b.txt")
+	}
+	ignoreExtLocal()
+	x.handle("y")
+	if strings.Contains(git("ls-files"), "b.txt") || !strings.Contains(x.msg, "untracked") {
+		t.Fatalf("b.txt still tracked (msg %q): %s", x.msg, git("ls-files"))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b.txt")); err != nil {
+		t.Fatal("untracking removed the file")
+	}
+}

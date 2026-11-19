@@ -20,6 +20,7 @@ import (
 	history "github.com/macdipu/gitswitch/internal/features/history/domain"
 	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
 	hosting "github.com/macdipu/gitswitch/internal/features/hosting/domain"
+	merge "github.com/macdipu/gitswitch/internal/features/merge/domain"
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
@@ -475,13 +476,41 @@ func (s *server) routes() map[string]handler {
 		}),
 		// all commits every change, new files too; otherwise what is staged.
 		// amend amends the last commit instead ("" message keeps its own).
+		// signoff (true/false; absent: the setting) and coauthors
+		// ("Name <email>" each) add trailers to the message.
 		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			all, _ := b["all"].(bool)
+			o := commitOptions(b)
 			if amend, _ := b["amend"].(bool); amend {
-				return a.Workspace.Amend(gd, str(b, "message"), all)
+				return a.Workspace.AmendWith(gd, str(b, "message"), all, o)
 			}
-			return a.Workspace.Commit(gd, str(b, "message"), all)
+			return a.Workspace.CommitWith(gd, str(b, "message"), all, o)
 		}),
+		// What the commit box offers: recent messages, the kept draft, the
+		// sign-off setting, co-author suggestions, the identity.
+		"GET /api/repo/commit-info": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Workspace.CommitInfo(gd, 0)
+		},
+		// value "on" or "off": whether commits get Signed-off-by, in every
+		// repo, or in the repo gitDir names ("" there follows every repo's).
+		"POST /api/signoff-setting": func(r *http.Request) (any, error) {
+			b := body(r)
+			gd := ""
+			if p := str(b, "gitDir"); p != "" {
+				var err error
+				if gd, err = s.gitDir(p); err != nil {
+					return nil, err
+				}
+			}
+			if err := a.Workspace.SetSignoffSetting(gd, str(b, "value")); err != nil {
+				return nil, err
+			}
+			return a.Workspace.SignoffSetting(gd), nil
+		},
 		// Whether the last commit may be amended (why not), with its message.
 		"GET /api/repo/amendable": func(r *http.Request) (any, error) {
 			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
@@ -523,11 +552,73 @@ func (s *server) routes() map[string]handler {
 			}
 			return map[string]string{"url": u}, process.OpenBrowser(u)
 		}),
+		// Live refresh, a long poll: what changed in the repo after the
+		// change numbered since ("files", "index", "head", "refs",
+		// "operation"), waiting up to ~25 s for a change when there is
+		// none yet (then the same seq and no kinds). Without since: the
+		// latest seq at once. partial: only part of the working folder is
+		// watched, so file changes may go unseen.
+		"GET /api/watch": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			var since uint64
+			has := q.Get("since") != ""
+			if has {
+				if _, err := fmt.Sscan(q.Get("since"), &since); err != nil {
+					return nil, fmt.Errorf("since is not a change number: %q", q.Get("since"))
+				}
+			}
+			return a.Watch.Wait(r.Context(), gd, since, has)
+		},
 		// The health checks start several programs, so the page asks for
 		// them only on the Settings page.
 		"GET /api/doctor":      func(r *http.Request) (any, error) { return a.Doctor.Run(false), nil },
 		"POST /api/doctor/fix": func(r *http.Request) (any, error) { return nil, a.Doctor.Fix(str(body(r), "id")) },
 		"POST /api/install":    func(r *http.Request) (any, error) { return nil, a.Setup.Install(nil) },
+		// Merge a branch into the current one (plan first: blocked says
+		// why not now), the operation git stopped in the middle of
+		// (continue, skip, abort) and one conflicted file (ours, theirs,
+		// done once its markers are gone, or save text as the result).
+		"GET /api/merge/plan": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Merge.Plan(gd, q.Get("branch"))
+		},
+		"POST /api/merge": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			mode, err := merge.ParseMode(str(b, "mode"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Merge.Merge(gd, str(b, "branch"), mode)
+		}),
+		"GET /api/operation": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Merge.Operation(gd)
+		},
+		"POST /api/operation": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Merge.Act(gd, str(b, "action"))
+		}),
+		"GET /api/conflict": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Merge.Conflict(gd, q.Get("path"))
+		},
+		"POST /api/conflict": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			text, _ := b["text"].(string) // as typed: not trimmed
+			return a.Merge.Resolve(gd, str(b, "path"), str(b, "action"), text)
+		}),
 	}
 }
 
@@ -655,6 +746,21 @@ func (s *server) settings(r *http.Request) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+// commitOptions reads signoff and coauthors from a commit's body.
+func commitOptions(b map[string]any) workspace.CommitOptions {
+	var o workspace.CommitOptions
+	if v, ok := b["signoff"].(bool); ok {
+		o.Signoff = &v
+	}
+	list, _ := b["coauthors"].([]any)
+	for _, c := range list {
+		if v, ok := c.(string); ok {
+			o.CoAuthors = append(o.CoAuthors, v)
+		}
+	}
+	return o
 }
 
 // withRepo reads a JSON body whose gitDir must be a git repo.

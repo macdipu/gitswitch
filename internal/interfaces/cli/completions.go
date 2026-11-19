@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test signin signout github prs default use forget rule repo status log fix-author changes diff stage unstage discard ignore commit branch tag switch fetch update revert drop rollback cherry-pick undo resolve parked push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test signin signout github prs default use forget rule repo status log fix-author changes diff stage unstage discard ignore commit branch tag switch fetch update revert drop rollback cherry-pick undo resolve merge continue skip abort conflict parked push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -23,7 +23,7 @@ _gitswitch() {
     key) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "new show pick agent" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --open --copy" -- "$cur") ) ;;
     rule) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add list remove" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) owner: folder:" -- "$cur") ) ;;
     repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list clone add remove show open pin unpin recent group ungroup" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --by --sort --editor --account" -- "$cur") ) ;;
-    set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes" -- "$cur") )
+    set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes signoff" -- "$cur") )
       elif [ "${COMP_WORDS[2]}" = switch-changes ]; then COMPREPLY=( $(compgen -W "ask smart park global --repo" -- "$cur") )
       else COMPREPLY=( $(compgen -W "on off" -- "$cur") ); fi ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
@@ -37,7 +37,7 @@ _gitswitch() {
     parked) COMPREPLY=( $(compgen -W "show restore drop --json -y" -- "$cur") ) ;;
     drop|rollback) COMPREPLY=( $(compgen -W "-y" -- "$cur") ) ;;
     push) COMPREPLY=( $(compgen -W "--open -y" -- "$cur") ) ;;
-    commit) COMPREPLY=( $(compgen -W "-m --all --amend" -- "$cur") ) ;;
+    commit) COMPREPLY=( $(compgen -W "-m --all --amend --signoff --no-signoff --co-author --recent --json" -- "$cur") ) ;;
     undo) COMPREPLY=( $(compgen -W "-y --show --json" -- "$cur") ) ;;
     doctor) COMPREPLY=( $(compgen -W "--fix" -- "$cur") ) ;;
     uninstall) COMPREPLY=( $(compgen -W "--purge" -- "$cur") ) ;;
@@ -58,7 +58,7 @@ _gitswitch() {
     key) (( CURRENT == 3 )) && compadd new show pick agent || compadd -a accts -- --open --copy ;;
     rule) (( CURRENT == 3 )) && compadd add list remove || compadd -a accts -- owner: folder: ;;
     repo) (( CURRENT == 3 )) && compadd list clone add remove show open pin unpin recent group ungroup || { _files -/; compadd -- --json --pinned --by --sort --editor --account; } ;;
-    set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes
+    set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes signoff
       elif [[ ${words[3]} == switch-changes ]]; then compadd ask smart park global --repo
       else compadd on off; fi ;;
     completions) compadd bash zsh fish powershell ;;
@@ -72,7 +72,7 @@ _gitswitch() {
     parked) compadd -- show restore drop --json -y ;;
     drop|rollback) compadd -- -y ;;
     push) compadd -- --open -y ;;
-    commit) compadd -- -m --all --amend ;;
+    commit) compadd -- -m --all --amend --signoff --no-signoff --co-author --recent --json ;;
     undo) compadd -- -y --show --json ;;
     doctor) compadd -- --fix ;;
   esac
@@ -89,10 +89,10 @@ complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick age
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test signin signout" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin recent group ungroup (__fish_complete_directories)"
-complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes on off"
+complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes signoff on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune compare pr --json --from --move --no-prefix -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open -y"
-complete -c gitswitch -n "__fish_seen_subcommand_from commit" -a "-m --all --amend"
+complete -c gitswitch -n "__fish_seen_subcommand_from commit" -a "-m --all --amend --signoff --no-signoff --co-author --recent --json"
 complete -c gitswitch -n "__fish_seen_subcommand_from switch-changes" -a "ask smart park global --repo"
 complete -c gitswitch -n "__fish_seen_subcommand_from parked" -a "show restore drop --json -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from resolve" -a "--done --abort --park -y"
@@ -108,8 +108,8 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
     account = 'add edit list remove rename'; github = 'list clone --refresh --json'; key = 'new show pick agent'; rule = 'add list remove'
-    repo = 'list clone add remove show open pin unpin recent group ungroup'; set = 'gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes'; completions = 'bash zsh fish powershell'
-    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune compare pr --json'; push = '--open -y'; commit = '-m --all --amend'
+    repo = 'list clone add remove show open pin unpin recent group ungroup'; set = 'gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull switch-changes signoff'; completions = 'bash zsh fish powershell'
+    parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune compare pr --json'; push = '--open -y'; commit = '-m --all --amend --signoff --no-signoff --co-author --recent --json'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {
     $list = '`+commandList+`' -split ' '

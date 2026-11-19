@@ -90,3 +90,14 @@ func TestEffect(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeEffect(t *testing.T) {
+	ff := Record{Action: Merge, Branch: "main", To: "side", Before: "a", After: "b", Base: "b"}
+	mc := Record{Action: Merge, Branch: "main", To: "side", Before: "a", After: "m", Base: "b"}
+	if !ff.FastForward() || mc.FastForward() || !ff.Rewinds() {
+		t.Fatal("FastForward / Rewinds")
+	}
+	if !strings.Contains(ff.Effect(), "before the fast-forward") || !strings.Contains(mc.Effect(), "Takes the merge commit off main") {
+		t.Fatalf("Effect: %q / %q", ff.Effect(), mc.Effect())
+	}
+}

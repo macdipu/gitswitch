@@ -23,7 +23,8 @@ import (
 type Service struct {
 	Git      workspace.Git
 	Changes  workspace.Changes
-	Ignorer  workspace.Ignorer // edits .gitignore and info/exclude; may be nil
+	Ignorer  workspace.Ignorer  // edits .gitignore and info/exclude; may be nil
+	Messages workspace.Messages // recent messages, the kept draft, co-authors, the sign-off setting; may be nil
 	Accounts account.Store
 	Repos    repo.Reader
 	Locator  repo.Locator
@@ -35,8 +36,21 @@ type Service struct {
 // included. It refuses while git is in the middle of another operation,
 // with conflicts, with nothing to commit, without all when nothing is
 // staged, and when the repo's email is not its account's: the commit
-// would show someone else.
+// would show someone else. The gitswitch.signoff setting applies.
 func (s *Service) Commit(gitDir, message string, all bool) (workspace.Committed, error) {
+	return s.CommitWith(gitDir, message, all, workspace.CommitOptions{})
+}
+
+// CommitWith is Commit with a sign-off (o.Signoff, else the setting) and
+// co-authors added as trailers. The message of a commit that fails or is
+// refused is kept as the draft; a commit that succeeds clears it.
+func (s *Service) CommitWith(gitDir, message string, all bool, o workspace.CommitOptions) (workspace.Committed, error) {
+	r, err := s.commit(gitDir, message, all, o)
+	s.keepDraft(gitDir, message, err)
+	return r, err
+}
+
+func (s *Service) commit(gitDir, message string, all bool, o workspace.CommitOptions) (workspace.Committed, error) {
 	r := workspace.Committed{All: all}
 	message = workspace.Message(message)
 	if message == "" {
@@ -60,6 +74,9 @@ func (s *Service) Commit(gitDir, message string, all bool) (workspace.Committed,
 	}
 	r.Files = workspace.Files(c, all)
 	if r.Account, err = s.account(gitDir); err != nil {
+		return r, err
+	}
+	if message, err = s.withTrailers(gitDir, message, o, true); err != nil {
 		return r, err
 	}
 	wt := s.Locator.WorktreeOf(gitDir)
@@ -147,13 +164,31 @@ func (s *Service) amendable(gitDir string) (refs.Head, workspace.Last, error) {
 // for a commit that is already pushed, when the repo's email is not its
 // account's, and when nothing would change: nothing to add and the same
 // message. The amend can be undone, which puts the commit back as it was.
+// The gitswitch.signoff setting applies to a new message.
 func (s *Service) Amend(gitDir, message string, all bool) (workspace.Committed, error) {
+	return s.AmendWith(gitDir, message, all, workspace.CommitOptions{})
+}
+
+// AmendWith is Amend with a sign-off and co-authors added as trailers: to
+// the new message, or with message "" to the last commit's. A sign-off
+// asked for here (o.Signoff) applies to a kept message too; the setting
+// only to a new one.
+func (s *Service) AmendWith(gitDir, message string, all bool, o workspace.CommitOptions) (workspace.Committed, error) {
 	r := workspace.Committed{All: all}
 	message = workspace.Message(message)
 	h, l, err := s.amendable(gitDir)
 	r.Branch, r.Amended = h.Branch, l.Short
 	if err != nil {
 		return r, err
+	}
+	base := message
+	if base == "" {
+		base = l.Message
+	}
+	if with, err := s.withTrailers(gitDir, base, o, message != ""); err != nil {
+		return r, err
+	} else if with != base || message != "" {
+		message = with
 	}
 	c := h.Changes
 	adds := c.Staged > 0 || (all && c.Any())

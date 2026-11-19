@@ -3019,3 +3019,144 @@ func TestBranchAndTagManagement(t *testing.T) {
 		t.Fatal("the server's v1 was overwritten")
 	}
 }
+
+// The commit box's extras with real git: --signoff and --co-author add
+// trailers with the account's email, the signoff setting signs every
+// commit, --recent lists your messages, and a refused commit keeps its
+// message as the draft until a commit succeeds.
+func TestCommitSignoffCoAuthorsRecentDraft(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	trailers := func() string { return e.gitIn(api, "log", "-1", "--format=%(trailers:only,unfold)") }
+	me := e.cfg(api, "user.name") + " <dipu@client.example>"
+
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("a\n"), 0o644))
+	e.gsErr(api, "Name <email>", "commit", "-a", "-m", "x", "--co-author", "Mate")
+	e.gsIn(api, "commit", "-a", "-m", "Add a\n\nWith a body.", "--signoff", "--co-author", "Mate <mate@acme.example>", "--co-author=Ann <ann@acme.example>")
+	if got := trailers(); got != "Co-authored-by: Mate <mate@acme.example>\nCo-authored-by: Ann <ann@acme.example>\nSigned-off-by: "+me {
+		t.Fatalf("trailers = %q\n%s", got, e.gitIn(api, "log", "-1", "--format=%B"))
+	}
+	if got := e.gitIn(api, "log", "-1", "--format=%b"); !strings.HasPrefix(got, "With a body.\n\nCo-authored-by:") {
+		t.Fatalf("body = %q", got)
+	}
+
+	// The setting signs every commit; --no-signoff leaves one out.
+	e.gsIn(api, "set", "signoff", "on", "--repo")
+	must(t, os.WriteFile(filepath.Join(api, "b.txt"), []byte("b\n"), 0o644))
+	e.gsIn(api, "commit", "-a", "-m", "Add b")
+	if got := trailers(); got != "Signed-off-by: "+me {
+		t.Fatalf("setting: trailers = %q", got)
+	}
+	must(t, os.WriteFile(filepath.Join(api, "c.txt"), []byte("c\n"), 0o644))
+	e.gsIn(api, "commit", "-a", "-m", "Add c", "--no-signoff")
+	if got := trailers(); got != "" {
+		t.Fatalf("--no-signoff: trailers = %q", got)
+	}
+	if got := e.gitIn(api, "config", "--local", "gitswitch.signoff"); got != "true" {
+		t.Fatalf("gitswitch.signoff = %q", got)
+	}
+	e.gsIn(api, "set", "signoff", "global", "--repo")
+	if out, err := e.gitMay(api, "config", "--local", "gitswitch.signoff"); err == nil {
+		t.Fatalf("still set: %q", out)
+	}
+
+	// A refused commit keeps its message; --recent shows it and your
+	// messages, newest first, without the trailers.
+	e.gsErr(api, "nothing to commit", "commit", "-m", "Lost words")
+	if b, err := os.ReadFile(filepath.Join(api, ".git", "GITSWITCH_MSG")); err != nil || strings.TrimSpace(string(b)) != "Lost words" {
+		t.Fatalf("draft file = %q %v", b, err)
+	}
+	var got struct {
+		Recent []struct{ Subject, Message string }
+		Draft  string
+	}
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "commit", "--recent", "--json")), &got))
+	if got.Draft != "Lost words" || len(got.Recent) != 3 || got.Recent[0].Subject != "Add c" || got.Recent[2].Message != "Add a\n\nWith a body." {
+		t.Fatalf("--recent = %+v", got)
+	}
+	if out := e.gsIn(api, "commit", "--recent"); !strings.Contains(out, "Lost words") || !strings.Contains(out, "Add b") || strings.Contains(out, "Initial") {
+		t.Fatalf("--recent:\n%s", out)
+	}
+	must(t, os.WriteFile(filepath.Join(api, "d.txt"), []byte("d\n"), 0o644))
+	e.gsIn(api, "commit", "-a", "-m", "Lost words")
+	if _, err := os.Stat(filepath.Join(api, ".git", "GITSWITCH_MSG")); !os.IsNotExist(err) {
+		t.Fatalf("draft kept after the commit: %v", err)
+	}
+}
+
+// Merge with real git through the command line: a fast-forward and its
+// undo, a merge that stops on a clash, keeping theirs and continuing,
+// undo of the merge commit, and abort.
+func TestMergeContinueAbort(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	head := func() string { return e.gitIn(api, "rev-parse", "HEAD") }
+	start := e.commitFile(api, "a.txt", "base\n", "base")
+	e.gitIn(api, "switch", "-q", "-c", "side")
+	sideTip := e.commitFile(api, "a.txt", "side\n", "side")
+	e.gitIn(api, "switch", "-q", "main")
+
+	// Fast-forward: the plan says so, -y merges, undo moves main back.
+	if out := e.gsIn(api, "merge", "--plan", "side"); !strings.Contains(out, "can fast-forward to side") {
+		t.Fatalf("plan:\n%s", out)
+	}
+	var plan map[string]any
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "merge", "--plan", "side", "--json")), &plan))
+	if plan["fastForward"] != true || plan["hash"] != sideTip {
+		t.Fatalf("plan --json: %v", plan)
+	}
+	e.gsErr(api, "add -y", "merge", "side")
+	if out := e.gsIn(api, "merge", "side", "--ff-only", "-y"); !strings.Contains(out, "fast-forwarded") || head() != sideTip {
+		t.Fatalf("ff merge: %s\n%s", head(), out)
+	}
+	if out := e.gsIn(api, "undo", "--show"); !strings.Contains(out, "before the fast-forward") {
+		t.Fatalf("undo --show:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if head() != start || status() != "" {
+		t.Fatalf("undo ff: %s %q", head(), status())
+	}
+
+	// Gone apart with a clash: the merge stops, conflict --theirs, continue.
+	mainTip := e.commitFile(api, "a.txt", "main\n", "main")
+	e.gsErr(api, "the merge stopped: 1 file(s) have conflicts", "merge", "side", "-y")
+	if out := e.gsIn(api, "conflict"); !strings.Contains(out, "The merge stopped") || !strings.Contains(out, "a.txt") {
+		t.Fatalf("conflict list:\n%s", out)
+	}
+	var c map[string]any
+	must(t, json.Unmarshal([]byte(e.gsIn(api, "conflict", "a.txt", "--json")), &c))
+	if c["base"] != "base\n" || c["ours"] != "main\n" || c["theirs"] != "side\n" || c["markers"] != true {
+		t.Fatalf("conflict --json: %v", c)
+	}
+	e.gsErr(api, "still have conflicts", "continue")
+	e.gsErr(api, "still has conflict markers", "conflict", "a.txt", "--done")
+	if out := e.gsIn(api, "conflict", "a.txt", "--theirs"); !strings.Contains(out, "gitswitch continue") {
+		t.Fatalf("--theirs:\n%s", out)
+	}
+	if out := e.gsIn(api, "continue"); !strings.Contains(out, "The merge is finished") {
+		t.Fatalf("continue:\n%s", out)
+	}
+	if e.gitIn(api, "log", "-1", "--format=%s") != "Merge branch 'side'" || e.gitIn(api, "show", "HEAD:a.txt") != "side" || status() != "" {
+		t.Fatalf("merged: %s", e.gitIn(api, "log", "-1", "--format=%s"))
+	}
+	e.gsIn(api, "undo", "-y")
+	if head() != mainTip || status() != "" {
+		t.Fatalf("undo merge: %s %q", head(), status())
+	}
+
+	// Abort goes back exactly; uncommitted changes are refused first.
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("dirty\n"), 0o644))
+	e.gsErr(api, "commit, park or discard them first", "merge", "side", "-y")
+	e.gitIn(api, "checkout", "--", "a.txt")
+	e.gsErr(api, "conflicts", "merge", "side", "--no-ff", "-y")
+	e.gsErr(api, "can't be skipped", "skip", "-y")
+	if out := e.gsIn(api, "abort", "-y"); !strings.Contains(out, "Aborted the merge") || head() != mainTip || status() != "" {
+		t.Fatalf("abort: %s %q\n%s", head(), status(), out)
+	}
+	e.gsErr(api, "nothing is in progress", "continue")
+}

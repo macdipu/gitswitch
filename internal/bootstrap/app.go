@@ -16,6 +16,8 @@ import (
 	historyinfra "github.com/macdipu/gitswitch/internal/features/history/infrastructure"
 	hostingapp "github.com/macdipu/gitswitch/internal/features/hosting/application"
 	hostinginfra "github.com/macdipu/gitswitch/internal/features/hosting/infrastructure"
+	mergeapp "github.com/macdipu/gitswitch/internal/features/merge/application"
+	mergeinfra "github.com/macdipu/gitswitch/internal/features/merge/infrastructure"
 	refsapp "github.com/macdipu/gitswitch/internal/features/refs/application"
 	refsinfra "github.com/macdipu/gitswitch/internal/features/refs/infrastructure"
 	repoapp "github.com/macdipu/gitswitch/internal/features/repository/application"
@@ -25,6 +27,8 @@ import (
 	sshinfra "github.com/macdipu/gitswitch/internal/features/ssh/infrastructure"
 	undoapp "github.com/macdipu/gitswitch/internal/features/undo/application"
 	undoinfra "github.com/macdipu/gitswitch/internal/features/undo/infrastructure"
+	watchapp "github.com/macdipu/gitswitch/internal/features/watch/application"
+	watchinfra "github.com/macdipu/gitswitch/internal/features/watch/infrastructure"
 	workspaceapp "github.com/macdipu/gitswitch/internal/features/workspace/application"
 	workspaceinfra "github.com/macdipu/gitswitch/internal/features/workspace/infrastructure"
 	"github.com/macdipu/gitswitch/internal/interfaces/prompt"
@@ -46,9 +50,11 @@ type App struct {
 	Refs      *refsapp.Service
 	Undo      *undoapp.Service
 	Workspace *workspaceapp.Service
+	Merge     *mergeapp.Service
 	Hosting   *hostingapp.Service
 	Setup     *setup.Installer
 	Doctor    *doctor.Doctor
+	Watch     *watchapp.Service // live refresh: file watchers, started on demand
 
 	dryRun bool
 }
@@ -80,11 +86,13 @@ func New(dryRun bool, out io.Writer) *App {
 		History:   &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
 		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Undo:      undos,
-		Workspace: &workspaceapp.Service{Git: wsGit, Changes: wsGit, Ignorer: wsGit, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Merge:     &mergeapp.Service{Git: &mergeinfra.Git{Git: git}, Locator: git, FS: fs, Undo: undos},
+		Workspace: &workspaceapp.Service{Git: wsGit, Changes: wsGit, Ignorer: wsGit, Messages: wsGit, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Hosting: &hostingapp.Service{Accounts: store, Secrets: secrets, API: hostinginfra.NewHosts(Version),
 			Helper: &hostinginfra.HelperConfig{Git: git}, Repos: &hostinginfra.HelperRepos{Git: git, Reader: reader}, Cache: hostinginfra.Cache{}, Inboxes: hostinginfra.Cache{}},
 		Setup:  installer,
 		Doctor: &doctor.Doctor{Git: git, Store: store, Installer: installer, Repos: reader, Keys: keys},
+		Watch:  &watchapp.Service{Source: &watchinfra.Source{Git: git}},
 		dryRun: dryRun,
 	}
 }

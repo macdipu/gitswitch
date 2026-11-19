@@ -58,6 +58,9 @@ type form struct {
 	fields []field
 	focus  int
 	submit func(vals []string) error
+	// changed, when set, runs after ←/→ changes a choice, so the form can
+	// follow it (e.g. prefill a message).
+	changed func(f *form)
 }
 
 type picker struct {
@@ -416,9 +419,9 @@ func (t *tui) handle(k string) {
 		case ok:
 			t.confirm = nil
 			t.msg = ""
-			// An action may ask a follow-up question or show a page
-			// instead of finishing.
-			if err := f(); err != nil || (t.msg == "" && t.confirm == nil && t.view == nil) {
+			// An action may ask a follow-up question, show a page or open
+			// a form or list instead of finishing.
+			if err := f(); err != nil || (t.msg == "" && t.confirm == nil && t.view == nil && t.form == nil && t.picker == nil) {
 				t.say(err, "Done.")
 			}
 			t.reload()
@@ -533,6 +536,9 @@ func (t *tui) handleForm(k string) {
 				i = (i + len(fl.options) - 1) % len(fl.options)
 			}
 			fl.value = fl.options[i]
+			if f.changed != nil {
+				f.changed(f)
+			}
 		}
 	case "backspace":
 		if len(fl.options) == 0 && fl.value != "" {
@@ -690,7 +696,9 @@ Repos
 History
   Enter commit details   o other repo   f only wrong-account commits   x fix not-pushed commits
   r reload   m load more
-  b switch branch   F fetch (read new commits from the remote)   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
+  b switch branch   B branches: switch, rename, set the remote branch it pulls from, delete (asks; again for commits on no other branch)
+  t tag the selected commit (with a message: annotated)   T tags: push or delete (asks)
+  F fetch (read new commits from the remote)   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   K the branch's pull request   / filter by author, message, date or account
   U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
@@ -700,12 +708,14 @@ History
   D delete the branches merged into the remote's default branch
   S compare with the remote branch: the commits you would push and pull
   C commit the staged files as the repo's account (nothing staged: every change, new files too)
+    in its form, ↑ then ←→ amends the last commit instead (its message filled in; says why when it can't)
   s uncommitted changes: the files changed, staged or not, and in conflict (see Changes below)
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
 Changes (s on History)
   ↑↓ or j/k move   Enter or d the file's diff (staged or not, as the section says)   r read again   Esc or q back
   s stage   u unstage   x discard: back to the last commit (asks first; the changes are kept in git stash)
-  a stage all   A unstage all   X discard all (asks first)   C commit (the staged files, or every change when none is staged)
+  a stage all   A unstage all   X discard all (asks first)   C commit (the staged files, or every change when none is staged) or amend
+  i ignore the file, its extension or its folder, in .gitignore or only for me (offers to untrack a tracked file)
 Rules
   a add rule   x remove rule
 Settings
@@ -1580,6 +1590,12 @@ func (t *tui) keyHistory(k string) {
 			}}}
 	case "b":
 		t.pickBranch()
+	case "B":
+		t.manageBranches()
+	case "t":
+		t.newTag()
+	case "T":
+		t.tags()
 	case "F":
 		t.fetch()
 	case "u":
@@ -1726,42 +1742,267 @@ func (t *tui) pickBranch() {
 		opts = append(opts, o)
 	}
 	gd := t.histDir
-	t.picker = &picker{title: "Switch to branch", options: opts, pick: func(i int) error {
-		name := bs[i].Name
-		if h, err := t.app.Refs.Head(gd); err == nil && h.Changes.Any() && h.Busy == "" && !bs[i].Current {
-			switch st := t.app.Refs.SwitchSetting(gd); st.Mode {
-			case refs.Smart:
-				return t.smartSwitch(gd, name)
-			case refs.Park:
-				return t.park(gd, name)
-			}
-			// Uncommitted changes: say what happens to them first. Shift
-			// remembers the choice for this repo.
-			remember := func(mode string, then func() error) func() error {
-				return func() error {
-					if err := t.app.Refs.SetSwitchSetting(gd, mode); err != nil {
-						return err
-					}
-					return then()
-				}
-			}
-			smart, park := func() error { return t.smartSwitch(gd, name) }, func() error { return t.park(gd, name) }
-			t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s).  s = smart switch: take them with you to %s (if some clash, you fix them there or go back) · p = park them on %s (git stash), restored when you come back · S or P = the same, and remember it for this repo · n or Esc = cancel",
-				h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name, h.Branch), map[string]func() error{
-				"s": smart, "p": park, "S": remember("smart", smart), "P": remember("park", park),
-			}}
-			return nil
+	t.picker = &picker{title: "Switch to branch", options: opts, pick: func(i int) error { return t.switchTo(gd, bs[i]) }}
+}
+
+// switchTo switches to a branch. With uncommitted changes it smart
+// switches or parks them as set for the repo, or asks what to do.
+func (t *tui) switchTo(gd string, b refs.Branch) error {
+	name := b.Name
+	if h, err := t.app.Refs.Head(gd); err == nil && h.Changes.Any() && h.Busy == "" && !b.Current {
+		switch st := t.app.Refs.SwitchSetting(gd); st.Mode {
+		case refs.Smart:
+			return t.smartSwitch(gd, name)
+		case refs.Park:
+			return t.park(gd, name)
 		}
-		name, err := t.app.Refs.Switch(gd, name)
+		// Uncommitted changes: say what happens to them first. Shift
+		// remembers the choice for this repo.
+		remember := func(mode string, then func() error) func() error {
+			return func() error {
+				if err := t.app.Refs.SetSwitchSetting(gd, mode); err != nil {
+					return err
+				}
+				return then()
+			}
+		}
+		smart, park := func() error { return t.smartSwitch(gd, name) }, func() error { return t.park(gd, name) }
+		t.confirm = &confirmBox{fmt.Sprintf("You have uncommitted changes on %s (%s).  s = smart switch: take them with you to %s (if some clash, you fix them there or go back) · p = park them on %s (git stash), restored when you come back · S or P = the same, and remember it for this repo · n or Esc = cancel",
+			h.Branch, strings.TrimPrefix(h.Changes.Describe(), "uncommitted: "), name, h.Branch), map[string]func() error{
+			"s": smart, "p": park, "S": remember("smart", smart), "P": remember("park", park),
+		}}
+		return nil
+	}
+	name, err := t.app.Refs.Switch(gd, name)
+	if err != nil {
+		return err
+	}
+	t.loadHistory()
+	t.say(nil, "Switched to "+name+"."+undoHint)
+	w, _ := t.app.Refs.Waiting(gd)
+	t.offerParked(gd, w)
+	return nil
+}
+
+// manageBranches lists the local branches; the chosen one can be switched
+// to, renamed, set to pull from a remote branch, or deleted.
+func (t *tui) manageBranches() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	all, err := t.app.Refs.Branches(gd)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	var bs []refs.Branch
+	var opts []string
+	for _, b := range all {
+		if b.Remote {
+			continue
+		}
+		o := b.Name
+		switch {
+		case b.Gone:
+			o += "  → " + b.Upstream + " (gone)"
+		case b.Upstream != "":
+			o += "  → " + b.Upstream
+		}
+		if b.Current {
+			o += "  (current)"
+		}
+		bs, opts = append(bs, b), append(opts, o)
+	}
+	if len(bs) == 0 {
+		t.say(nil, "This repo has no branches yet.")
+		return
+	}
+	t.picker = &picker{title: "Branches: choose one to switch, rename, set its upstream or delete", options: opts, pick: func(i int) error {
+		b := bs[i]
+		pulls := "pulls from no remote branch"
+		if b.Upstream != "" {
+			pulls = "pulls from " + b.Upstream
+		}
+		acts := map[string]func() error{
+			"r": func() error { t.renameBranch(gd, b.Name); return nil },
+			"u": func() error { t.setUpstream(gd, b.Name, all); return nil },
+			"d": func() error { t.deleteBranch(gd, b.Name); return nil },
+		}
+		q := "r = rename · u = set the remote branch it pulls from · d = delete · n or Esc = cancel"
+		if !b.Current {
+			acts["s"] = func() error { return t.switchTo(gd, b) }
+			q = "s = switch to it · " + q
+		}
+		t.confirm = &confirmBox{fmt.Sprintf("Branch %s (%s).  %s", b.Name, pulls, q), acts}
+		return nil
+	}}
+}
+
+// renameBranch asks for a branch's new name, its old one filled in.
+func (t *tui) renameBranch(gd, from string) {
+	t.form = &form{title: "Rename the branch " + from, fields: []field{{label: "New name", value: from, hint: "it keeps pulling from the same remote branch"}},
+		submit: func(v []string) error {
+			r, err := t.app.Refs.RenameBranch(gd, from, v[0])
+			if err != nil {
+				return err
+			}
+			t.loadHistory()
+			t.say(nil, "Renamed the branch "+r.From+" to "+r.To+"."+undoHint)
+			return nil
+		}}
+}
+
+// setUpstream lets you choose the remote branch a branch pulls from, or
+// none.
+func (t *tui) setUpstream(gd, branch string, all []refs.Branch) {
+	none := "(none: pull from no remote branch)"
+	opts := []string{none}
+	for _, b := range all {
+		if b.Remote {
+			opts = append(opts, b.Name)
+		}
+	}
+	if len(opts) == 1 {
+		t.say(fmt.Errorf("this clone has no remote branches; fetch first (F)"), "")
+		return
+	}
+	t.picker = &picker{title: branch + " pulls from", options: opts, pick: func(i int) error {
+		up := opts[i]
+		if i == 0 {
+			up = ""
+		}
+		u, err := t.app.Refs.SetUpstream(gd, branch, up)
 		if err != nil {
 			return err
 		}
 		t.loadHistory()
-		t.say(nil, "Switched to "+name+"."+undoHint)
-		w, _ := t.app.Refs.Waiting(gd)
-		t.offerParked(gd, w)
+		if u.Upstream == "" {
+			t.say(nil, u.Branch+" now pulls from no remote branch.")
+		} else {
+			t.say(nil, u.Branch+" now pulls from "+u.Upstream+".")
+		}
 		return nil
 	}}
+}
+
+// deleteBranch asks, then deletes a branch. When some of its commits are
+// on no other branch or remote it asks again before deleting them too.
+func (t *tui) deleteBranch(gd, name string) {
+	del := func(force bool) error {
+		d, err := t.app.Refs.DeleteBranch(gd, name, force)
+		var u *refs.Unmerged
+		if errors.As(err, &u) {
+			t.confirm = &confirmBox{fmt.Sprintf("%s has %d commit(s) on no other branch or remote: once it is deleted, only Undo (U) brings them back. Delete it anyway? (y/n)", u.Branch, u.Commits), map[string]func() error{"y": func() error {
+				d, err := t.app.Refs.DeleteBranch(gd, name, true)
+				if err != nil {
+					return err
+				}
+				t.deletedBranch(d)
+				return nil
+			}}}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		t.deletedBranch(d)
+		return nil
+	}
+	t.confirm = &confirmBox{"Delete the branch " + name + "? (y/n)", map[string]func() error{"y": func() error { return del(false) }}}
+}
+
+func (t *tui) deletedBranch(d refs.DeletedBranch) {
+	t.loadHistory()
+	t.say(nil, "Deleted the branch "+d.Branch+"."+undoHint)
+}
+
+// newTag asks for a tag's name and, for an annotated tag, a message, then
+// tags the selected commit.
+func (t *tui) newTag() {
+	if t.histDir == "" {
+		return
+	}
+	hash := t.selectedCommit()
+	if hash == "" {
+		t.say(fmt.Errorf("select a commit line first (↑↓)"), "")
+		return
+	}
+	gd, short := t.histDir, hash[:min(7, len(hash))]
+	t.form = &form{title: "Tag the commit " + short, fields: []field{
+		{label: "Name", hint: "e.g. v1.2.0"},
+		{label: "Message", hint: "empty: a lightweight tag; with a message: an annotated one"},
+	}, submit: func(v []string) error {
+		r, err := t.app.Refs.NewTag(gd, v[0], hash, v[1])
+		if err != nil {
+			return err
+		}
+		t.loadHistory()
+		kind := "lightweight"
+		if r.Annotated {
+			kind = "annotated"
+		}
+		t.say(nil, fmt.Sprintf("Tagged %s as %s (%s). T lists the tags, to push or delete it.", short, r.Tag, kind))
+		return nil
+	}}
+}
+
+// tags lists the repo's tags; the chosen one can be pushed or deleted.
+func (t *tui) tags() {
+	if t.histDir == "" {
+		return
+	}
+	gd := t.histDir
+	ts, err := t.app.Refs.Tags(gd)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	if len(ts) == 0 {
+		t.say(nil, "This repo has no tags yet. t tags the selected commit.")
+		return
+	}
+	t.picker = &picker{title: "Tags: choose one to push or delete", options: ts, pick: func(i int) error {
+		name := ts[i]
+		t.confirm = &confirmBox{"Tag " + name + ".  p = push it to the remote · d = delete it · n or Esc = cancel", map[string]func() error{
+			"p": func() error { return t.pushTag(gd, name) },
+			"d": func() error {
+				t.confirm = &confirmBox{"Delete the tag " + name + " in this clone? A copy already pushed stays on the remote. (y/n)", map[string]func() error{"y": func() error {
+					if err := t.app.Refs.DeleteTag(gd, name); err != nil {
+						return err
+					}
+					t.loadHistory()
+					t.say(nil, "Deleted the tag "+name+".")
+					return nil
+				}}}
+				return nil
+			},
+		}}
+		return nil
+	}}
+}
+
+// pushTag sends a tag to the remote, leaving the TUI while git runs.
+func (t *tui) pushTag(gd, name string) error {
+	var p refs.TagPushed
+	var err error
+	t.suspend(func() {
+		fmt.Println("Pushing the tag " + name + " ...")
+		p, err = t.app.Refs.PushTag(gd, name, func(l string) { fmt.Print("\r\x1b[K  " + l) })
+		fmt.Println()
+		if err != nil {
+			fmt.Println("gitswitch:", err)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	as := ""
+	if p.Account != "" {
+		as = " as " + p.Account
+	}
+	t.say(nil, "Pushed the tag "+p.Tag+" to "+p.Remote+as+".")
+	return nil
 }
 
 // newBranch asks for a name, the prefix setting already typed, then starts
@@ -1861,7 +2102,9 @@ func (t *tui) compare() {
 }
 
 // commit asks for a message, then commits the staged files, or every
-// change when none is staged.
+// change when none is staged. ↑ to its first field amends the last commit
+// instead, its message filled in; when that is not allowed, the field says
+// why.
 func (t *tui) commit() {
 	if t.histDir == "" || t.head == nil {
 		return
@@ -1875,25 +2118,78 @@ func (t *tui) commit() {
 	if all {
 		title = fmt.Sprintf("Commit every change (%d changed, %d new)", c.Changed, c.New)
 	}
-	t.form = &form{title: title, fields: []field{{label: "Message", hint: "what the change does"}},
-		submit: func(v []string) error {
-			r, err := t.app.Workspace.Commit(gd, v[0], all)
+	// The first field chooses a new commit or amending the last one; the
+	// cursor starts on the message, so typing and Enter commit as before.
+	am := t.app.Workspace.Amendable(gd)
+	last := am.Short + " “" + history.CleanText(am.Subject) + "”"
+	kinds := []string{"a new commit"}
+	titles := []string{title}
+	kindHint := "←→ a new commit, or amend the last one"
+	if am.Can {
+		if c.Staged > 0 {
+			kinds = append(kinds, "amend "+am.Short+" with the staged files")
+			titles = append(titles, fmt.Sprintf("Amend %s with the %d staged file(s)", last, c.Staged))
+		} else {
+			kinds = append(kinds, "amend "+am.Short+": only its message")
+			titles = append(titles, "Reword "+last)
+			if c.Any() {
+				kinds = append(kinds, "amend "+am.Short+" with every change")
+				titles = append(titles, fmt.Sprintf("Amend %s with every change (%d changed, %d new)", last, c.Changed, c.New))
+			}
+		}
+	} else {
+		kindHint = "can't amend the last commit: " + am.Why
+	}
+	t.form = &form{title: title, focus: 1, fields: []field{
+		{label: "Commit", value: kinds[0], options: kinds, hint: kindHint},
+		{label: "Message", hint: "what the change does · ↑ to amend the last commit instead"},
+	}, changed: func(f *form) {
+		i := indexOf(kinds, f.fields[0].value)
+		f.title = titles[i]
+		msg := &f.fields[1].value
+		switch {
+		case i > 0 && strings.TrimSpace(*msg) == "":
+			*msg = am.Message // start from the old message
+		case i == 0 && *msg == am.Message:
+			*msg = ""
+		}
+	}, submit: func(v []string) error {
+		i := indexOf(kinds, v[0])
+		if i == 0 {
+			r, err := t.app.Workspace.Commit(gd, v[1], all)
 			if err != nil {
 				return err
 			}
-			t.loadHistory()
-			if t.changes != nil { // back to History when nothing is left
-				if t.loadChanges(); t.changes != nil && len(t.changes.st.Files) == 0 {
-					t.changes = nil
-				}
-			}
-			as := ""
-			if r.Account != "" {
-				as = " as " + r.Account
-			}
-			t.say(nil, "Committed "+r.Short+" "+history.CleanText(r.Subject)+as+"."+undoHint)
+			t.committed(r, "Committed "+r.Short)
 			return nil
-		}}
+		}
+		msg := v[1]
+		if workspace.Message(msg) == workspace.Message(am.Message) {
+			msg = "" // unchanged: keep the message as it is
+		}
+		r, err := t.app.Workspace.Amend(gd, msg, i == 2)
+		if err != nil {
+			return err
+		}
+		t.committed(r, "Amended "+r.Amended+": now "+r.Short)
+		return nil
+	}}
+}
+
+// committed reads History (and the changes, while open) again after a
+// commit or an amend, and says what was made.
+func (t *tui) committed(r workspace.Committed, what string) {
+	t.loadHistory()
+	if t.changes != nil { // back to History when nothing is left
+		if t.loadChanges(); t.changes != nil && len(t.changes.st.Files) == 0 {
+			t.changes = nil
+		}
+	}
+	as := ""
+	if r.Account != "" {
+		as = " as " + r.Account
+	}
+	t.say(nil, what+" "+history.CleanText(r.Subject)+as+"."+undoHint)
 }
 
 // ---------------- uncommitted changes ----------------
@@ -2045,6 +2341,10 @@ func (t *tui) keyChanges(k string) bool {
 		}
 	case "X":
 		t.discard(workspace.File{}, true)
+	case "i":
+		if sel != nil {
+			t.ignore(sel.f.Path)
+		}
 	case "C":
 		t.commit()
 	}
@@ -2101,6 +2401,66 @@ func (t *tui) discard(f workspace.File, all bool) {
 			t.say(nil, fmt.Sprintf("Discarded %s; kept in git stash as \"%s\".", changedFiles(r.Files), r.Stash))
 			return nil
 		}}}
+}
+
+// ignore asks what to ignore for a file (the file, its extension or its
+// folder) and where (.gitignore, or only for me), then adds the line. When
+// git still tracks the file, it asks whether to untrack it.
+func (t *tui) ignore(path string) {
+	c := t.changes
+	isDir := strings.HasSuffix(path, "/")
+	var kinds []workspace.IgnoreKind
+	var opts []string
+	for _, k := range []workspace.IgnoreKind{workspace.IgnoreFile, workspace.IgnoreExt, workspace.IgnoreFolder} {
+		pat, err := workspace.IgnorePattern(path, k, isDir)
+		if err != nil {
+			continue // no extension, or not in a folder
+		}
+		label := map[workspace.IgnoreKind]string{workspace.IgnoreFile: "this file", workspace.IgnoreExt: "every file like it", workspace.IgnoreFolder: "its folder"}[k]
+		if isDir && k == workspace.IgnoreFile {
+			label = "this folder"
+		}
+		kinds, opts = append(kinds, k), append(opts, label+": "+history.CleanText(pat))
+	}
+	if len(kinds) == 0 {
+		t.say(fmt.Errorf("%s can't be ignored here; use gitswitch ignore", history.CleanText(path)), "")
+		return
+	}
+	shared, mine := ".gitignore (shared with everyone through commits)", "only for me (.git/info/exclude)"
+	t.form = &form{title: "Ignore " + history.CleanText(path), fields: []field{
+		{label: "Ignore", value: opts[0], options: opts, hint: "←→ the file, its extension or its folder"},
+		{label: "Where", value: shared, options: []string{shared, mine}, hint: "←→ shared, or only for this clone"},
+	}, submit: func(v []string) error {
+		kind, local := kinds[indexOf(opts, v[0])], v[1] == mine
+		r, err := t.app.Workspace.Ignore(c.gd, path, kind, local, false)
+		t.loadChanges()
+		if err != nil {
+			return err
+		}
+		did := "Added " + history.CleanText(r.Pattern) + " to " + r.Where + "."
+		if !r.Added {
+			did = r.Where + " already had " + history.CleanText(r.Pattern) + "."
+		}
+		if len(r.Tracked) == 0 {
+			t.say(nil, did)
+			return nil
+		}
+		what := fmt.Sprintf("%d file(s) it covers are", len(r.Tracked))
+		if len(r.Tracked) == 1 {
+			what = history.CleanText(r.Tracked[0]) + " is"
+		}
+		t.confirm = &confirmBox{did + " But " + what + " tracked by git, so git keeps following them. Untrack (git rm --cached; the files stay in your folder, and the next commit removes them from the repo)? (y/n)",
+			map[string]func() error{"y": func() error {
+				r, err := t.app.Workspace.Ignore(c.gd, path, kind, local, true)
+				t.loadChanges()
+				if err != nil {
+					return err
+				}
+				t.say(nil, fmt.Sprintf("Ignored %s in %s; untracked %s (kept in your folder).", history.CleanText(r.Pattern), r.Where, changedFiles(r.Untracked)))
+				return nil
+			}}}
+		return nil
+	}}
 }
 
 // showChangeDiff opens a row's diff: the staged change under Staged, the
@@ -2873,9 +3233,9 @@ func (t *tui) footer() string {
 		return "Enter account · h history · c clone · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
 		if t.changes != nil {
-			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · a stage all · A unstage all · X discard all · C commit · r reload · Esc back · ? help"
+			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · a stage all · A unstage all · X discard all · i ignore · C commit · r reload · Esc back · ? help"
 		}
-		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
+		return "Enter details · / filter · b branch · B branches · C commit · t tag · T tags · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	case tabReviews:
@@ -3149,7 +3509,7 @@ func (t *tui) overlay() []string {
 	case t.form != nil:
 		var body []string
 		for i, f := range t.form.fields {
-			v := f.value
+			v := strings.ReplaceAll(f.value, "\n", " ⏎ ") // a commit message's lines, on one line
 			if f.secret {
 				v = strings.Repeat("•", utf8.RuneCountInString(v))
 			}

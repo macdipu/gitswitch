@@ -398,6 +398,27 @@ button.link.danger{color:var(--bad)}
 .cbox input#wipMsg,.cbox textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);margin:0 0 6px}
 .cbox textarea{resize:vertical;min-height:52px}
 .cbox input#wipMsg:focus,.cbox textarea:focus{outline:2px solid var(--focus);outline-offset:-1px}
+.cbox select{width:100%;box-sizing:border-box;margin:0 0 6px;padding:5px 8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);font:inherit;font-size:13px}
+.cbox input#wipCo{display:block;width:100%;box-sizing:border-box;margin:0 0 6px;padding:5px 9px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);font:inherit;font-size:13px}
+.cochips{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 4px}
+.cochips:empty{display:none}
+.cochip{display:inline-flex;align-items:center;gap:2px;font-size:12px;padding:1px 4px 1px 9px;border-radius:999px;background:var(--hover);border:1px solid var(--rule)}
+.cochip button{all:unset;cursor:pointer;width:18px;height:18px;text-align:center;border-radius:50%;color:var(--muted)}
+.cochip button:hover{background:var(--rule);color:var(--ink)}
+.opbanner{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.opbanner .opmain{flex:1 1 320px;min-width:0}
+.opbanner .opfiles{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:6px}
+.opbanner .opfiles .link{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+.opbanner .opbtns{display:flex;gap:6px;flex:none}
+dialog.conflictdlg{max-width:min(1200px,calc(100vw - 48px));width:calc(100vw - 48px);padding:14px}
+.cfhead{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.cfgrid{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:10px}
+.cfgrid section{min-width:0}
+.cfgrid h3{margin:0 0 4px;font-size:11.5px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.cfgrid pre,.cfgrid textarea{margin:0;box-sizing:border-box;width:100%;height:46vh;overflow:auto;padding:8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
+.cfgrid textarea{resize:none}
+.cfactions{display:flex;gap:8px;margin-top:10px;align-items:center}
+@media (max-width:900px){.cfgrid{grid-template-columns:1fr}.cfgrid pre,.cfgrid textarea{height:22vh}}
 .cbox .btn.wide{width:100%;margin-top:8px;padding:7px 12px}
 .cbox .btn.wide:disabled{opacity:.45;cursor:default}
 .cbox .who-as{margin:8px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;overflow-wrap:anywhere}
@@ -427,6 +448,50 @@ dialog::backdrop{background:rgb(0 0 0 / .35)}
 #dlgCheckRow[hidden]{display:none}
 #dlgInput{width:100%;margin:0 0 14px;padding:6px 8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper)}
 dialog .row-actions{justify-content:flex-end}
+/* repo tabs above the History toolbar, like a browser's: the shown repo and
+   recently opened ones, each with its account's colour */
+.rtabs{display:flex;align-items:flex-end;gap:6px;margin:-12px 0 12px;box-shadow:inset 0 -1px 0 var(--rule);min-width:0}
+.rtablist{display:flex;align-items:flex-end;gap:2px;min-width:0;flex:0 1 auto;overflow-x:auto;scrollbar-width:none}
+.rtablist::-webkit-scrollbar{display:none}
+.rtab{--tc:var(--muted);display:flex;align-items:center;flex:0 1 190px;min-width:92px;max-width:230px;border:1px solid transparent;border-bottom:0;border-radius:var(--radius) var(--radius) 0 0;color:var(--muted)}
+.rtab:hover{background:var(--hover);color:var(--ink)}
+.rtab.on{background:var(--paper);border-color:var(--rule);color:var(--ink);box-shadow:inset 0 2px 0 var(--tc)}
+.rtab.drag{opacity:.45}
+.rtab.dropl{box-shadow:inset 2px 0 0 var(--focus)}
+.rtab.dropr{box-shadow:inset -2px 0 0 var(--focus)}
+.rtab [role=tab]{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:7px;padding:7px 4px 7px 11px;flex:1;min-width:0;cursor:pointer;font-size:13.5px;border-radius:var(--radius) var(--radius) 0 0}
+.rtab.on [role=tab]{font-weight:600}
+.rtab [role=tab]:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rtab .tdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--tc)}
+.rtab .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rtab .par{color:var(--muted);font-weight:400}
+.rtab .x{all:unset;flex:none;width:18px;height:18px;margin-right:5px;border-radius:4px;display:grid;place-items:center;font-size:15px;line-height:1;color:var(--muted);cursor:pointer;opacity:0}
+.rtab:hover .x,.rtab.on .x{opacity:1}
+.rtab .x:hover{background:var(--rule);color:var(--ink)}
+.rtabs .tadd{flex:none;padding:2px 9px;margin-bottom:3px;font-size:17px;line-height:1.2}
+.rtabs select{flex:0 1 220px;min-width:110px;margin:0 0 4px auto;padding:4px 6px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--panel);font-size:13px;color:var(--muted)}
+#tab-history.norepo .rtabs{display:none}
+/* command palette */
+dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto auto;overflow:hidden;box-shadow:0 18px 50px rgb(0 0 0 / .32)}
+.palhead{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.palhead svg{flex:none;color:var(--muted)}
+.palhead input{flex:1;min-width:0;border:0;background:transparent;font-size:15.5px;padding:4px 0;outline:none}
+.palcrumb{font-size:12.5px;padding:1px 9px;border-radius:999px;background:var(--hover);color:var(--ink);white-space:nowrap;font-weight:600}
+.pallist{max-height:min(430px,58vh);overflow:auto;padding:6px}
+.palgh{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 8px 3px}
+.palopt{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:14px;min-width:0}
+.palopt.act{background:var(--hover);box-shadow:inset 2px 0 0 var(--focus)}
+.palopt .pl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palopt mark{background:none;color:var(--focus);font-weight:700}
+.palopt .pw{flex:0 1 auto;max-width:48%;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palopt .pc{flex:none;font-size:11.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 7px}
+.palopt .pk{flex:none;display:inline-flex;gap:3px}
+.palopt .pdot{width:8px;height:8px;border-radius:50%;flex:none}
+.palopt[aria-disabled=true]{cursor:default}
+.palopt[aria-disabled=true] .pl{color:var(--muted)}
+.palnone{padding:18px 10px;color:var(--muted);text-align:center;font-size:13.5px}
+.palfoot{display:flex;gap:14px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--rule);padding:7px 14px;font-size:12px;color:var(--muted)}
+.palfoot #palNote{margin-left:auto;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 </style>
 </head>
 <body>
@@ -444,7 +509,7 @@ dialog .row-actions{justify-content:flex-end}
     <button data-tab="settings">Settings</button>
   </nav>
   <div class="lanes" id="lanes"></div>
-  <div class="side-foot"><span id="foot"></span><button class="linkbtn" id="keysBtn" type="button" title="Keyboard shortcuts (?)">Shortcuts <kbd>?</kbd></button></div>
+  <div class="side-foot"><span id="foot"></span><button class="linkbtn" id="palBtn" type="button">Commands <kbd class="modk">Ctrl</kbd> <kbd>K</kbd></button><button class="linkbtn" id="keysBtn" type="button" title="Keyboard shortcuts (?)">Shortcuts <kbd>?</kbd></button></div>
 </aside>
 
 <main>
@@ -529,9 +594,13 @@ dialog .row-actions{justify-content:flex-end}
 
   <section id="tab-history" hidden>
     <h1 tabindex="-1" class="sr-only">History</h1>
+    <div class="rtabs" id="repoTabsRow">
+      <div class="rtablist" id="repoTabs" role="tablist" aria-label="Open repos"></div>
+      <button class="btn ghost tadd" id="tabAdd" type="button" aria-label="Open a repo in a tab" title="Open a repo in a tab">+</button>
+      <select id="histRepo" aria-label="Repo" title="Every repo: the one you pick opens in a tab"></select>
+    </div>
     <div class="toolbar">
       <button class="btn ghost" id="sideBtn" aria-controls="refSide" aria-expanded="true" title="Show or hide the branches (t)" aria-label="Branches panel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.4"/></svg></button>
-      <select id="histRepo" aria-label="Repo"></select>
       <div class="pop-wrap">
         <button class="btn branch-btn" id="branchBtn" aria-haspopup="listbox" aria-expanded="false" title="Switch branch (b)">
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v3c0 3-6 2-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="11" cy="3" r="1.6" fill="currentColor"/></svg>
@@ -593,7 +662,7 @@ dialog .row-actions{justify-content:flex-end}
     <div class="chips" id="chips" aria-label="Active filters"></div>
     <div id="histAlert"></div>
     <div class="hmeta" id="histMeta"></div>
-    <div class="hist-main" id="histMain">
+    <div class="hist-main" id="histMain" role="tabpanel">
       <nav class="refside" id="refSide" aria-label="Branches and tags">
         <input id="refFind" type="search" placeholder="Branch or tag" aria-label="Find a branch or tag" autocomplete="off" spellcheck="false">
         <div id="refTree"></div>
@@ -601,7 +670,7 @@ dialog .row-actions{justify-content:flex-end}
       <div>
         <div id="history"></div>
         <div class="selbar" id="selbar" hidden aria-live="polite"></div>
-        <p class="keys" id="histKeys"><kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>Enter</kbd> select · Ctrl/⌘-click select several · <kbd>Esc</kbd> clear · <kbd>b</kbd> branch · <kbd>t</kbd> branches panel · <kbd>r</kbd> reload · in the branches: click shows its commits, double-click switches, right-click for more</p>
+        <p class="keys" id="histKeys"><kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>Enter</kbd> select · Ctrl/⌘-click select several · <kbd>Esc</kbd> clear · <kbd>b</kbd> branch · <kbd>t</kbd> branches panel · <kbd>r</kbd> reload · <kbd class="modk">Ctrl</kbd> <kbd>K</kbd> commands · <kbd>Ctrl</kbd> <kbd>Tab</kbd> next repo tab · in the branches: click shows its commits, double-click switches, right-click for more</p>
       </div>
       <div class="details" id="details" hidden role="region" aria-label="Commit details"></div>
     </div>
@@ -646,10 +715,25 @@ dialog .row-actions{justify-content:flex-end}
 <dialog id="diffDlg" class="diffdlg" aria-labelledby="diffDlgPath">
   <div class="diffbox"><div class="dh"><span class="fn" id="diffDlgPath"></span><button class="btn ghost" id="diffDlgClose" aria-label="Close the diff" title="Close (Esc)">✕</button></div><div id="diffDlgBody"></div></div>
 </dialog>
+<dialog id="conflictDlg" class="conflictdlg" aria-labelledby="cfTitle">
+  <div class="cfhead"><strong id="cfTitle"></strong><span class="hint" id="cfKind"></span><span class="spacer"></span><button class="btn ghost" id="cfClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="cfgrid">
+    <section><h3 id="cfOursH">Yours</h3><pre id="cfOurs" tabindex="0"></pre></section>
+    <section><h3 id="cfTheirsH">Theirs</h3><pre id="cfTheirs" tabindex="0"></pre></section>
+    <section class="cfres"><h3>Result <span class="hint" id="cfMarks"></span></h3><textarea id="cfText" spellcheck="false" aria-label="The file as it will be saved"></textarea></section>
+  </div>
+  <div class="cfactions">
+    <button class="btn" id="cfTakeOurs">Take yours</button><button class="btn" id="cfTakeTheirs">Take theirs</button>
+    <span class="spacer"></span>
+    <button class="btn" id="cfSave" title="Save the text above as the file and mark it resolved">Save the result</button>
+    <button class="btn primary" id="cfDone" title="You fixed the file in your editor: mark it resolved">Mark resolved</button>
+  </div>
+</dialog>
 <dialog id="keysDlg" aria-labelledby="keysTitle"><form method="dialog">
   <h2 id="keysTitle" style="margin:0 0 10px;font-size:17px">Keyboard shortcuts</h2>
   <dl class="keylist">
     <dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>Accounts, Repos, History, Reviews, Rules, Settings</dd>
+    <dt><kbd class="modk">Ctrl</kbd>+<kbd>K</kbd></dt><dd>Command palette: every page and action, by typing a few letters (also <kbd class="modk">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>)</dd>
     <dt><kbd>?</kbd></dt><dd>This list</dd>
     <dt><kbd>Esc</kbd></dt><dd>Close a menu, pop-up or this list</dd>
   </dl>
@@ -664,8 +748,24 @@ dialog .row-actions{justify-content:flex-end}
     <dt><kbd>r</kbd></dt><dd>Reload</dd>
     <dt><kbd>Shift</kbd>+<kbd>U</kbd></dt><dd>Undo the last change</dd>
   </dl>
+  <h3 class="keyhead">Repo tabs</h3>
+  <dl class="keylist">
+    <dt><kbd>Ctrl</kbd>+<kbd>Tab</kbd></dt><dd>Next tab (with <kbd>Shift</kbd>: previous); also <kbd>Ctrl</kbd>+<kbd>PgDn</kbd> <kbd>PgUp</kbd></dd>
+    <dt><kbd class="modk">Ctrl</kbd>+<kbd>W</kbd></dt><dd>Close the tab (the window stays open)</dd>
+    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Enter</kbd></dt><dd>In the tabs: move, then open one; <kbd>Delete</kbd> closes it</dd>
+    <dt>Middle-click</dt><dd>Close a tab; drag a tab to move it</dd>
+  </dl>
   <div class="row-actions"><button class="btn primary" value="ok">Close</button></div>
 </form></dialog>
+<dialog id="palDlg" class="paldlg" aria-label="Command palette">
+  <div class="palhead">
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span class="palcrumb" id="palCrumb" hidden></span>
+    <input id="palInput" role="combobox" aria-expanded="true" aria-controls="palList" aria-autocomplete="list" aria-haspopup="listbox" aria-label="Type a command" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="pallist" id="palList" role="listbox" aria-label="Commands"></div>
+  <div class="palfoot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> run</span><span id="palEscHint"><kbd>Esc</kbd> close</span><span id="palNote" aria-live="polite"></span></div>
+</dialog>
 <dialog id="dlg"><form method="dialog">
   <p id="dlgMsg"></p>
   <input id="dlgInput" aria-labelledby="dlgMsg" hidden>
@@ -1336,6 +1436,8 @@ async function fillRepoSelect(){
   $('#tab-history').classList.toggle('norepo', !ok.length);
   renderRepoOptions(ok);
   if (cur) $('#histRepo').value = cur;
+  else { const a = store.get('gs.repoTabsActive', ''); if (ok.some(r => r.gitDir === a)) $('#histRepo').value = a; } // the tab open last time
+  pruneTabs(ok);
   const fa = $('#filterPanel').account;
   fa.innerHTML = '<option value="">Any account</option>' + S.config.accounts.map(a => `<option>${esc(a.id)}</option>`).join('');
   fa.value = F.account;
@@ -1349,7 +1451,7 @@ async function fillRepoSelect(){
   }
   if (gone || !$('#history').dataset.loaded) loadHistory();
 }
-$('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; WIP = false; CH = null; wipDiff = null; wipMsg = ''; wipDesc = ''; wipShut = false; loadHistory(); };
+$('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; WIP = false; CH = null; wipDiff = null; wipMsg = ''; wipDesc = ''; wipShut = false; CI = null; wipCo = []; wipSign = null; loadHistory(); };
 // markOpened records the repo shown as the newest recent one, in the
 // settings and in the menu. It never holds up the history.
 function markOpened(gd){
@@ -1363,6 +1465,107 @@ function markOpened(gd){
   $('#histRepo').value = gd;
 }
 $('#histReload').onclick = () => loadHistory();
+
+// ---- repo tabs ----
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent), MOD = MAC ? '⌘' : 'Ctrl';
+// The repos open as tabs above the toolbar: the one shown and the ones
+// opened lately. Opening a tab is choosing the repo in the menu at the
+// end of the row. The tabs and their order are this computer's (page
+// storage); without it they start again from the recent repos.
+let TABS = store.get('gs.repoTabs', []);
+if (!Array.isArray(TABS)) TABS = [];
+const saveTabs = () => store.set('gs.repoTabs', TABS);
+const repoOf = gd => repos.find(r => r.gitDir === gd);
+const baseName = p => { const x = String(p || '').replace(/[\\/]+$/, ''), i = Math.max(x.lastIndexOf('/'), x.lastIndexOf('\\')); return {name: x.slice(i + 1), parent: x.slice(0, i) || '/'}; };
+// pruneTabs drops repos no longer in the list, and starts from the recent
+// ones when there are no tabs yet.
+function pruneTabs(ok){
+  TABS = TABS.filter(gd => ok.some(r => r.gitDir === gd));
+  if (!TABS.length) TABS = ok.filter(r => r.recent).sort((a, b) => a.recent - b.recent).slice(0, 4).map(r => r.gitDir);
+  saveTabs(); renderTabs();
+}
+// addTab opens a repo's tab next to the current one, as a browser does.
+function addTab(gd){
+  if (!gd || TABS.includes(gd)) return;
+  const at = TABS.indexOf($('#histRepo').value);
+  at < 0 ? TABS.push(gd) : TABS.splice(at + 1, 0, gd);
+  saveTabs();
+}
+function renderTabs(){
+  const el = $('#repoTabs'), cur = $('#histRepo').value, focused = el.contains(document.activeElement);
+  const rs = TABS.map(repoOf).filter(Boolean), names = rs.map(r => baseName(r.path).name);
+  el.innerHTML = rs.map((r, i) => {
+    const {name, parent} = baseName(r.path), on = r.gitDir === cur, dup = names.filter(n => n === name).length > 1;
+    return `<div class="rtab${on ? ' on' : ''}" role="presentation" draggable="true" data-gd="${esc(r.gitDir)}" style="--tc:${colorOf(r.account)}">
+      <button role="tab" id="rtab-${i}" aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-controls="histMain" title="${esc(r.path)}${r.account ? ' · ' + esc(r.account) : ''}${rs.length > 1 ? `
+Delete or ${MOD}+W closes it` : ''}"><span class="tdot" aria-hidden="true"></span><span class="nm">${esc(name)}${dup ? `<span class="par"> · ${esc(baseName(parent).name)}</span>` : ''}</span><span class="sr-only">, ${r.account ? 'account ' + esc(r.account) : 'no account'}</span></button>`
+      + (rs.length > 1 ? `<button class="x" type="button" tabindex="-1" aria-hidden="true" title="Close (${MOD}+W, or middle-click the tab)">×</button>` : '') + '</div>';
+  }).join('');
+  const on = el.querySelector('[aria-selected=true]');
+  $('#histMain').setAttribute('aria-labelledby', on ? on.id : '');
+  if (on){ on.closest('.rtab').scrollIntoView({block:'nearest', inline:'nearest'}); if (focused) on.focus(); }
+}
+// openTab shows a repo, as choosing it in the repo menu does.
+function openTab(gd){
+  addTab(gd);
+  if (!$('#history').dataset.loaded){ store.set('gs.repoTabsActive', gd); $('#histRepo').value = gd; show('history'); return; }
+  if (!histVisible()) show('history');
+  if ($('#histRepo').value !== gd){ $('#histRepo').value = gd; $('#histRepo').onchange(); }
+  else renderTabs();
+}
+// closeTab closes a repo's tab; the last one stays. Closing the shown one
+// opens its neighbour.
+function closeTab(gd){
+  const i = TABS.indexOf(gd);
+  if (i < 0 || TABS.length < 2) return;
+  TABS.splice(i, 1); saveTabs();
+  if (gd === $('#histRepo').value) openTab(TABS[Math.min(i, TABS.length - 1)]);
+  else renderTabs();
+}
+function cycleTab(d){
+  if (TABS.length < 2) return;
+  const i = TABS.indexOf($('#histRepo').value);
+  openTab(TABS[(i + d + TABS.length) % TABS.length]);
+}
+const tabsEl = $('#repoTabs');
+tabsEl.addEventListener('click', e => {
+  const t = e.target.closest('.rtab'); if (!t) return;
+  if (e.target.closest('.x')) return closeTab(t.dataset.gd);
+  openTab(t.dataset.gd);
+});
+tabsEl.addEventListener('mousedown', e => { if (e.button === 1 && e.target.closest('.rtab')) e.preventDefault(); }); // no autoscroll
+tabsEl.addEventListener('auxclick', e => { const t = e.target.closest('.rtab'); if (t && e.button === 1){ e.preventDefault(); closeTab(t.dataset.gd); } });
+tabsEl.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabsEl.scrollWidth > tabsEl.clientWidth){ tabsEl.scrollLeft += e.deltaY; e.preventDefault(); } }, {passive:false});
+// Arrows move between the tabs, Enter or Space opens one (each opening
+// reads a history), Delete closes it.
+tabsEl.addEventListener('keydown', e => {
+  const tabs = [...tabsEl.querySelectorAll('[role=tab]')], i = tabs.indexOf(document.activeElement); if (i < 0) return;
+  const go = j => { e.preventDefault(); e.stopPropagation(); tabs[(j + tabs.length) % tabs.length].focus(); };
+  if (e.key === 'ArrowRight') go(i + 1);
+  else if (e.key === 'ArrowLeft') go(i - 1);
+  else if (e.key === 'Home') go(0);
+  else if (e.key === 'End') go(tabs.length - 1);
+  else if (e.key === 'Delete'){ e.preventDefault(); const gd = tabs[i].closest('.rtab').dataset.gd; closeTab(gd); (tabsEl.querySelectorAll('[role=tab]')[Math.min(i, TABS.length - 1)])?.focus(); }
+});
+// Drag a tab to move it.
+let dragGd = null;
+tabsEl.addEventListener('dragstart', e => { const t = e.target.closest('.rtab'); if (!t) return; dragGd = t.dataset.gd; t.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', baseName(repoOf(dragGd)?.path).name); } catch {} });
+const dropSide = (t, e) => { const r = t.getBoundingClientRect(); return e.clientX > r.left + r.width / 2 ? 'r' : 'l'; };
+tabsEl.addEventListener('dragover', e => {
+  const t = e.target.closest('.rtab'); if (!t || !dragGd) return;
+  e.preventDefault();
+  tabsEl.querySelectorAll('.dropl,.dropr').forEach(x => x.classList.remove('dropl', 'dropr'));
+  if (t.dataset.gd !== dragGd) t.classList.add('drop' + dropSide(t, e));
+});
+tabsEl.addEventListener('drop', e => {
+  const t = e.target.closest('.rtab'); if (!t || !dragGd || t.dataset.gd === dragGd) return;
+  e.preventDefault();
+  TABS.splice(TABS.indexOf(dragGd), 1);
+  TABS.splice(TABS.indexOf(t.dataset.gd) + (dropSide(t, e) === 'r' ? 1 : 0), 0, dragGd);
+  saveTabs();
+});
+tabsEl.addEventListener('dragend', () => { dragGd = null; renderTabs(); });
+$('#tabAdd').onclick = () => openPalette('repo');
 
 // The search box takes plain words (the commit message) and, for people
 // who like typing, author:, account:, since:, until:, path: and branch:
@@ -1469,6 +1672,7 @@ let histN = HIST_PAGE, histKey = '';
 async function loadHistory(more){
   const gd = $('#histRepo').value; if (!gd) return;
   markOpened(gd);
+  addTab(gd); store.set('gs.repoTabsActive', gd); renderTabs();
   const key = gd + '|' + [F.text, F.author, F.account, F.since, F.range, F.until, F.ref, F.path, OPTS.order, OPTS.firstParent, OPTS.noMerges, VIEW.hiCherry].join('|');
   histN = more ? histN + HIST_PAGE : key === histKey ? histN : HIST_PAGE;
   histKey = key;
@@ -1481,7 +1685,117 @@ async function loadHistory(more){
   renderToolbar(); renderHistory(); renderRefTree();
   loadBranchPR(gd);
   autoFetch(gd);
+  watchRepo(gd);
 }
+
+// ---- an operation stopped on purpose (merge, rebase, cherry-pick, revert) ----
+let OP = null;
+const opWords = {merge:'merge', rebase:'rebase', 'cherry-pick':'cherry-pick', revert:'revert'};
+async function loadOperation(gd){
+  let o; try { o = await api('GET', '/api/operation?gitDir=' + encodeURIComponent(gd)); } catch { return; }
+  OP = o;
+  const el = $('#opBanner'); if (!el || !o?.kind || $('#histRepo').value !== gd) return;
+  const files = o.conflicts || [], word = opWords[o.kind] || o.kind;
+  if (!o.actions?.length) return; // a bisect or smart switch has its own way out
+  el.className = 'alert bad opbanner';
+  el.innerHTML = `<div class="opmain"><strong>A ${esc(word)} is stopped${o.branch ? ' on ' + esc(o.branch) : ''}${o.theirs ? ' · ' + esc(o.theirs) : ''}.</strong>
+    ${files.length ? `${files.length} file${files.length > 1 ? 's' : ''} still ${files.length > 1 ? 'have' : 'has'} a clash: fix ${files.length > 1 ? 'them' : 'it'}, then continue.` : 'Every clash is fixed: continue to finish it.'}
+    ${files.length ? `<div class="opfiles">${files.map(f => `<button class="link" data-conflict="${esc(f)}" title="Look at both sides and pick one, or edit the result">${esc(f)}</button>`).join('')}</div>` : ''}</div>
+    <div class="opbtns">
+      <button class="btn primary" data-op="continue"${o.canContinue ? '' : ` disabled title="${esc(o.why || 'Fix the clashes first')}"`}>Continue</button>
+      ${o.actions.includes('skip') ? '<button class="btn" data-op="skip" title="Leave this step out and go on">Skip</button>' : ''}
+      <button class="btn danger" data-op="abort" title="Go back to how things were before it started">Abort</button></div>`;
+  el.querySelectorAll('[data-conflict]').forEach(b => b.onclick = () => openConflict(gd, b.dataset.conflict));
+  el.querySelectorAll('[data-op]').forEach(b => b.onclick = () => operate(gd, b.dataset.op, word));
+}
+async function operate(gd, action, word){
+  const q = {abort:[`Abort the ${word}? Everything it did so far is undone, and your files go back to how they were before it started.`, 'Abort'],
+    skip:[`Skip this step of the ${word}? Its changes are left out.`, 'Skip']}[action];
+  if (q && !await ask(q[0], {ok:q[1], danger:true})) return;
+  const r = await act(() => api('POST','/api/operation',{gitDir:gd, action}));
+  if (!r) return loadHistory();
+  toast(action === 'continue' ? (r.kind ? `The ${word} stopped again: more files to fix` : `The ${word} is finished`) : action === 'abort' ? `The ${word} was aborted` : `Skipped`, false, null, action === 'continue' && !r.kind ? undoable(gd) : null);
+  loadHistory();
+}
+// openConflict shows both sides of a clashing file and lets you take one,
+// edit the result, or mark it fixed after editing elsewhere.
+const cf = {gd:'', path:''};
+async function openConflict(gd, path){
+  let c; try { c = await api('GET', `/api/conflict?gitDir=${encodeURIComponent(gd)}&path=${encodeURIComponent(path)}`); } catch (e) { toast(e.message, true, e.hint); return; }
+  cf.gd = gd; cf.path = path;
+  $('#cfTitle').textContent = path; $('#cfKind').textContent = c.kind || '';
+  const side = (v, none) => v === null || v === undefined ? none : v;
+  $('#cfOursH').textContent = 'Yours' + (c.oursLabel ? ' · ' + c.oursLabel : ''); $('#cfTheirsH').textContent = 'Theirs' + (c.theirsLabel ? ' · ' + c.theirsLabel : '');
+  $('#cfOurs').textContent = side(c.ours, '(this file does not exist on your side)');
+  $('#cfTheirs').textContent = side(c.theirs, '(this file does not exist on their side)');
+  $('#cfText').value = c.text || ''; $('#cfText').disabled = !c.exists;
+  $('#cfMarks').textContent = c.markers ? '· still has <<<<<<< markers: keep the lines you want and delete the markers' : '';
+  if (!$('#conflictDlg').open) $('#conflictDlg').showModal();
+}
+async function resolveConflict(action){
+  const body = {gitDir:cf.gd, path:cf.path, action}; if (action === 'save') body.text = $('#cfText').value;
+  const r = await act(() => api('POST','/api/conflict', body));
+  if (!r) return;
+  $('#conflictDlg').close(); toast(`${cf.path}: ${action === 'ours' ? 'kept yours' : action === 'theirs' ? 'took theirs' : 'marked resolved'}`); loadHistory();
+}
+$('#cfTakeOurs').onclick = () => resolveConflict('ours');
+$('#cfTakeTheirs').onclick = () => resolveConflict('theirs');
+$('#cfSave').onclick = () => resolveConflict('save');
+$('#cfDone').onclick = () => resolveConflict('done');
+$('#cfClose').onclick = () => $('#conflictDlg').close();
+
+// mergeInto merges a branch into the current one: shows what would come in
+// and whether clashes are likely, then asks how.
+async function mergeInto(name){
+  const gd = $('#histRepo').value, into = R?.head.branch;
+  const p = await act(() => api('GET', `/api/merge/plan?gitDir=${encodeURIComponent(gd)}&branch=${encodeURIComponent(name)}`));
+  if (!p) return;
+  if (p.blocked){ toast(p.blocked, true); return; }
+  if (p.upToDate){ toast(`${into} already has everything in ${name}`); return; }
+  const list = (p.incoming || []).slice(0, 6).map(c => `  ${c.short}  ${c.subject}`).join('\n');
+  const text = `Merge ${name} into ${into}.\n\n${p.summary || ''}\n\n${list}${p.incomingCount > 6 ? `\n  … and ${p.incomingCount - 6} more` : ''}`
+    + (p.conflicts?.length ? `\n\nLikely clashes (${p.conflicts.length}): ${p.conflicts.slice(0, 5).join(', ')}. The merge stops so you can fix them, and you can abort it.` : '');
+  const how = await ask(text, {ok: p.fastForward ? 'Fast-forward' : 'Merge', alt: 'Squash (no merge commit)'});
+  if (!how) return;
+  const r = await act(() => api('POST','/api/merge',{gitDir:gd, branch:name, mode: how === 'alt' ? 'squash' : ''}));
+  if (!r) return;
+  if (r.outcome === 'conflicts') toast(`The merge stopped: ${r.conflicts?.length || 'some'} file(s) clash. Fix them in the banner above the log, then continue.`);
+  else toast(r.message || `Merged ${name} into ${into}`, false, null, r.outcome === 'squashed' ? null : undoable(gd));
+  loadHistory();
+}
+
+// ---- live refresh: the page follows the files and git ----
+// A long poll of /api/watch (the backend watches the repo's folder and git
+// dir, nothing polls git): when files, the index, HEAD, refs or a merge or
+// rebase change, the changes list and the history are read again. While
+// you type in the commit box only the file list is read, so nothing under
+// your cursor moves.
+let watchGd = '', watchTimer = 0;
+async function watchRepo(gd){
+  if (watchGd === gd) return;
+  watchGd = gd;
+  let seq = 0;
+  try { seq = (await api('GET', '/api/watch?gitDir=' + encodeURIComponent(gd))).seq; } catch { watchGd = ''; return; }
+  while (watchGd === gd){
+    let r;
+    try { r = await api('GET', `/api/watch?gitDir=${encodeURIComponent(gd)}&since=${seq}`); }
+    catch { await new Promise(res => setTimeout(res, 4000)); continue; }
+    if (watchGd !== gd) return;
+    seq = r.seq;
+    if (!r.kinds?.length || !histVisible() || document.hidden) continue;
+    clearTimeout(watchTimer);
+    watchTimer = setTimeout(() => refreshFromWatch(gd, new Set(r.kinds)), 350);
+  }
+}
+async function refreshFromWatch(gd, kinds){
+  if ($('#histRepo').value !== gd || document.querySelector('dialog[open]')) return;
+  const typing = document.activeElement?.closest?.('#wipForm');
+  const git = kinds.has('head') || kinds.has('refs') || kinds.has('operation');
+  if (typing && !git){ if (WIP) loadChanges(gd); return; }
+  if (typing){ if (WIP) loadChanges(gd); return; }
+  loadHistory();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && histVisible() && H && $('#histRepo').value) loadHistory(); });
 
 // autoFetch is the fetch-on-open setting: once per repo while the app is
 // open, read the remote's new commits after the page is drawn. A failure
@@ -1876,11 +2190,12 @@ function renderHistory(){
       Open ${cl.files.length > 1 ? 'them' : 'it'} in your editor or IDE and keep the lines you want between the <span class="mono">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</span>, <span class="mono">=======</span> and <span class="mono">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</span> markers, then delete the markers. Your original changes are safe until you finish.
       <br><span class="mono">${cl.files.map(esc).join(', ')}</span></span>
       <button class="btn primary" id="clashDone">I’ve fixed them</button><button class="btn" id="clashBack">Go back to ${esc(cl.from)}</button><button class="btn" id="clashPark" title="Go back, park your changes on ${esc(cl.from)} and switch to ${esc(cl.to)} without them">Park instead</button></div>`
-    : h?.busy ? `<div class="alert bad" role="status">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
+    : h?.busy ? `<div class="alert bad" role="status" id="opBanner">A ${esc(h.busy)} is in progress in this repo. Finish or abort it in a terminal (git ${esc(h.busy)} --continue or --abort) before using these actions.</div>` : '')
     + (ps.length ? `<div class="alert" role="status"><div class="plist"><span><strong>Parked changes</strong> <span class="hint">(git stash)</span></span>${ps.map(p => `<div class="prow"><span>On <strong>${esc(p.branch)}</strong>${p.branch === h?.branch ? ' (this branch)' : ''} · ${esc(ago(p.time))} · <span title="${esc(p.files.join('\n'))}">${esc(fileList(p.files))}</span></span>
       <button class="btn${p.branch === h?.branch ? ' primary' : ''}" data-park-restore="${esc(p.stash)}"${p.branch === h?.branch ? '' : ` title="Restore them on ${esc(h?.branch || 'this commit')}, not ${esc(p.branch)}"`}>${p.branch === h?.branch ? 'Restore' : 'Restore here'}</button><button class="btn ghost danger" data-park-drop="${esc(p.stash)}">Delete</button></div>`).join('')}</div></div>` : '')
     + (r.emailBad ? `<div class="alert bad" role="status"><span><strong>New commits here are made as ${esc(r.email)}, not as ${esc(r.account)}.</strong> They will show another person than the account that pushes them.</span><button class="btn primary" id="useBtn">Use ${esc(r.account)}’s name and email</button></div>` : '')
     + (fixable ? `<div class="alert bad" role="status"><span><strong>${fixable} not-pushed commit${fixable > 1 ? 's use' : ' uses'} another account’s email.</strong> Fix ${fixable > 1 ? 'them' : 'it'} before pushing, so the commit${fixable > 1 ? 's show' : ' shows'} the right person.</span><button class="btn primary" id="fixBtn">Fix ${fixable > 1 ? 'them' : 'it'}</button></div>` : '');
+  if (h?.busy && !cl) loadOperation(r.gitDir);
   $('#clashDone')?.addEventListener('click', async () => {
     if (await act(() => api('POST','/api/resolve',{gitDir:r.gitDir, action:'done'}).then(() => true))){ toast(`Done: your changes are on ${cl.to}, uncommitted`); loadHistory(); }
   });
@@ -2168,7 +2483,7 @@ $('#refTree').addEventListener('contextmenu', e => {
 function refMenu(e, b, back = b){
   e.preventDefault();
   const {name, kind, ref} = b.dataset, cur = kind === 'local' && name === R?.head.branch;
-  const items = [['show', 'Show only its commits'], ...(kind !== 'tag' && !cur ? [['switch', 'Switch to ' + name]] : []), ['new', `New branch from ${name}…`], ['copy', 'Copy name'],
+  const items = [['show', 'Show only its commits'], ...(kind !== 'tag' && !cur ? [['switch', 'Switch to ' + name], ['merge', `Merge into ${R?.head.branch || 'the current branch'}…`]] : []), ['new', `New branch from ${name}…`], ['copy', 'Copy name'],
     ...(kind === 'local' ? [['-'], ['rename', 'Rename…'], ['upstream', 'Pull from a remote branch…'], ...(cur ? [] : [['delete', `Delete ${name}…`]])] : []),
     ...(kind === 'tag' ? [['-'], ['tagpush', 'Push to the remote'], ['tagdel', 'Delete tag…']] : [])];
   closeMenu();
@@ -2185,6 +2500,7 @@ function refMenu(e, b, back = b){
     else if (k === 'switch') switchTo(name);
     else if (k === 'new') newBranch(ref, 'from ' + name);
     else if (k === 'copy'){ try { await navigator.clipboard.writeText(name); toast('Copied ' + name); } catch { act(() => api('POST','/api/copy',{text:name}), 'Copied ' + name); } }
+    else if (k === 'merge') mergeInto(name);
     else branchAction(k, name);
   };
   m.onkeydown = ev => {
@@ -2435,7 +2751,7 @@ $('#diffDlgClose').onclick = () => $('#diffDlg').close();
 // WIP is the "Uncommitted changes" row selected: the details panel then
 // lists the changed files (stage, unstage, discard, diff) above a commit
 // box, beside the graph rather than on a page of its own.
-let WIP = false, CH = null, wipMsg = '', wipDesc = '', wipDiff = null, wipShut = false, AM = null, wipAmend = false;
+let WIP = false, CH = null, wipMsg = '', wipDesc = '', wipDiff = null, wipShut = false, AM = null, wipAmend = false, CI = null, wipCo = [], wipSign = null;
 const anyChanges = c => !!c && (c.staged || c.changed || c.new || c.conflicts) > 0;
 function wipRow(gw = 26){
   const c = R?.head?.changes;
@@ -2472,7 +2788,12 @@ function renderChanges(){
       <input id="wipMsg" placeholder="Summary: what the change does, e.g. Fix the login form" aria-label="Commit summary" autocomplete="off" spellcheck="true" value="${esc(wipMsg)}">
       <textarea id="wipDesc" rows="2" placeholder="Description (optional): why" aria-label="Commit description" spellcheck="true">${esc(wipDesc)}</textarea>
       <p class="hint" id="wipLen" hidden></p>
+      <select id="wipRecent" aria-label="Fill in from a recent message" hidden><option value="">Recent messages…</option></select>
+      <div class="cochips" id="wipCoChips"></div>
+      <input id="wipCo" list="wipCoList" placeholder="Co-author: Name &lt;email&gt;" aria-label="Add a co-author" autocomplete="off" spellcheck="false" hidden>
+      <datalist id="wipCoList"></datalist>
       <label class="hint cboxall" id="wipAllRow" hidden><input type="checkbox" id="wipAll"> Also commit the changes that are not staged (new files too)</label>
+      <label class="hint cboxall" id="wipSignRow" title="Adds a Signed-off-by line with this repo’s name and email"><input type="checkbox" id="wipSign"> Sign off (Signed-off-by)</label>
       <label class="hint cboxall" id="wipAmendRow"><input type="checkbox" id="wipAmend"${wipAmend ? ' checked' : ''}> <span id="wipAmendText">Amend the last commit</span></label>
       <button class="btn primary wide" id="wipCommit" type="submit">Commit</button>
       <p class="hint who-as" id="wipAs">${whoAs()}</p>
@@ -2494,12 +2815,54 @@ function renderChanges(){
     }
     commitState();
   };
-  loadAmendable(gd);
+  loadAmendable(gd); loadCommitInfo(gd);
   // Ctrl/⌘+Enter submits too: only when the button would.
   $('#wipForm').onsubmit = e => { e.preventDefault(); if (!$('#wipCommit').disabled) commitChanges(gd); };
   commitState();
   if (wipDiff) showWipDiff(gd, wipDiff.path, wipDiff.staged);
   loadChanges(gd);
+}
+// loadCommitInfo reads what the commit box offers besides the message:
+// your recent messages, the draft kept from a failed commit, the sign-off
+// setting and people to credit as co-authors.
+async function loadCommitInfo(gd){
+  try { CI = await api('GET', '/api/repo/commit-info?gitDir=' + encodeURIComponent(gd)); } catch { CI = null; }
+  if (!WIP || $('#histRepo').value !== gd || !CI) return;
+  if (wipSign === null) wipSign = !!CI.signoff;
+  $('#wipSign').checked = wipSign;
+  $('#wipSign').onchange = e => { wipSign = e.target.checked; };
+  const rs = $('#wipRecent');
+  rs.hidden = !CI.recent?.length;
+  rs.innerHTML = '<option value="">Recent messages…</option>' + (CI.recent || []).map((m, i) => `<option value="${i}">${esc(m.subject.length > 60 ? m.subject.slice(0, 59) + '…' : m.subject)}</option>`).join('');
+  rs.onchange = () => {
+    const m = CI.recent[+rs.value]; rs.value = ''; if (!m) return;
+    const [subj, ...rest] = m.message.split('\n');
+    wipMsg = subj; wipDesc = rest.join('\n').trim(); $('#wipMsg').value = wipMsg; $('#wipDesc').value = wipDesc; commitState(); $('#wipMsg').focus();
+  };
+  // A message kept from a commit that did not go through.
+  if (CI.draft && !wipMsg.trim() && !wipDesc.trim()){
+    const [subj, ...rest] = CI.draft.split('\n');
+    wipMsg = subj; wipDesc = rest.join('\n').trim(); $('#wipMsg').value = wipMsg; $('#wipDesc').value = wipDesc;
+    toast('Your unsent commit message is back');
+  }
+  const co = $('#wipCo'); co.hidden = !CI.coauthors?.length && !wipCo.length;
+  $('#wipCoList').innerHTML = (CI.coauthors || []).map(c => `<option value="${esc(c.name + ' <' + c.email + '>')}">${c.commits} commit${c.commits > 1 ? 's' : ''}</option>`).join('');
+  co.hidden = false;
+  const add = () => {
+    const v = co.value.trim(); if (!v) return;
+    if (!/^[^<>]+<[^<>@\s]+@[^<>\s]+>$/.test(v)){ toast('Write a co-author as Name <email>', true); return; }
+    if (!wipCo.includes(v)) wipCo.push(v);
+    co.value = ''; drawCo();
+  };
+  co.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
+  co.onchange = add;
+  drawCo();
+  commitState();
+}
+function drawCo(){
+  const box = $('#wipCoChips'); if (!box) return;
+  box.innerHTML = wipCo.map((c, i) => `<span class="cochip" title="Co-authored-by: ${esc(c)}">${esc(c.replace(/\s*<.*>$/, ''))}<button type="button" data-co="${i}" aria-label="Remove co-author ${esc(c)}">×</button></span>`).join('');
+  box.querySelectorAll('[data-co]').forEach(b => b.onclick = () => { wipCo.splice(+b.dataset.co, 1); drawCo(); });
 }
 // loadAmendable reads whether the last commit may be amended (not pushed,
 // not a merge) and its message.
@@ -2532,8 +2895,8 @@ function changeList(st){
   };
   const sec = (title, key, list, actions, hint) => !list.length ? '' : `<div class="csec"><div class="csh"><strong>${title}</strong><span class="cnt">${list.length}</span><span class="spacer"></span>${actions}</div>
     ${hint ? `<p class="hint" style="margin:0 0 4px">${hint}</p>` : ''}${list.map(f => row(f, key)).join('')}</div>`;
-  return (st.busy ? `<p class="hint bad">A ${esc(st.busy)} is in progress: finish or abort it in a terminal first.</p>` : '')
-    + sec('Conflicts', 'conflict', conflicts, '', 'Fix them in your editor or IDE, then stage them there.')
+  return (st.busy ? `<p class="hint bad">A ${esc(st.busy)} is in progress: ${['merge', 'rebase', 'cherry-pick', 'revert'].includes(st.busy) ? 'fix the clashes (click a file), then use Continue or Abort above the log.' : 'finish or abort it in a terminal first.'}</p>` : '')
+    + sec('Conflicts', 'conflict', conflicts, '', 'Click a file to look at both sides and pick one, or fix it in your editor or IDE and stage it there.')
     + sec('Staged', 'staged', staged, `<button class="link" data-wa="unstage-all" title="Take every change out of the next commit">Unstage all</button>`, '')
     + sec(staged.length ? 'Unstaged' : 'Changes', 'changed', changed, `<button class="link danger" data-wa="discard-all" title="Put every file back as in the last commit; the changes are kept in git stash">Discard all</button><button class="link" data-wa="stage-all" title="Add every change to the next commit">Stage all</button>`,
       staged.length ? '' : 'Stage the files to commit, or commit them all at once.');
@@ -2579,9 +2942,9 @@ async function commitChanges(gd){
   const {all, amend} = commitPlan();
   const b = $('#wipCommit'); b.disabled = true; b.textContent = 'Committing…';
   const message = wipMsg.trim() + (wipDesc.trim() ? '\n\n' + wipDesc.trim() : '');
-  const r = await act(() => api('POST','/api/repo/commit',{gitDir:gd, message, all, amend}));
+  const r = await act(() => api('POST','/api/repo/commit',{gitDir:gd, message, all, amend, signoff: $('#wipSign')?.checked ?? undefined, coauthors: wipCo}));
   if (!r){ commitState(); return; }
-  wipMsg = ''; wipDesc = ''; wipDiff = null; CH = null; wipAmend = false; AM = null;
+  wipMsg = ''; wipDesc = ''; wipDiff = null; CH = null; wipAmend = false; AM = null; CI = null; wipCo = []; wipSign = null;
   toast(`${amend ? 'Amended ' + r.amended + ': now' : 'Committed'} ${r.short} ${r.subject}${r.account ? ' as ' + r.account : ''}`, false, null, undoable(gd));
   loadHistory();
 }
@@ -2644,6 +3007,7 @@ $('#details').addEventListener('click', async e => {
   if (a === 'close'){ WIP = false; wipShut = true; wipDiff = null; return renderHistory(); }
   if (a === 'reload') return loadHistory();
   if (a === 'ignore'){ const r = e.target.getBoundingClientRect(); return ignoreMenu(r.left, r.bottom + 4, path, e.target); }
+  if (a === 'diff' && sec === 'conflict') return openConflict(gd, path);
   if (a === 'diff'){
     document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); row.classList.add('on');
     wipDiff = {path, staged: sec === 'staged'}; return showWipDiff(gd, path, sec === 'staged');
@@ -2698,7 +3062,7 @@ document.addEventListener('keydown', e => {
 });
 $('#keysBtn').onclick = () => $('#keysDlg').showModal();
 document.addEventListener('keydown', e => {
-  if (!histVisible() || $('#dlg').open || e.altKey) return;
+  if (!histVisible() || $('#dlg').open || $('#palDlg').open || e.altKey) return;
   const typing = e.target.closest('input, select, textarea');
   if (e.key === 'Escape'){
     if (!$('#actionsPop').hidden){ toggleActions(false); $('#actionsBtn').focus(); return; }
@@ -2721,6 +3085,228 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'U'){ e.preventDefault(); undoLast($('#histRepo').value); }
   else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
   else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }
+});
+
+// ---- command palette ----
+// Ctrl/⌘+K (or Ctrl/⌘+Shift+P) lists every page and every action the page
+// offers right now, filtered as you type a few of their letters. Each one
+// presses the page's own button or calls its own function; a button that is
+// off is listed off, with the button's reason.
+document.querySelectorAll('.modk').forEach(k => k.textContent = MOD);
+$('#palBtn').title = `Command palette (${MOD}+K)`;
+const P = {mode:null, items:[], shown:[], at:0};
+const kb = (...k) => k;
+// hist runs a History action, showing the page first when needed.
+const hist = fn => { if (!histVisible()) show('history'); fn(); };
+// viaBtn is a command that clicks a button of the page: left out while the
+// button is hidden, off (with the button's title as the reason) while it is.
+function viaBtn(id, sel, label, cat, keys, extra = {}){
+  const b = $(sel); if (!b || b.hidden) return null;
+  return {id, label, cat, keys, disabled: b.disabled ? (b.title || 'Not available right now') : '', run: () => hist(() => $(sel).click()), ...extra};
+}
+// wipAct presses a button of the changes panel (Stage all, …), opening
+// the panel first when it is closed.
+async function wipAct(a){
+  const find = () => $(`#details [data-wa="${a}"]`);
+  if (!WIP || !find()) openChanges();
+  for (let i = 0; i < 40 && !find(); i++) await new Promise(r => setTimeout(r, 75));
+  find()?.click();
+}
+function palCommands(){
+  const out = [], tab = currentTab();
+  document.querySelectorAll('aside nav button').forEach((b, i) => out.push({id:'page.' + b.dataset.tab, label:'Go to ' + b.textContent.trim(), cat:'Pages', keys:kb(String(i + 1)),
+    hint: b.dataset.tab === tab ? 'this page' : '', run: () => show(b.dataset.tab)}));
+  const ok = repos.filter(r => !r.missing);
+  if (ok.length || S?.config.repos.length || S?.config.scanFolders.length) out.push({id:'repo.open', label:'Open repo…', cat:'Repo tabs', sub:'repo', hint:'in a tab'});
+  if (R && H){
+    if (TABS.length > 1){
+      out.push({id:'tab.next', label:'Next repo tab', cat:'Repo tabs', keys:kb('Ctrl', 'Tab'), run: () => hist(() => cycleTab(1))});
+      out.push({id:'tab.prev', label:'Previous repo tab', cat:'Repo tabs', keys:kb('Ctrl', 'Shift', 'Tab'), run: () => hist(() => cycleTab(-1))});
+    }
+    out.push({id:'tab.close', label:'Close this repo tab', cat:'Repo tabs', keys:kb(MOD, 'W'), disabled: TABS.length < 2 ? 'The last tab stays open' : '', run: () => closeTab($('#histRepo').value)});
+    renderBranches(); // brings the branch menu's buttons up to date
+    const c = R.head?.changes || {}, unstaged = (c.changed || 0) + (c.new || 0);
+    const h = 'History';
+    out.push(
+      viaBtn('h.commit', '#commitBtn', 'Commit…', h),
+      viaBtn('h.fetch', '#fetchBtn', 'Fetch', h, null, {hint:'read the remote’s new commits'}),
+      viaBtn('h.update', '#updateBtn', 'Update', h, null, {hint:'pull, fast-forward only'}),
+      viaBtn('h.push', '#pushBtn', 'Push', h),
+      viaBtn('h.undo', '#undoBtn', R.undo?.label ? `Undo “${R.undo.label}”` : 'Undo', h, kb('Shift', 'U')),
+      viaBtn('h.compare', '#compareBtn', 'Compare with the remote…', h),
+      {id:'h.switch', label:'Switch branch…', cat:h, keys:kb('b'), sub:'branch', hint: R.head.branch ? 'on ' + R.head.branch : ''},
+      viaBtn('h.newbranch', '#newBranchBtn', 'New branch…', h),
+      viaBtn('h.prune', '#pruneBtn', 'Delete merged branches…', h),
+      viaBtn('h.move', '#moveBranchBtn', 'Move not-pushed commits to a new branch…', h),
+      anyChanges(c) && {id:'h.changes', label:'Show uncommitted changes', cat:h, run: () => hist(openChanges)},
+      unstaged && {id:'h.stageall', label:'Stage all', cat:h, hint:`${unstaged} file${unstaged > 1 ? 's' : ''}`, run: () => hist(() => wipAct('stage-all'))},
+      c.staged && {id:'h.unstageall', label:'Unstage all', cat:h, hint:`${c.staged} file${c.staged > 1 ? 's' : ''}`, run: () => hist(() => wipAct('unstage-all'))},
+      unstaged && {id:'h.discardall', label:'Discard all changes…', cat:h, hint:'kept in git stash', run: () => hist(() => wipAct('discard-all'))},
+      viaBtn('h.web', '#browseRepo', 'View on the web', h),
+      viaBtn('h.reload', '#histReload', 'Reload', h, kb('r')),
+      {id:'h.side', label: $('#histMain').classList.contains('noside') ? 'Show the branches panel' : 'Hide the branches panel', cat:h, keys:kb('t'), run: () => hist(() => toggleSide())},
+      {id:'h.search', label:'Search commits', cat:h, keys:kb('/'), run: () => hist(() => $('#histSearch').focus())},
+      {id:'h.filters', label:'Filters…', cat:h, keys:kb('f'), run: () => hist(() => toggleFilters(true))},
+      viaBtn('h.sort', '#optsBtn', 'Sort and options…', h),
+      viaBtn('h.view', '#viewBtn', 'View options…', h),
+    );
+  }
+  const st = (id, label, sel) => ({id:'set.' + id, label, cat:'Settings', run: () => { show('settings'); const el = $(sel); el.scrollIntoView({block:'center'}); el.focus(); }});
+  out.push(
+    st('switch', 'Uncommitted changes when switching branch', '#setForm [name=switchChanges]'),
+    st('pull', 'When Update finds new commits on both sides', '#setForm [name=pull]'),
+    st('prefix', 'New branch name prefix', '#setForm [name=branchPrefix]'),
+    st('fetch', 'Fetch when a repo’s History opens', '#setForm [name=fetchOnOpen]'),
+    st('popup', 'Ask with a popup when git runs without a terminal', '#setForm [name=guiPrompt]'),
+    st('wait', 'Seconds to wait for an answer', '#setForm [name=promptTimeout]'),
+    {id:'set.checks', label:'Health check', cat:'Settings', run: () => { show('settings'); $('#checks').scrollIntoView({block:'start'}); }},
+    {id:'set.setup', label:'Run guided setup', cat:'Settings', run: () => $('#rerunSetup').click()},
+    {id:'acct.add', label:'Add account…', cat:'Accounts', run: () => { show('accounts'); $('#addAcctBtn').click(); }},
+    {id:'repos.clone', label:'Clone from URL…', cat:'Repos', run: () => { show('repos'); $('#cloneOpen').click(); }},
+    {id:'repos.add', label:'Add an existing repo…', cat:'Repos', run: () => { show('repos'); $('#addRepo').click(); }},
+    {id:'repos.folder', label:'Add a projects folder…', cat:'Repos', run: () => { show('repos'); $('#browseFolder').click(); }},
+    {id:'rv.refresh', label:'Refresh reviews', cat:'Reviews', run: () => { show('reviews'); $('#rvRefresh').click(); }},
+    {id:'app.keys', label:'Keyboard shortcuts', cat:'Help', keys:kb('?'), run: () => $('#keysDlg').showModal()},
+  );
+  return out.filter(Boolean);
+}
+// The items of a command with a second step: a branch or a repo.
+function palSubItems(kind){
+  if (kind === 'branch'){
+    const local = R.branches.filter(b => !b.remote), names = new Set(local.map(b => b.name));
+    const remote = R.branches.filter(b => b.remote && !b.name.endsWith('/HEAD') && !names.has(b.name.slice(b.name.indexOf('/') + 1)));
+    const parked = n => (R.parked || []).filter(p => p.branch === n).length;
+    return [...local.map(b => ({id:'b:' + b.name, label:b.name, cat:'On this computer', disabled: b.current ? 'You are on it' : '',
+        hint: [parked(b.name) && parked(b.name) + ' parked', b.upstream && '→ ' + b.upstream].filter(Boolean).join(' · '), run: () => hist(() => switchTo(b.name))})),
+      ...remote.map(b => ({id:'b:' + b.name, label:b.name, cat:'On the remote', hint:'becomes a local branch', run: () => hist(() => switchTo(b.name))}))];
+  }
+  const ok = repos.filter(r => !r.missing), cur = $('#histRepo').value;
+  const recent = ok.filter(r => r.recent).sort((a, b) => a.recent - b.recent), rest = ok.filter(r => !r.recent).sort((a, b) => baseName(a.path).name.localeCompare(baseName(b.path).name));
+  return [...recent, ...rest].map(r => { const {name, parent} = baseName(r.path);
+    return {id:'r:' + r.gitDir, label:name, cat: r.recent ? 'Recent' : 'All repos', dot: colorOf(r.account),
+      hint: (r.gitDir === cur ? 'shown now · ' : TABS.includes(r.gitDir) ? 'in a tab · ' : '') + parent, run: () => openTab(r.gitDir)}; });
+}
+// fuzzy finds q's letters in order in text: their places and a score that
+// favours letters in a row and at the start of words.
+function fuzzy(text, q){
+  q = q.toLowerCase().replace(/\s+/g, '');
+  if (!q) return {score:0, at:[]};
+  const t = text.toLowerCase(), at = [];
+  let from = 0, score = 0, prev = -2;
+  for (const ch of q){
+    // Prefer the letter at the start of a word, if there is one ahead.
+    let i = t.indexOf(ch, from); if (i < 0) return null;
+    if (i !== prev + 1){ for (let j = i; j >= 0 && j < t.length; j = t.indexOf(ch, j + 1)) if (j === 0 || /[\s\-\/_.(“]/.test(t[j - 1])){ i = j; break; } }
+    score += 1 + (i === prev + 1 ? 5 : 0) + (i === 0 || /[\s\-\/_.(“]/.test(t[i - 1]) ? 4 : 0) - Math.min(i - from, 12) * 0.08;
+    at.push(i); prev = i; from = i + 1;
+  }
+  return {score: score - t.length * 0.01, at};
+}
+const palMark = (text, at) => { const set = new Set(at); return [...text].map((c, i) => set.has(i) ? `<mark>${esc(c)}</mark>` : esc(c)).join(''); };
+const palRecent = () => { const r = store.get('gs.palRecent', []); return Array.isArray(r) ? r : []; };
+function palRemember(id){ store.set('gs.palRecent', [id, ...palRecent().filter(x => x !== id)].slice(0, 5)); }
+function palRender(){
+  const q = $('#palInput').value.trim();
+  let groups;
+  if (q){
+    const list = P.items.map(it => {
+      const m = fuzzy(it.label, q); if (m) return {it, m};
+      const w = fuzzy(it.cat + ' ' + it.label + ' ' + (it.hint || ''), q); return w && {it, m:{score:w.score - 4, at:[]}};
+    }).filter(Boolean).sort((a, b) => b.m.score - a.m.score || !!a.it.disabled - !!b.it.disabled);
+    groups = [{title:'', rows:list}];
+  } else {
+    const rec = P.mode ? [] : palRecent().map(id => P.items.find(it => it.id === id)).filter(Boolean), cats = new Map();
+    if (rec.length) cats.set('Recently used', rec);
+    for (const it of P.items) if (!rec.includes(it)){ if (!cats.has(it.cat)) cats.set(it.cat, []); cats.get(it.cat).push(it); }
+    groups = [...cats].map(([title, its]) => ({title, rows: its.map(it => ({it, m:{at:[]}}))}));
+  }
+  P.shown = groups.flatMap(g => g.rows.map(r => r.it));
+  P.at = Math.max(0, Math.min(P.at, P.shown.length - 1));
+  let n = 0;
+  const opt = ({it, m}) => { const k = n++;
+    return `<div class="palopt${k === P.at ? ' act' : ''}" role="option" id="palo${k}" data-k="${k}" aria-selected="${k === P.at}"${it.disabled ? ' aria-disabled="true"' : ''}>`
+      + (it.dot ? `<span class="pdot" style="background:${it.dot}" aria-hidden="true"></span>` : '')
+      + `<span class="pl">${palMark(it.label, m.at)}</span>`
+      + (it.disabled || it.hint ? `<span class="pw">${esc(it.disabled || it.hint)}</span>` : '')
+      + (q && !P.mode ? `<span class="pc">${esc(it.cat)}</span>` : '')
+      + (it.keys ? `<span class="pk" aria-label="Shortcut ${esc(it.keys.join('+'))}">${it.keys.map(x => `<kbd>${esc(x)}</kbd>`).join('')}</span>` : '') + '</div>'; };
+  $('#palList').innerHTML = !P.shown.length ? `<div class="palnone">${P.loading ? 'Loading…' : 'Nothing matches. Try fewer letters.'}</div>`
+    : groups.filter(g => g.rows.length).map((g, i) => g.title ? `<div role="group" aria-labelledby="palg${i}"><div class="palgh" id="palg${i}">${esc(g.title)}</div>${g.rows.map(opt).join('')}</div>` : g.rows.map(opt).join('')).join('');
+  palActive(P.at);
+}
+function palActive(k){
+  const opts = $('#palList').querySelectorAll('[role=option]');
+  if (!opts.length){ P.at = 0; $('#palInput').removeAttribute('aria-activedescendant'); return; }
+  P.at = (k + opts.length) % opts.length;
+  opts.forEach((o, i) => { o.classList.toggle('act', i === P.at); o.setAttribute('aria-selected', String(i === P.at)); });
+  $('#palInput').setAttribute('aria-activedescendant', 'palo' + P.at);
+  opts[P.at].scrollIntoView({block:'nearest'});
+  $('#palNote').textContent = '';
+}
+// palMode shows the commands (null) or a command's second step.
+async function palMode(cmd){
+  P.mode = cmd; P.at = 0; P.loading = false;
+  const inp = $('#palInput'); inp.value = '';
+  $('#palCrumb').hidden = !cmd; $('#palCrumb').textContent = cmd ? cmd.label.replace(/…$/, '') : '';
+  inp.placeholder = !cmd ? 'Type a command, a page or an action' : cmd.sub === 'branch' ? 'Switch to which branch?' : 'Open which repo?';
+  inp.setAttribute('aria-label', inp.placeholder);
+  $('#palList').setAttribute('aria-label', !cmd ? 'Commands' : cmd.sub === 'branch' ? 'Branches' : 'Repos');
+  $('#palEscHint').innerHTML = cmd ? '<kbd>Esc</kbd> back' : '<kbd>Esc</kbd> close';
+  if (cmd?.sub === 'repo' && !repos.length && (S?.config.scanFolders.length || S?.config.repos.length)){
+    P.items = []; P.loading = true; palRender();
+    repos = await act(() => api('GET', '/api/repos')) || [];
+    if (P.mode !== cmd) return;
+    P.loading = false;
+  }
+  P.items = cmd ? palSubItems(cmd.sub) : palCommands();
+  palRender();
+}
+function openPalette(sub){
+  const d = $('#palDlg');
+  if (document.querySelector('dialog[open]:not(#palDlg)')) return;
+  if (!d.open) d.showModal();
+  P.direct = sub === 'repo'; // opened from the tabs' +: Esc closes
+  palMode(sub === 'repo' ? {id:'repo.open', label:'Open repo…', sub:'repo'} : null);
+  $('#palInput').focus();
+}
+function palRun(it){
+  if (!it) return;
+  if (it.disabled){ $('#palNote').textContent = it.label + ': ' + it.disabled; return; }
+  if (it.sub){ palRemember(it.id); P.direct = false; return palMode(it); }
+  palRemember(P.mode ? P.mode.id : it.id);
+  $('#palDlg').close();
+  setTimeout(it.run, 0); // after the focus went back where it was
+}
+$('#palInput').addEventListener('input', () => { P.at = 0; palRender(); });
+$('#palInput').addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp'){
+    e.preventDefault(); e.stopPropagation();
+    const n = P.shown.length, step = {ArrowDown:1, ArrowUp:-1, PageDown:8, PageUp:-8}[k];
+    palActive(k.startsWith('Page') ? Math.max(0, Math.min(n - 1, P.at + step)) : P.at + step); // arrows wrap around
+  } else if (k === 'Enter'){ e.preventDefault(); e.stopPropagation(); palRun(P.shown[P.at]); }
+  else if (k === 'Escape'){ e.preventDefault(); e.stopPropagation(); P.mode && !P.direct ? palMode(null) : $('#palDlg').close(); }
+  else if (k === 'Backspace' && !e.target.value && P.mode){ e.preventDefault(); palMode(null); }
+  else if (k === 'Tab') e.preventDefault(); // the focus stays in the box
+});
+$('#palList').addEventListener('mousemove', e => { const o = e.target.closest('[role=option]'); if (o && +o.dataset.k !== P.at) palActive(+o.dataset.k); });
+$('#palList').addEventListener('mousedown', e => e.preventDefault()); // keep the focus in the box
+$('#palList').addEventListener('click', e => { const o = e.target.closest('[role=option]'); if (o) palRun(P.shown[+o.dataset.k]); });
+$('#palDlg').addEventListener('click', e => { if (e.target === $('#palDlg')) $('#palDlg').close(); }); // the backdrop
+$('#palDlg').addEventListener('cancel', e => { if (P.mode && !P.direct){ e.preventDefault(); palMode(null); } });
+$('#palBtn').onclick = () => openPalette();
+// Keys for the palette and the repo tabs work everywhere, typing included.
+document.addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+  if (mod && !e.altKey && ((key === 'k' && !e.shiftKey) || (key === 'p' && e.shiftKey))){
+    e.preventDefault();
+    $('#palDlg').open ? $('#palDlg').close() : openPalette();
+    return;
+  }
+  if (!histVisible() || document.querySelector('dialog[open]') || e.altKey) return;
+  if (e.ctrlKey && e.key === 'Tab'){ e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); }
+  else if (e.ctrlKey && !e.shiftKey && (e.key === 'PageDown' || e.key === 'PageUp')){ e.preventDefault(); cycleTab(e.key === 'PageDown' ? 1 : -1); }
+  else if (mod && !e.shiftKey && key === 'w'){ e.preventDefault(); closeTab($('#histRepo').value); } // the tab, never the window
 });
 
 // ---- rules ----

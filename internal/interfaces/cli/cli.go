@@ -107,6 +107,11 @@ History and branches
   gitswitch commit --amend [-m <message>] [--all]   add the staged changes (--all: every change)
                                     to the last commit, or give it a new message; only while it
                                     is not pushed, and undo puts it back
+  gitswitch commit ... --signoff|--no-signoff   add (or leave out) Signed-off-by with the repo's
+                                    name and email, whatever the signoff setting says
+  gitswitch commit ... --co-author "Name <email>"   add a Co-authored-by line (repeat for more)
+  gitswitch commit --recent [--json]   the messages you wrote here lately, and the message of a
+                                    commit that failed (kept so it is not lost)
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -116,6 +121,17 @@ History and branches
                                     (<n> from the list; else the newest parked on this branch)
   gitswitch resolve [--done|--abort|--park]   after a smart switch with clashing files: finish once
                                     they are fixed, go back exactly as before, or park them instead
+  gitswitch merge <branch> [--ff-only|--no-ff|--squash] [-y]   merge a branch into the current one
+                                    after showing what will happen (fast-forward, merge commit, clashes
+                                    likely); --squash stages the changes without committing; undo takes
+                                    the merge back off while it is not pushed. --plan [--json]: only show
+  gitswitch continue                after fixing the conflicts: finish the merge, rebase, cherry-pick
+                                    or revert git stopped in the middle of (also: merge --continue)
+  gitswitch skip [-y]               leave out the commit a rebase, cherry-pick or revert stopped at
+  gitswitch abort [-y]              go back to how it was before the stopped operation
+  gitswitch conflict [<path>] [--ours|--theirs|--done] [--json]   the files in conflict, or one
+                                    file's base, ours and theirs; keep one side, or mark it fixed
+                                    once its conflict markers are gone
   gitswitch fetch [--json]          read the remote's new commits with the repo's account, so "to pull"
                                     and compare are up to date; no branch or file changes
   gitswitch update [--rebase]       pull the current branch with the repo's account: fast-forward only,
@@ -151,6 +167,8 @@ Settings
   gitswitch set switch-changes ask|smart|park [--repo]   what switching branch does with
                                     uncommitted changes, in every repo or this one (default: ask;
                                     "global --repo": this repo follows every repo's again)
+  gitswitch set signoff on|off [--repo]   add Signed-off-by to every commit, in every repo or
+                                    this one (default: off; "global --repo" follows every repo's)
   gitswitch completions bash|zsh|fish|powershell
 
 Add --dry-run to any command to see what it would change without changing anything.
@@ -357,6 +375,12 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdCherryPick(rest)
 	case "undo":
 		return x.cmdUndo(rest)
+	case "merge":
+		return x.cmdMerge(rest)
+	case "continue", "skip", "abort":
+		return x.cmdOperation(cmd, rest)
+	case "conflict", "conflicts":
+		return x.cmdConflict(rest)
 	case "resolve":
 		return x.cmdResolve(rest)
 	case "parked":

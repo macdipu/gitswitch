@@ -41,6 +41,7 @@ func Run(a *bootstrap.App) error {
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 255},
 		AssetServer:      &assetserver.Options{Handler: api.Handler(a, pick)},
 		OnStartup:        func(c context.Context) { ctx = c },
+		OnShutdown:       func(context.Context) { a.Watch.Close() }, // stop the file watchers
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "github.com.macdipu.gitswitch",
 			OnSecondInstanceLaunch: func(options.SecondInstanceData) {
