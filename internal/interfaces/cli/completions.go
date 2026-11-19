@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-const commandList = "install uninstall setup tui ui account key test signin signout github prs default use forget rule repo status log blame fix-author changes diff hunks stage unstage discard ignore commit branch tag switch checkout back remote fetch update revert drop rollback cherry-pick undo redo init resolve merge rebase reword fixup-into compare reflog bisect continue skip abort conflict parked stash worktree submodule push show browse doctor set completions version help"
+const commandList = "install uninstall setup tui ui account key test signin signout github prs default use forget rule repo status log blame fix-author changes diff hunks stage unstage discard ignore commit branch tag switch checkout back remote fetch update revert drop rollback cherry-pick undo redo terminal difftool mergetool init resolve merge rebase reword fixup-into compare reflog bisect continue skip abort conflict parked stash worktree submodule push show browse doctor set completions version help"
 
 // printCompletions prints a shell completion script. Account names are
 // looked up live with `gitswitch __accounts`.
@@ -23,7 +23,7 @@ _gitswitch() {
     key) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "new show pick agent" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) --open --copy" -- "$cur") ) ;;
     rule) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "add list remove" -- "$cur") ) || COMPREPLY=( $(compgen -W "$(gitswitch __accounts 2>/dev/null) owner: folder:" -- "$cur") ) ;;
     repo) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=( $(compgen -W "list clone add remove show open pin unpin recent group ungroup" -- "$cur") ) || COMPREPLY=( $(compgen -d -- "$cur") $(compgen -W "--json --pinned --by --sort --editor --account" -- "$cur") ) ;;
-    set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff" -- "$cur") )
+    set) if [ "$COMP_CWORD" -eq 2 ]; then COMPREPLY=( $(compgen -W "gui-prompt prompt-timeout ssh-path editor terminal difftool mergetool fetch-interval fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff" -- "$cur") )
       elif [ "${COMP_WORDS[2]}" = switch-changes ]; then COMPREPLY=( $(compgen -W "ask smart park global --repo" -- "$cur") )
       else COMPREPLY=( $(compgen -W "on off" -- "$cur") ); fi ;;
     completions) COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") ) ;;
@@ -67,7 +67,7 @@ _gitswitch() {
     key) (( CURRENT == 3 )) && compadd new show pick agent || compadd -a accts -- --open --copy ;;
     rule) (( CURRENT == 3 )) && compadd add list remove || compadd -a accts -- owner: folder: ;;
     repo) (( CURRENT == 3 )) && compadd list clone add remove show open pin unpin recent group ungroup || { _files -/; compadd -- --json --pinned --by --sort --editor --account; } ;;
-    set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff
+    set) if (( CURRENT == 3 )); then compadd gui-prompt prompt-timeout ssh-path editor terminal difftool mergetool fetch-interval fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff
       elif [[ ${words[3]} == switch-changes ]]; then compadd ask smart park global --repo
       else compadd on off; fi ;;
     completions) compadd bash zsh fish powershell ;;
@@ -107,7 +107,7 @@ complete -c gitswitch -n "__fish_seen_subcommand_from key" -a "new show pick age
 complete -c gitswitch -n "__fish_seen_subcommand_from rule" -a "add list remove (gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from use default test signin signout" -a "(gitswitch __accounts)"
 complete -c gitswitch -n "__fish_seen_subcommand_from repo" -a "list clone add remove show open pin unpin recent group ungroup (__fish_complete_directories)"
-complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff on off"
+complete -c gitswitch -n "__fish_seen_subcommand_from set" -a "gui-prompt prompt-timeout ssh-path editor terminal difftool mergetool fetch-interval fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff on off"
 complete -c gitswitch -n "__fish_seen_subcommand_from branch" -a "new prune compare pr delete-remote --json --from --move --no-prefix -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from push" -a "--open --force-with-lease -y"
 complete -c gitswitch -n "__fish_seen_subcommand_from fetch" -a "--prune --json"
@@ -133,7 +133,7 @@ Register-ArgumentCompleter -Native -CommandName gitswitch, gitswitch.exe -Script
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
   $subs = @{
     account = 'add edit list remove rename'; github = 'list clone --refresh --json'; key = 'new show pick agent'; rule = 'add list remove'
-    repo = 'list clone add remove show open pin unpin recent group ungroup'; set = 'gui-prompt prompt-timeout ssh-path editor fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff'; completions = 'bash zsh fish powershell'
+    repo = 'list clone add remove show open pin unpin recent group ungroup'; set = 'gui-prompt prompt-timeout ssh-path editor terminal difftool mergetool fetch-interval fetch-on-open branch-prefix repo-groups repo-sort pull fetch-prune switch-changes signoff'; completions = 'bash zsh fish powershell'
     parked = 'show restore drop --json'; resolve = '--done --abort --park'; branch = 'new prune compare pr delete-remote --json'; push = '--open --force-with-lease -y'; fetch = '--prune --json'; back = '--smart --park --force'; remote = 'list add remove rename set-url --json --force -y'; commit = '-m --all --amend --signoff --no-signoff --co-author --recent --json'
   }
   if ($words.Count -le 1 -or ($words.Count -eq 2 -and $wordToComplete)) {

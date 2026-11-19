@@ -236,6 +236,25 @@ func (g *Git) SaveFetchOnOpen(on bool) error {
 	return nil
 }
 
+// fetchIntervalKey holds the minutes between background fetches; absent: off.
+const fetchIntervalKey = "gitswitch.fetchInterval"
+
+func (g *Git) FetchInterval() int {
+	n, _ := strconv.Atoi(g.Git.GlobalGet(fetchIntervalKey))
+	return n
+}
+
+func (g *Git) SaveFetchInterval(minutes int) error {
+	if minutes > 0 {
+		_, err := g.Git.Global(fetchIntervalKey, strconv.Itoa(minutes))
+		return err
+	}
+	if _, err := g.Git.Global("--unset", fetchIntervalKey); gitinfra.ExitCode(err) != 5 { // 5: was not set
+		return err
+	}
+	return nil
+}
+
 // prefixKey holds the prefix of new branch names, in the global config.
 const prefixKey = "gitswitch.branchPrefix"
 

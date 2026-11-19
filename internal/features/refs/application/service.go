@@ -738,6 +738,36 @@ func (s *Service) SetFetchOnOpen(on bool) error {
 	return s.Refs.SaveFetchOnOpen(on)
 }
 
+// FetchIntervals are the minutes the background fetch can wait; 0 is off.
+var FetchIntervals = []int{0, 5, 10, 15, 30, 60}
+
+// FetchInterval is how many minutes the desktop app waits between quiet
+// fetches of the open repo while it is open (0: never; the default).
+func (s *Service) FetchInterval() int {
+	n := s.Refs.FetchInterval()
+	for _, v := range FetchIntervals {
+		if v == n {
+			return n
+		}
+	}
+	return 0
+}
+
+// SetFetchInterval saves it, for every repo: 0, 5, 10, 15, 30 or 60.
+func (s *Service) SetFetchInterval(minutes int) error {
+	ok := false
+	for _, v := range FetchIntervals {
+		ok = ok || v == minutes
+	}
+	if !ok {
+		return errors.New("choose off, 5, 10, 15, 30 or 60 minutes")
+	}
+	if s.FS.Dry(fmt.Sprintf("fetch every %d minutes (0: off)", minutes)) {
+		return nil
+	}
+	return s.Refs.SaveFetchInterval(minutes)
+}
+
 // PullSetting is how Update brings a repo's branches up to date.
 func (s *Service) PullSetting(gitDir string) refs.PullSetting {
 	return refs.NewPullSetting(s.Refs.PullModes(gitDir))

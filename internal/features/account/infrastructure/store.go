@@ -118,6 +118,12 @@ func (s *Store) LoadChecked() (*account.Config, error) {
 			c.RepoSort = v
 		case k == "gitswitch.editor":
 			c.Editor = v
+		case k == "gitswitch.terminal":
+			c.Terminal = v
+		case k == "gitswitch.difftool":
+			c.DiffTool = v
+		case k == "gitswitch.mergetool":
+			c.MergeTool = v
 		case k == "gitswitch.renamed":
 			if old, nw, ok := strings.Cut(v, "="); ok {
 				if c.Renamed == nil {

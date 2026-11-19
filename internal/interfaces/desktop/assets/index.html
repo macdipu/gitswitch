@@ -456,7 +456,24 @@ dialog.conflictdlg{max-width:min(1200px,calc(100vw - 48px));width:calc(100vw - 4
 .cfgrid h3{margin:0 0 4px;font-size:11.5px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .cfgrid pre,.cfgrid textarea{margin:0;box-sizing:border-box;width:100%;height:46vh;overflow:auto;padding:8px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink);font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
 .cfgrid textarea{resize:none}
-.cfactions{display:flex;gap:8px;margin-top:10px;align-items:center}
+.cfactions{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+.cfstat{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;flex-wrap:wrap}
+.cfstat .left{font-weight:650}.cfstat .fixed{color:var(--ok);font-weight:650}
+.cfregions{margin-top:8px;display:grid;gap:8px;max-height:30vh;overflow:auto}
+.cfreg{border:1px solid var(--rule);border-radius:var(--radius);padding:8px;display:grid;gap:6px;background:var(--panel)}
+.cfreg h4{margin:0;font-size:12.5px;font-weight:650}
+.cfreg .sides{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cfreg pre{margin:0;max-height:7.5em;overflow:auto;padding:6px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
+.cfreg .acts{display:flex;gap:6px;flex-wrap:wrap}
+dialog.conflictdlg.hasreg .cfgrid pre,dialog.conflictdlg.hasreg .cfgrid textarea{height:30vh}
+#cfNote{margin:8px 0 0}
+.kbtable{width:100%;border-collapse:collapse;font-size:14px}
+.kbtable th{text-align:left;font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:10px 8px 4px}
+.kbtable td{padding:5px 8px;border-top:1px solid var(--rule);vertical-align:middle}
+.kbtable td:last-child{white-space:nowrap;text-align:right}
+.kbtable .btn{padding:3px 10px;font-size:13px}
+#kbStatus{min-height:1.4em}
+.kbtable button[aria-pressed=true]{outline:2px solid var(--focus);background:var(--hover)}
 @media (max-width:900px){.cfgrid{grid-template-columns:1fr}.cfgrid pre,.cfgrid textarea{height:22vh}}
 dialog.vdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px);padding:14px}
 .vdlg .cfhead{flex-wrap:wrap}
@@ -802,6 +819,7 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
           <button class="btn" id="remotesBtn" role="menuitem" title="The servers this repo talks to: add, rename, re-point or remove them, and see which account each one uses">Remotes…</button>
           <button class="btn" id="pruneFetchBtn" role="menuitem" title="Read the remote's new commits and forget the remote branches that were deleted on the server. Your own branches and files stay as they are">Fetch and forget deleted branches</button>
           <button class="btn danger" id="forcePushBtn" role="menuitem" title="Replace the remote branch with yours, only if nobody pushed since you fetched. Shows what would be lost first">Force push (with lease)…</button>
+          <button class="btn" id="termBtn" role="menuitem" title="Open a terminal in this repo's folder (Settings: terminal)">Open in terminal</button>
           <button class="btn" id="browseRepo" role="menuitem" title="Open the repo on GitHub, GitLab, …">View on the web ↗</button>
         </div>
       </div>
@@ -875,6 +893,9 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <label class="full set-row">Wait <input name="promptTimeout" type="number" min="5" max="600" aria-label="Seconds to wait for an answer"> seconds for an answer, <span id="afterWait">then use the default account</span></label>
       <label class="full set-row">New branch names start with <input name="branchPrefix" placeholder="e.g. feature/" style="width:12em" aria-label="New branch name prefix"> <span class="hint">(empty: no prefix)</span></label>
       <label class="full set-row"><input type="checkbox" name="fetchOnOpen"> Read the remote's new commits when a repo's History opens <span class="hint">(fetch; once per repo while the app is open)</span></label>
+      <label class="full set-row">Fetch the open repo in the background every <select name="fetchInterval" aria-label="Background fetch interval">
+        <option value="0">never</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option></select> <span class="hint">(only while this window is open and showing; it says when there is something new)</span></label>
+      <label class="full set-row"><input type="checkbox" name="notify"> Notify me when a long action (clone, fetch, push, update, merge, rebase) finishes while this window is in the background <span class="hint" id="notifyNote">(this computer only)</span></label>
       <label class="full set-row">When you switch branch with uncommitted changes <select name="switchChanges">
         <option value="ask">ask each time</option><option value="smart">take them along (smart switch)</option><option value="park">park them on their branch (git stash)</option></select></label>
       <p class="hint full" style="margin:0">A repo can have its own choice: tick “Remember my choice for this repo” when GitSwitch asks, or run <span class="mono">gitswitch set switch-changes park --repo</span>.</p>
@@ -882,8 +903,18 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
       <label class="full set-row">When Update finds new commits on both sides <select name="pull">
         <option value="ff-only">stop and explain (fast-forward only)</option><option value="rebase">put my not-pushed commits on top (rebase)</option></select></label>
       <p class="hint full" style="margin:0">A rebase never runs with uncommitted changes or your own merge commits, stops with nothing changed if your commits clash, and can be undone until you push. One repo: <span class="mono">gitswitch set pull rebase --repo</span>.</p>
+      <p class="hint full" style="margin:6px 0 0"><strong>Other programs</strong> (a command, with spaces and "quotes" as in a terminal; empty uses the default)</p>
+      <label>Editor <input name="editor" placeholder="e.g. code (empty: $VISUAL or $EDITOR)" autocomplete="off" spellcheck="false"></label>
+      <label>Terminal <input name="terminal" placeholder="empty: the system's; {dir} = the folder" autocomplete="off" spellcheck="false"></label>
+      <label>Diff tool <input name="difftool" placeholder="empty: git's diff.tool; e.g. meld {left} {right}" autocomplete="off" spellcheck="false"></label>
+      <label>Merge tool <input name="mergetool" placeholder="empty: git's merge.tool; e.g. meld {left} {base} {right} --output {merged}" autocomplete="off" spellcheck="false"></label>
+      <p class="hint full" style="margin:0">Placeholders: <span class="mono">{path}</span> the file in your folder, <span class="mono">{left}</span> and <span class="mono">{right}</span> its two versions (the diff tool), <span class="mono">{base}</span> <span class="mono">{left}</span> (yours) <span class="mono">{right}</span> (theirs) and <span class="mono">{merged}</span> (the merge tool). Nothing is run through a shell.</p>
       <p class="hint full" style="margin:0">Changes are saved right away.</p>
     </form>
+    <h2 class="h3" id="kbHead">Keyboard shortcuts</h2>
+    <p class="hint">Press Change, then the keys you want (with Ctrl, Alt, Shift or ⌘ if you like). Esc cancels; Backspace removes the shortcut. Keys without Ctrl, Alt or ⌘ work only when you are not typing in a box. Kept on this computer.</p>
+    <div class="card" id="kbList" style="display:block;padding:8px 12px"></div>
+    <div class="row-actions" style="align-items:center"><button class="btn" id="kbResetAll">Reset all</button><span class="hint" id="kbStatus" role="status" aria-live="polite"></span></div>
     <h2 class="h3">Health check</h2>
     <div class="checks" id="checks"></div>
     <h2 class="h3">Guided setup</h2>
@@ -901,14 +932,17 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
   <div id="stDiff"></div>
 </dialog>
 <dialog id="conflictDlg" class="conflictdlg" aria-labelledby="cfTitle">
-  <div class="cfhead"><strong id="cfTitle"></strong><span class="hint" id="cfKind"></span><span class="spacer"></span><button class="btn ghost" id="cfClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div class="cfhead"><strong id="cfTitle"></strong><span class="hint" id="cfKind"></span><span class="spacer"></span><button class="btn" id="cfEditor" title="Open this file in your editor or IDE (Settings: editor)">Open in editor</button><button class="btn" id="cfMerge" hidden title="Open this file in your merge tool (Settings: merge tool)">Open merge tool</button><button class="btn" id="cfReload" title="Read the file from disk again, e.g. after fixing it in your editor">Reload</button><button class="btn ghost" id="cfClose" aria-label="Close" title="Close (Esc)">✕</button></div>
   <div class="cfgrid">
     <section><h3 id="cfOursH">Yours</h3><pre id="cfOurs" tabindex="0"></pre></section>
     <section><h3 id="cfTheirsH">Theirs</h3><pre id="cfTheirs" tabindex="0"></pre></section>
-    <section class="cfres"><h3>Result <span class="hint" id="cfMarks"></span></h3><textarea id="cfText" spellcheck="false" aria-label="The file as it will be saved"></textarea></section>
+    <section class="cfres"><h3>Result</h3><textarea id="cfText" spellcheck="false" aria-label="The file as it will be saved"></textarea></section>
   </div>
+  <div class="cfstat"><span id="cfCount" role="status" aria-live="polite"></span><span class="hint" id="cfMarks"></span></div>
+  <div class="cfregions" id="cfRegions" role="list" aria-label="The clashes in this file, one by one" hidden></div>
+  <p class="vnote bad" id="cfNote" role="alert" hidden></p>
   <div class="cfactions">
-    <button class="btn" id="cfTakeOurs">Take yours</button><button class="btn" id="cfTakeTheirs">Take theirs</button>
+    <button class="btn" id="cfTakeOurs" title="Keep your whole file and mark it resolved">Take all of yours</button><button class="btn" id="cfTakeTheirs" title="Keep their whole file and mark it resolved">Take all of theirs</button>
     <span class="spacer"></span>
     <button class="btn" id="cfSave" title="Save the text above as the file and mark it resolved">Save the result</button>
     <button class="btn primary" id="cfDone" title="You fixed the file in your editor: mark it resolved">Mark resolved</button>
@@ -961,32 +995,15 @@ dialog.paldlg{padding:0;max-width:640px;width:calc(100% - 32px);margin:12vh auto
 </dialog>
 <dialog id="keysDlg" aria-labelledby="keysTitle"><form method="dialog">
   <h2 id="keysTitle" style="margin:0 0 10px;font-size:17px">Keyboard shortcuts</h2>
+  <div id="keysBody"></div>
+  <h3 class="keyhead">Always</h3>
   <dl class="keylist">
-    <dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>Accounts, Repos, History, Reviews, Rules, Settings</dd>
-    <dt><kbd class="modk">Ctrl</kbd>+<kbd>K</kbd></dt><dd>Command palette: every page and action, by typing a few letters (also <kbd class="modk">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>)</dd>
-    <dt><kbd>?</kbd></dt><dd>This list</dd>
     <dt><kbd>Esc</kbd></dt><dd>Close a menu, pop-up or this list</dd>
-  </dl>
-  <h3 class="keyhead">On History</h3>
-  <dl class="keylist">
-    <dt><kbd>/</kbd></dt><dd>Search messages</dd>
-    <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next, previous commit</dd>
     <dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click</dt><dd>Select several commits</dd>
-    <dt><kbd>b</kbd></dt><dd>Switch branch</dd>
-    <dt><kbd>t</kbd></dt><dd>Show or hide the branches panel</dd>
-    <dt><kbd>f</kbd></dt><dd>Filters</dd>
-    <dt><kbd>r</kbd></dt><dd>Reload</dd>
-    <dt><kbd>Shift</kbd>+<kbd>U</kbd></dt><dd>Undo the last change</dd>
-    <dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>Redo what the last Undo took back</dd>
-  </dl>
-  <h3 class="keyhead">Repo tabs</h3>
-  <dl class="keylist">
-    <dt><kbd>Ctrl</kbd>+<kbd>Tab</kbd></dt><dd>Next tab (with <kbd>Shift</kbd>: previous); also <kbd>Ctrl</kbd>+<kbd>PgDn</kbd> <kbd>PgUp</kbd></dd>
-    <dt><kbd class="modk">Ctrl</kbd>+<kbd>W</kbd></dt><dd>Close the tab (the window stays open)</dd>
-    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Enter</kbd></dt><dd>In the tabs: move, then open one; <kbd>Delete</kbd> closes it</dd>
+    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Enter</kbd></dt><dd>In the repo tabs: move, then open one; <kbd>Delete</kbd> closes it</dd>
     <dt>Middle-click</dt><dd>Close a tab; drag a tab to move it</dd>
   </dl>
-  <div class="row-actions"><button class="btn primary" value="ok">Close</button></div>
+  <div class="row-actions"><button class="btn" type="button" id="keysChange">Change shortcuts…</button><button class="btn primary" value="ok">Close</button></div>
 </form></dialog>
 <dialog id="palDlg" class="paldlg" aria-label="Command palette">
   <div class="palhead">
@@ -1479,7 +1496,7 @@ async function pickFolder(title){
   if (r.supported) return r.path || null;
   return await ask(title + ' (full path):', {input:'', ok:'Choose'}) || null;
 }
-const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button><button class="btn" data-group="${i}" title="${r.group ? 'In group ' + esc(r.group) : 'Put it in a group you name'}">Group…</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
+const repoActions = (r, i) => `<div class="row-actions">${r.missing ? '' : `<button class="btn" data-hist="${i}">History</button><button class="btn" data-open="${i}">Open</button><button class="btn" data-term="${i}" title="Open a terminal in this repo's folder">Terminal</button><button class="btn" data-group="${i}" title="${r.group ? 'In group ' + esc(r.group) : 'Put it in a group you name'}">Group…</button>`}<button class="btn" data-rmrepo="${i}">Remove</button></div>`;
 // clonesNote says where else the same origin is cloned
 const clonesNote = r => !r.clones?.length ? '' : ` · <span title="${esc(r.clones.join('\n'))}">also cloned at ${esc(r.clones[0].split(/[\\/]/).pop())}${r.clones.length > 1 ? ` and ${r.clones.length - 1} more` : ''}</span>`;
 const groupRow = i => repoGroups.filter(g => g.at === i).map(g => `<tr class="group-row"><th colspan="5">${esc(g.name)} <span class="hint">(${g.n})</span></th></tr>`).join('');
@@ -1515,6 +1532,7 @@ $('#repos').addEventListener('click', async e => {
   const d = e.target.closest('button')?.dataset; if (!d) return;
   if (d.hist !== undefined){ show('history'); $('#histRepo').value = repos[d.hist].gitDir; loadHistory(); }
   else if (d.open !== undefined) act(() => api('POST','/api/repo/open',{path:repos[d.open].path}));
+  else if (d.term !== undefined) act(() => api('POST','/api/open-terminal',{gitDir:repos[d.term].gitDir}), 'Opened a terminal');
   else if (d.group !== undefined){
     const r = repos[d.group], mine = [...new Set((S.config.groups || []).map(g => g.name))];
     const name = await ask(`Group for ${r.path.split(/[\\/]/).pop()}. Leave it empty to take the repo out of its group.` + (mine.length ? `\nYour groups: ${mine.join(', ')}` : ''), {input:r.group || '', ok:'Save'});
@@ -1578,6 +1596,7 @@ $('#cloneForm').onsubmit = async e => {
     $('#cloneProgress').textContent = j.error || j.line;
     if (j.running) return setTimeout(poll, 400);
     $('#cloneGo').disabled = false;
+    longDone(j.error ? 'Clone failed' : 'Clone finished', j.error ? j.error.split('\n')[0] : j.repo?.path || '');
     if (j.error && j.hint){ $('#cloneProgress').className = 'full'; $('#cloneProgress').innerHTML = `<span class="status-bad">The clone failed.</span>${hintHTML(j.hint, j.error)}`; return; }
     if (j.error){ $('#cloneProgress').className = 'full status-bad mono'; $('#cloneProgress').style.whiteSpace = 'pre-wrap'; return; }
     toast('Cloned ' + j.repo.path + (j.repo.account ? ' with ' + j.repo.account : ''));
@@ -1973,6 +1992,7 @@ async function loadHistory(more){
   renderToolbar(); renderHistory(); renderRefTree();
   loadBranchPR(gd);
   autoFetch(gd);
+  fiSync();
   watchRepo(gd);
 }
 
@@ -2003,30 +2023,107 @@ async function operate(gd, action, word){
   if (q && !await ask(q[0], {ok:q[1], danger:true})) return;
   const r = await act(() => api('POST','/api/operation',{gitDir:gd, action}));
   if (!r) return loadHistory();
+  if (action === 'continue') longDone(r.kind ? `The ${word} stopped again` : `The ${word} is finished`, r.kind ? 'More files to fix' : '');
   toast(action === 'continue' ? (r.kind ? `The ${word} stopped again: more files to fix` : `The ${word} is finished`) : action === 'abort' ? `The ${word} was aborted` : `Skipped`, false, null, action === 'continue' && !r.kind ? undoable(gd) : null);
   loadHistory();
 }
-// openConflict shows both sides of a clashing file and lets you take one,
-// edit the result, or mark it fixed after editing elsewhere.
-const cf = {gd:'', path:''};
+// openConflict shows both sides of a clashing file and lets you settle it
+// clash by clash (take yours, theirs or both, or edit), edit the whole
+// result, or mark it fixed after editing elsewhere.
+const cf = {gd:'', path:'', total:0, exists:true};
 async function openConflict(gd, path){
   let c; try { c = await api('GET', `/api/conflict?gitDir=${encodeURIComponent(gd)}&path=${encodeURIComponent(path)}`); } catch (e) { toast(e.message, true, e.hint); return; }
-  cf.gd = gd; cf.path = path;
+  cf.gd = gd; cf.path = path; cf.exists = !!c.exists;
   $('#cfTitle').textContent = path; $('#cfKind').textContent = c.kind || '';
   const side = (v, none) => v === null || v === undefined ? none : v;
   $('#cfOursH').textContent = 'Yours' + (c.oursLabel ? ' · ' + c.oursLabel : ''); $('#cfTheirsH').textContent = 'Theirs' + (c.theirsLabel ? ' · ' + c.theirsLabel : '');
   $('#cfOurs').textContent = side(c.ours, '(this file does not exist on your side)');
   $('#cfTheirs').textContent = side(c.theirs, '(this file does not exist on their side)');
   $('#cfText').value = c.text || ''; $('#cfText').disabled = !c.exists;
-  $('#cfMarks').textContent = c.markers ? '· still has <<<<<<< markers: keep the lines you want and delete the markers' : '';
+  $('#cfMerge').hidden = !S?.config.mergeTool; $('#cfNote').hidden = true;
+  cf.total = c.exists ? cfParse($('#cfText').value).regions.length : 0;
+  const first = cfRender();
   if (!$('#conflictDlg').open) $('#conflictDlg').showModal();
+  (first || $('#cfText')).focus();
 }
+// cfParse finds the conflict regions of a text: <<<<<<< yours, an optional
+// ||||||| base (diff3), =======, theirs, >>>>>>>. An unfinished region is left as text.
+const CF_MARK = {ours:/^<{7}(?:\s.*)?$/, base:/^\|{7}(?:\s.*)?$/, mid:/^={7}\s*$/, theirs:/^>{7}(?:\s.*)?$/};
+function cfParse(text){
+  const lines = text.split('\n'), regions = [];
+  for (let i = 0; i < lines.length; i++){
+    if (!CF_MARK.ours.test(lines[i])) continue;
+    const r = {start:i, end:-1, ours:[], base:null, theirs:[], oursLabel:lines[i].slice(7).trim(), theirsLabel:''};
+    let part = 'ours';
+    for (let j = i + 1; j < lines.length; j++){
+      const l = lines[j];
+      if (part === 'ours' && CF_MARK.base.test(l)){ part = 'base'; r.base = []; continue; }
+      if (part !== 'theirs' && CF_MARK.mid.test(l)){ part = 'theirs'; continue; }
+      if (part === 'theirs' && CF_MARK.theirs.test(l)){ r.theirsLabel = l.slice(7).trim(); r.end = j; break; }
+      if (CF_MARK.ours.test(l)) break; // a new region starts: this one is broken
+      r[part].push(l);
+    }
+    if (r.end < 0) continue;
+    regions.push(r); i = r.end;
+  }
+  return {lines, regions};
+}
+// cfRender lists the clashes still in the result; it returns the first one's button.
+function cfRender(focusAt){
+  const {regions} = cfParse($('#cfText').value), left = regions.length;
+  cf.total = Math.max(cf.total, left);
+  const dlg = $('#conflictDlg'), box = $('#cfRegions');
+  dlg.classList.toggle('hasreg', cf.exists && cf.total > 0);
+  box.hidden = !left || !cf.exists;
+  const show = (ls, none) => ls.length ? esc(ls.slice(0, 12).join('\n')) + (ls.length > 12 ? `\n… ${ls.length - 12} more lines` : '') : `<span class="hint">${none}</span>`;
+  box.innerHTML = regions.map((r, i) => `<div class="cfreg" role="listitem" data-i="${i}">
+    <h4>Clash ${i + 1} of ${left} <span class="hint">lines ${r.start + 1}–${r.end + 1}</span></h4>
+    <div class="sides"><pre tabindex="0" aria-label="Yours${r.oursLabel ? ', ' + esc(r.oursLabel) : ''}">${show(r.ours, '(nothing: you removed these lines)')}</pre><pre tabindex="0" aria-label="Theirs${r.theirsLabel ? ', ' + esc(r.theirsLabel) : ''}">${show(r.theirs, '(nothing: they removed these lines)')}</pre></div>
+    <div class="acts"><button class="btn" data-cf="ours" title="Keep your lines, drop theirs">Take yours</button><button class="btn" data-cf="theirs" title="Keep their lines, drop yours">Take theirs</button><button class="btn" data-cf="both" title="Keep yours, then theirs">Take both</button><button class="btn ghost" data-cf="edit" title="Select these lines in the Result to edit them by hand">Edit</button></div></div>`).join('');
+  const word = cf.total === 1 ? 'clash' : 'clashes';
+  $('#cfCount').innerHTML = !cf.exists ? '' : left ? `<span class="left">${left} of ${cf.total} ${word} left</span>`
+    : cf.total ? `<span class="fixed">All ${cf.total} ${word} fixed: save the result to mark it resolved.</span>` : '';
+  $('#cfMarks').textContent = cf.exists && !cf.total ? 'No conflict markers in the result: save it, or mark it resolved.' : '';
+  $('#cfSave').classList.toggle('primary', cf.exists && cf.total > 0 && !left); $('#cfDone').classList.toggle('primary', !(cf.exists && cf.total > 0 && !left));
+  const at = Math.min(focusAt ?? 0, left - 1);
+  return left ? box.querySelectorAll('.cfreg')[at]?.querySelector('button') : $('#cfSave');
+}
+// cfTake rewrites the Result: the clash is replaced by one side or both.
+function cfTake(i, how){
+  const {lines, regions} = cfParse($('#cfText').value), r = regions[i]; if (!r) return;
+  const keep = how === 'ours' ? r.ours : how === 'theirs' ? r.theirs : [...r.ours, ...r.theirs];
+  lines.splice(r.start, r.end - r.start + 1, ...keep);
+  $('#cfText').value = lines.join('\n');
+  cfRender(i).focus();
+}
+function cfEdit(i){
+  const {lines, regions} = cfParse($('#cfText').value), r = regions[i], ta = $('#cfText'); if (!r) return;
+  let from = 0; for (let k = 0; k < r.start; k++) from += lines[k].length + 1;
+  let to = from; for (let k = r.start; k <= r.end; k++) to += lines[k].length + 1;
+  ta.focus(); ta.setSelectionRange(from, Math.max(from, to - 1));
+  ta.scrollTop = Math.max(0, r.start * (parseFloat(getComputedStyle(ta).lineHeight) || 17) - 40);
+}
+$('#cfRegions').addEventListener('click', e => {
+  const b = e.target.closest('[data-cf]'), i = +b?.closest('.cfreg')?.dataset.i; if (!b) return;
+  b.dataset.cf === 'edit' ? cfEdit(i) : cfTake(i, b.dataset.cf);
+});
+let cfTimer = 0;
+$('#cfText').addEventListener('input', () => { cancelAnimationFrame(cfTimer); cfTimer = requestAnimationFrame(() => cfRender()); });
 async function resolveConflict(action){
   const body = {gitDir:cf.gd, path:cf.path, action}; if (action === 'save') body.text = $('#cfText').value;
-  const r = await act(() => api('POST','/api/conflict', body));
+  let r; try { r = await api('POST','/api/conflict', body); } catch (e) { cfNote(e); return; }
   if (!r) return;
   $('#conflictDlg').close(); toast(`${cf.path}: ${action === 'ours' ? 'kept yours' : action === 'theirs' ? 'took theirs' : 'marked resolved'}`); loadHistory();
 }
+// Errors inside the dialog show in it: a toast would be behind the modal.
+function cfNote(e){ const n = $('#cfNote'); n.textContent = (e.hint ? e.hint.problem + ' ' + e.hint.fix + ' ' : '') + (e.message || e); n.hidden = false; }
+async function cfExternal(path, ok){
+  $('#cfNote').hidden = true;
+  try { await api('POST', path, {gitDir:cf.gd, path:cf.path}); $('#cfCount').textContent = ok; } catch (e) { cfNote(e); }
+}
+$('#cfEditor').onclick = () => cfExternal('/api/open-editor', 'Opened in your editor. When you are done, press Reload, then save or mark it resolved.');
+$('#cfMerge').onclick = () => cfExternal('/api/mergetool', 'Opened in your merge tool. When you are done, press Reload, then mark it resolved.');
+$('#cfReload').onclick = () => openConflict(cf.gd, cf.path);
 $('#cfTakeOurs').onclick = () => resolveConflict('ours');
 $('#cfTakeTheirs').onclick = () => resolveConflict('theirs');
 $('#cfSave').onclick = () => resolveConflict('save');
@@ -2050,6 +2147,7 @@ async function mergeInto(name){
   if (!r) return;
   if (r.outcome === 'conflicts') toast(`The merge stopped: ${r.conflicts?.length || 'some'} file(s) clash. Fix them in the banner above the log, then continue.`);
   else toast(r.message || `Merged ${name} into ${into}`, false, null, r.outcome === 'squashed' ? null : undoable(gd));
+  longDone(r.outcome === 'conflicts' ? 'Merge stopped' : 'Merge finished', r.outcome === 'conflicts' ? 'Some files clash: fix them in GitSwitch' : r.message || `Merged ${name} into ${into}`);
   loadHistory();
 }
 
@@ -2154,8 +2252,11 @@ function newPathOf(p){
 }
 // The file menu of a commit's file: its diff, blame and history.
 function fileMenu(x, y, path, rev, back){
-  popMenu(x, y, [['diff', 'Show diff'], ['blame', 'Blame'], ['history', 'File history']], back, k => {
-    if (k === 'diff') back?.click(); else if (k === 'blame') openBlame(path, rev); else openFileHistory(path);
+  const one = /^[0-9a-f]{7,64}$/i.test(rev || ''); // what one commit changed; not for a range
+  popMenu(x, y, [['diff', 'Show diff'], ...(one ? [['xdiff', 'Open in diff tool']] : []), ['blame', 'Blame'], ['history', 'File history']], back, k => {
+    if (k === 'diff') back?.click(); else if (k === 'blame') openBlame(path, rev);
+    else if (k === 'xdiff') act(() => api('POST', '/api/difftool', {gitDir:$('#histRepo').value, path, rev}), 'Opened in your diff tool');
+    else openFileHistory(path);
   });
 }
 document.addEventListener('contextmenu', e => {
@@ -2536,6 +2637,7 @@ async function loadBranchPR(gd){
 // meaning spelled out for screen readers).
 function lbl(b, text, n, says){
   b.querySelector('.lbl').textContent = text;
+  b.dataset.busy = /…$/.test(text) ? '1' : ''; // a fetch, push or update is running
   let badge = b.querySelector('.badge');
   if (!n){ badge?.remove(); return; }
   if (!badge){ badge = document.createElement('span'); badge.className = 'badge'; b.append(badge); }
@@ -2621,6 +2723,7 @@ $('#fetchBtn').onclick = async e => {
   b.disabled = true; lbl(b, 'Fetching…');
   const r = await act(() => api('POST','/api/repo/fetch',{gitDir:gd}));
   b.disabled = false; lbl(b, 'Fetch');
+  longDone(r ? 'Fetch finished' : 'Fetch failed', r ? (r.gained ? `${r.gained} new commit${r.gained > 1 ? 's' : ''}` : 'nothing new') : '');
   if (!r) return;
   toast(r.gained ? `${r.gained} new commit${r.gained > 1 ? 's' : ''} on ${r.head.upstream}` : 'Fetched: nothing new',
     false, null, r.gained ? {label:'Update', run: () => $('#updateBtn').click()} : null);
@@ -2650,10 +2753,11 @@ $('#updateBtn').onclick = async e => {
     if (/update --rebase/.test(err.message) && await ask('Both this branch and its remote have new commits.\nPut your not-pushed commits on top of the new ones (rebase)? Nothing changes if they clash, and you can undo it until you push.', {ok:'Rebase my commits'})){
       lbl(b, 'Rebasing…');
       r = await act(() => api('POST','/api/repo/update',{gitDir:gd, mode:'rebase'}));
-      if (r){ toast('Updated: your commits are on top of ' + r.upstream, false, null, undoable(gd)); loadHistory(); return; }
+      if (r){ longDone('Rebase finished', 'Your commits are on top of ' + r.upstream); toast('Updated: your commits are on top of ' + r.upstream, false, null, undoable(gd)); loadHistory(); return; }
     } else if (!/update --rebase/.test(err.message)) toast(err.message, true, err.hint);
   }
   if (r) toast('Up to date with ' + r.upstream);
+  longDone(r ? 'Update finished' : 'Update stopped', r ? 'Up to date with ' + r.upstream : '');
   loadHistory();
 };
 $('#pushBtn').onclick = async e => {
@@ -2676,10 +2780,12 @@ $('#pushBtn').onclick = async e => {
     if (/both have new commits, so a push would be refused/.test(err.message)){
       if (await ask(`${err.message.split('\n')[0].replace(/ \(GitSwitch never forces one\)/, '')}.\n\nCombine them first (git pull --rebase), or replace the remote branch with yours. A force push with lease shows what would be lost and only goes through when nobody pushed since you fetched.`, {ok:'Review a force push…', cancel:'Close', danger:true})) forcePush();
     } else toast(err.message, true, err.hint);
+    longDone('Push failed', err.message.split('\n')[0]);
     loadHistory(); return;
   }
   if (r){
     const msg = !r.commits && !r.first ? 'Nothing to push' : `Pushed ${r.commits} commit${r.commits === 1 ? '' : 's'} to ${r.upstream}${r.account ? ' as ' + r.account : ''}`;
+    longDone('Push finished', msg);
     toast(msg, false, null, r.prUrl ? {label:'Open pull request', run: () => act(() => api('POST','/api/open',{url:r.prUrl}))} : null);
   }
   loadHistory();
@@ -2699,6 +2805,7 @@ $('#compareBtn').onclick = async () => {
 };
 // Commit… opens the changes panel with its commit box.
 $('#commitBtn').onclick = () => openChanges();
+$('#termBtn').onclick = () => act(() => api('POST','/api/open-terminal',{gitDir:$('#histRepo').value}), 'Opened a terminal');
 $('#browseRepo').onclick = () => act(() => api('POST','/api/commit/browse',{gitDir:$('#histRepo').value, hash:''}));
 
 // Branch menu: local branches first, then remote ones not checked out yet.
@@ -3882,7 +3989,8 @@ function changeList(st){
   const row = (f, sec) => {
     const letter = sec === 'staged' ? f.staged : sec === 'conflict' ? 'U' : f.staged === '?' ? '?' : f.worktree, [l, word] = CHG[letter] || ['M', 'modified'];
     const name = f.path.split('/').pop(), dir = f.path.slice(0, f.path.length - name.length);
-    const btns = sec === 'staged' ? `<button class="btn ghost icon" data-wa="unstage" aria-label="Unstage ${esc(f.path)}" title="Unstage: take it out of the next commit; the file keeps the change">−</button>`
+    const btns = sec === 'conflict' ? `<button class="btn ghost icon" data-wa="editor" aria-label="Open ${esc(f.path)} in your editor" title="Open in your editor or IDE">↗</button>${S?.config.mergeTool ? `<button class="btn ghost icon" data-wa="mergetool" aria-label="Open ${esc(f.path)} in your merge tool" title="Open in your merge tool">⇄</button>` : ''}`
+      : sec === 'staged' ? `<button class="btn ghost icon" data-wa="unstage" aria-label="Unstage ${esc(f.path)}" title="Unstage: take it out of the next commit; the file keeps the change">−</button>`
       : sec === 'changed' ? `${f.staged === '?' ? `<button class="btn ghost icon" data-wa="ignore" aria-label="Ignore ${esc(f.path)}…" title="Ignore: tell git not to track it (.gitignore)">⊘</button>` : ''}<button class="btn ghost icon" data-wa="discard" aria-label="Discard the changes in ${esc(f.path)}" title="Discard: back to the last commit${f.staged === '?' ? ' (removes this new file)' : ''}; kept in git stash">↺</button><button class="btn ghost icon" data-wa="stage" aria-label="Stage ${esc(f.path)}" title="Stage: add it to the next commit">+</button>` : '';
     return `<div class="crow${on(f.path, sec === 'staged') ? ' on' : ''}" data-path="${esc(f.path)}" data-sec="${sec}">
       <button class="frow" data-wa="diff" title="${esc(f.path + (f.orig ? ' (from ' + f.orig + ')' : '') + ': ' + word)}"><span class="cl cl-${esc(l)}" aria-label="${esc(word)}">${esc(l)}</span><span class="fn">${esc(name)}${dir ? ` <span class="fdir">${esc(dir.replace(/\/$/, ''))}</span>` : ''}</span></button>${btns}</div>`;
@@ -3890,7 +3998,7 @@ function changeList(st){
   const sec = (title, key, list, actions, hint) => !list.length ? '' : `<div class="csec"><div class="csh"><strong>${title}</strong><span class="cnt">${list.length}</span><span class="spacer"></span>${actions}</div>
     ${hint ? `<p class="hint" style="margin:0 0 4px">${hint}</p>` : ''}${list.map(f => row(f, key)).join('')}</div>`;
   return (st.busy ? `<p class="hint bad">A ${esc(st.busy)} is in progress: ${['merge', 'rebase', 'cherry-pick', 'revert'].includes(st.busy) ? 'fix the clashes (click a file), then use Continue or Abort above the log.' : 'finish or abort it in a terminal first.'}</p>` : '')
-    + sec('Conflicts', 'conflict', conflicts, '', 'Click a file to look at both sides and pick one, or fix it in your editor or IDE and stage it there.')
+    + sec('Conflicts', 'conflict', conflicts, '', 'Click a file to settle its clashes one by one, or open it in your editor (↗) and stage it there.')
     + sec('Staged', 'staged', staged, `<button class="link" data-wa="unstage-all" title="Take every change out of the next commit">Unstage all</button>`, '')
     + sec(staged.length ? 'Unstaged' : 'Changes', 'changed', changed, `<button class="link danger" data-wa="discard-all" title="Put every file back as in the last commit; the changes are kept in git stash">Discard all</button><button class="link" data-wa="stage-all" title="Add every change to the next commit">Stage all</button>`,
       staged.length ? '' : 'Stage the files to commit, or commit them all at once.');
@@ -3953,7 +4061,8 @@ async function showWipDiff(gd, path, staged){
   const flip = wipFlip; wipFlip = false;
   if (flip && !d.text){ wipDiff.staged = !staged; return showWipDiff(gd, path, !staged); }
   HD = null; hsel.clear();
-  const head = `<div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>`;
+  const isNew = !staged && CH?.files.find(x => x.path === path)?.staged === '?'; // an untracked file has nothing to compare with
+  const head = `<div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span>${isNew ? '' : '<button class="btn ghost" data-xdiff title="Open this change in your external diff tool (Settings: diff tool)">Diff tool ↗</button>'}<button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>`;
   const hunks = d.hunks || [];
   if (!hunks.length || !d.fingerprint){
     box.innerHTML = `<div class="diffbox">${head}${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'), path)}${d.noHunks && d.text ? `<p class="hmeta">${esc(d.noHunks)}</p>` : ''}</div>`;
@@ -3963,7 +4072,8 @@ async function showWipDiff(gd, path, staged){
     box.innerHTML = `<div class="diffbox" id="hdiff">${head}${hunkView(d, HD)}</div>`;
     hupdate();
   }
-  box.querySelector('button').onclick = () => { wipDiff = null; HD = null; box.innerHTML = ''; document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); };
+  box.querySelector('[data-xdiff]')?.addEventListener('click', () => act(() => api('POST', '/api/difftool', {gitDir:gd, path, staged}), 'Opened in your diff tool'));
+  box.querySelector('[aria-label="Close the diff"]').onclick = () => { wipDiff = null; HD = null; box.innerHTML = ''; document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); };
 }
 
 // ---- hunks and lines: stage, unstage or discard a part of a file ----
@@ -4086,6 +4196,8 @@ $('#details').addEventListener('click', async e => {
   if (a === 'close'){ WIP = false; wipShut = true; wipDiff = null; return renderHistory(); }
   if (a === 'reload') return loadHistory();
   if (a === 'ignore'){ const r = e.target.getBoundingClientRect(); return ignoreMenu(r.left, r.bottom + 4, path, e.target); }
+  if (a === 'editor') return act(() => api('POST', '/api/open-editor', {gitDir:gd, path}), 'Opened in your editor');
+  if (a === 'mergetool') return act(() => api('POST', '/api/mergetool', {gitDir:gd, path}), 'Opened in your merge tool');
   if (a === 'diff' && sec === 'conflict') return openConflict(gd, path);
   if (a === 'diff'){
     document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); row.classList.add('on');
@@ -4131,16 +4243,109 @@ async function commitAction(a){
   picked.clear(); loadHistory();
 }
 
-// ---- keyboard ----
-// Keys that work on every page: 1-6 for the pages, ? for the list.
-const pageKeys = ['accounts', 'repos', 'history', 'reviews', 'rules', 'settings'];
+// ---- keyboard: the shortcut registry ----
+// Every command has an id and a default shortcut (or none). A shortcut is
+// written "Mod+K", "Shift+U", "Ctrl+Tab", "J", "?" (Mod is ⌘ on a Mac, Ctrl
+// elsewhere; the key is a letter, a digit, a symbol or a name such as Tab).
+// What you changed in Settings is kept in this page's storage (gs.shortcuts);
+// without storage, the defaults work as they are. The palette, the shortcut
+// list and the hints read the same registry.
+const openKeys = () => { renderKeysDlg(); $('#keysDlg').showModal(); };
+const histScope = [['h.search', 'Search messages', '/'], ['h.next', 'Next commit', 'J'], ['h.prev', 'Previous commit', 'K'], ['h.switch', 'Switch branch', 'B'], ['h.side', 'Show or hide the branches panel', 'T'],
+  ['h.filters', 'Filters', 'F'], ['h.reload', 'Reload', 'R'], ['h.undo', 'Undo the last change', 'Shift+U'], ['h.redo', 'Redo what the last Undo took back', 'Shift+R']];
+const KEYRUN = {
+  'app.keys': openKeys,
+  'h.search': () => $('#histSearch').focus(), 'h.next': () => moveRow(1), 'h.prev': () => moveRow(-1), 'h.switch': () => toggleBranches(true), 'h.side': toggleSide,
+  'h.filters': () => toggleFilters(), 'h.reload': () => loadHistory(), 'h.undo': () => undoLast($('#histRepo').value), 'h.redo': () => redoLast($('#histRepo').value),
+  'tab.next': () => cycleTab(1), 'tab.prev': () => cycleTab(-1), 'tab.close': () => closeTab($('#histRepo').value),
+};
+const KEYDEFS = [
+  ...[['accounts', 'Accounts'], ['repos', 'Repos'], ['history', 'History'], ['reviews', 'Reviews'], ['rules', 'Rules'], ['settings', 'Settings']].map(([t, n], i) =>
+    ({id:'page.' + t, label:'Go to ' + n, group:'Pages', def:String(i + 1), scope:'page', run: () => { if ($('#tab-welcome').hidden) show(t); }})),
+  {id:'app.palette', label:'Command palette', group:'Everywhere', def:'Mod+K', scope:'app'},
+  {id:'app.keys', label:'This list of shortcuts', group:'Everywhere', def:'?', scope:'page'},
+  ...histScope.map(([id, label, def]) => ({id, label, group:'On History', def, scope:'history'})),
+  {id:'tab.next', label:'Next repo tab', group:'Repo tabs', def:'Ctrl+Tab', scope:'tabs'},
+  {id:'tab.prev', label:'Previous repo tab', group:'Repo tabs', def:'Ctrl+Shift+Tab', scope:'tabs'},
+  {id:'tab.close', label:'Close this repo tab', group:'Repo tabs', def:'Mod+W', scope:'tabs'},
+  ...[['h.commit', 'Commit…'], ['h.fetch', 'Fetch'], ['h.update', 'Update'], ['h.push', 'Push'], ['h.changes', 'Show uncommitted changes'], ['h.stageall', 'Stage all'], ['h.newbranch', 'New branch…'],
+    ['h.stashes', 'Stashes…'], ['h.cmp', 'Compare two refs…'], ['h.reflog', 'Reflog…'], ['h.remotes', 'Remotes…'], ['h.compare', 'Compare with the remote…'], ['h.blame', 'Blame a file…'],
+    ['h.filehist', 'File history…'], ['h.terminal', 'Open in terminal'], ['h.web', 'View on the web'], ['repo.open', 'Open repo…'], ['repos.clone', 'Clone from URL…'], ['repos.init', 'New repo…'],
+    ['acct.add', 'Add account…'], ['rv.refresh', 'Refresh reviews']].map(([id, label]) => ({id, label, group:'Actions', def:'', scope:'any'})),
+].map(d => ({...d, run: d.run || KEYRUN[d.id]}));
+const KEYDEF = new Map(KEYDEFS.map(d => [d.id, d]));
+const KB = {rec:null, custom:(() => {
+  const v = store.get('gs.shortcuts', {}), o = {};
+  if (v && typeof v === 'object') for (const [k, c] of Object.entries(v)) if (KEYDEF.has(k) && typeof c === 'string' && /^((Mod|Ctrl|Meta|Alt|Shift)\+)*[^+\s]+$/.test(c)) o[k] = c;
+  return o; })()};
+const chordFor = id => id in KB.custom ? KB.custom[id] : KEYDEF.get(id)?.def || '';
+const KEYALIAS = [['Ctrl+PageDown', 'tab.next'], ['Ctrl+PageUp', 'tab.prev'], ['Mod+Shift+P', 'app.palette']]; // also work, not changeable
+// keyName is the key of an event as written in a chord, '' for a modifier alone.
+function keyName(e){
+  const k = e.key || '';
+  if (!k || ['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'Dead', 'Unidentified', 'OS'].includes(k)) return '';
+  if (k === ' ') return 'Space';
+  if (k === '+') return 'Plus';
+  if (k.length === 1){
+    if (/^[a-z]$/i.test(k)) return k.toUpperCase();
+    if (e.altKey && /^Key[A-Z]$/.test(e.code || '')) return e.code.slice(3); // ⌥ types other characters on a Mac
+    if (e.altKey && /^Digit\d$/.test(e.code || '')) return e.code.slice(5);
+  }
+  return k;
+}
+const shiftCounts = key => key.length > 1 || /^[A-Z0-9]$/.test(key); // Shift is part of the chord for letters, digits and named keys, not for ? / …
+// chordOf writes an event as a chord ('' while only a modifier is down).
+function chordOf(e){
+  const k = keyName(e); if (!k) return '';
+  const m = [];
+  if (MAC ? e.metaKey : e.ctrlKey) m.push('Mod');
+  if (MAC ? e.ctrlKey : e.metaKey) m.push(MAC ? 'Ctrl' : 'Meta');
+  if (e.altKey) m.push('Alt');
+  if (e.shiftKey && shiftCounts(k)) m.push('Shift');
+  return [...m, k].join('+');
+}
+function chordMatches(e, chord){
+  const t = chord.split('+'), key = t.pop(), m = new Set(t);
+  if (keyName(e) !== key) return false;
+  if (m.has('Mod') ? !(e.ctrlKey || e.metaKey) : (e.ctrlKey !== m.has('Ctrl') || e.metaKey !== m.has('Meta'))) return false;
+  if (e.altKey !== m.has('Alt')) return false;
+  return !shiftCounts(key) || e.shiftKey === m.has('Shift');
+}
+// canon spells Mod as the platform's own key, so Mod+K and Ctrl+K are the same chord on Windows.
+const canon = c => { const t = c.split('+'), k = t.pop(), m = new Set(t.map(x => x === 'Mod' ? (MAC ? 'Meta' : 'Ctrl') : x)); return ['Ctrl', 'Meta', 'Alt', 'Shift'].filter(x => m.has(x)).concat(k).join('+'); };
+const chordShown = c => c.split('+').map(x => ({Mod:MOD, Meta:MAC ? '⌘' : 'Win', Alt:MAC ? '⌥' : 'Alt', Plus:'+'}[x] || x));
+const keysOf = id => { const c = KEYDEF.has(id) ? chordFor(id) : ''; return c ? chordShown(c) : null; };
+const kbds = (id, join = '+') => (keysOf(id) || []).map(x => `<kbd>${esc(x)}</kbd>`).join(join);
+const hasMod = c => /(^|\+)(Mod|Ctrl|Meta|Alt)\+/.test(c); // a chord that also works while typing in a box
+// runCommand runs a palette command by its id, saying why when it can't.
+function runCommand(id){
+  const it = palCommands().find(c => c.id === id);
+  if (!it) return toast('That command is not available right now');
+  if (it.disabled) return toast(it.label + ': ' + it.disabled);
+  if (it.sub) return openPalette(it.sub === 'repo' ? 'repo' : undefined);
+  it.run?.();
+}
+function moveRow(dir){
+  const rows = [...document.querySelectorAll('.hrow:not(.fold):not(.wip)')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
+  const next = rows[Math.max(0, Math.min(rows.length - 1, cur < 0 ? 0 : cur + dir))];
+  if (next){ next.focus(); picked.clear(); pick(next.dataset.hash, true); next.scrollIntoView({block:'nearest'}); }
+}
+// The one place keys are read. Plain keys (no Ctrl, Alt or ⌘) never fire while
+// typing in a box; with a dialog open only the palette key works.
 document.addEventListener('keydown', e => {
-  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('input, select, textarea, [contenteditable]')) return;
+  if (KB.rec || e.isComposing) return;
+  let id = '', hit = '';
+  for (const d of KEYDEFS){ const c = chordFor(d.id); if (c && chordMatches(e, c)){ id = d.id; hit = c; break; } }
+  if (!id) for (const [c, i] of KEYALIAS) if (chordMatches(e, c)){ id = i; hit = c; break; }
+  if (!id) return;
+  if (id === 'app.palette'){ e.preventDefault(); $('#palDlg').open ? $('#palDlg').close() : openPalette(); return; }
   if (document.querySelector('dialog[open]')) return;
-  if (e.key === '?'){ e.preventDefault(); $('#keysDlg').showModal(); return; }
-  if (/^[1-6]$/.test(e.key) && $('#tab-welcome').hidden){ e.preventDefault(); show(pageKeys[+e.key - 1]); }
+  if (!hasMod(hit) && e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+  const d = KEYDEF.get(id);
+  if ((d.scope === 'history' || d.scope === 'tabs') && !histVisible()) return;
+  e.preventDefault();
+  d.run ? d.run() : runCommand(id);
 });
-$('#keysBtn').onclick = () => $('#keysDlg').showModal();
 document.addEventListener('keydown', e => {
   if (!histVisible() || $('#dlg').open || $('#palDlg').open || e.altKey || document.querySelector('dialog[open]')) return;
   const typing = e.target.closest('input, select, textarea');
@@ -4152,22 +4357,171 @@ document.addEventListener('keydown', e => {
     if (picked.size || WIP){ if (WIP) wipShut = true; picked.clear(); WIP = false; wipDiff = null; renderHistory(); }
     return;
   }
-  if (typing || e.metaKey || e.ctrlKey) return;
-  const rows = [...document.querySelectorAll('.hrow:not(.fold):not(.wip)')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
-  if (e.key === '/'){ e.preventDefault(); $('#histSearch').focus(); }
-  else if (e.key === 'j' || e.key === 'k'){
-    e.preventDefault();
-    const next = rows[Math.max(0, Math.min(rows.length - 1, cur < 0 ? 0 : cur + (e.key === 'j' ? 1 : -1)))];
-    if (next){ next.focus(); picked.clear(); pick(next.dataset.hash, true); next.scrollIntoView({block:'nearest'}); }
-  }
-  else if (e.key === 'b'){ e.preventDefault(); toggleBranches(true); }
-  else if (e.key === 't'){ e.preventDefault(); toggleSide(); }
-  else if (e.key === 'U'){ e.preventDefault(); undoLast($('#histRepo').value); }
-  else if (e.key === 'R'){ e.preventDefault(); redoLast($('#histRepo').value); }
-  else if (e.key === 'r'){ e.preventDefault(); loadHistory(); }
-  else if (e.key === 'f'){ e.preventDefault(); toggleFilters(); }
 });
 
+// ---- changing a shortcut ----
+const KB_REFUSE = {
+  plain: new Set(['Tab', 'Enter', 'Space', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'F5', 'F11', 'F12', 'Insert', 'ContextMenu']),
+  mod: new Set(['A', 'C', 'F', 'H', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'V', 'X', 'Y', 'Z', 'Tab', 'Space', 'Plus', '=', '-', '0', 'Enter', 'ArrowLeft', 'ArrowRight']),
+  modShift: new Set(['N', 'T', 'R', 'Q', 'Z', 'I', 'J', 'C', 'Delete']),
+};
+// shortcutProblem says why a chord can't go to a command ('' when it can).
+function shortcutProblem(id, chord){
+  const t = chord.split('+'), key = t[t.length - 1], m = new Set(t.slice(0, -1)), c = canon(chord), name = chordShown(chord).join('+');
+  const prim = MAC ? 'Meta' : 'Ctrl', onlyPrim = m.has('Mod') || m.has(prim);
+  if (!MAC && m.has('Meta')) return `${name} belongs to the system (the Windows or Super key)`;
+  if (m.has('Alt') && ['F4', 'Tab', 'Space', 'ArrowLeft', 'ArrowRight'].includes(key)) return `${name} belongs to the system or the window`;
+  if (!m.size && KB_REFUSE.plain.has(key)) return `${name} is needed to move around and type; pick a letter, a digit or a symbol`;
+  if (m.size === 1 && m.has('Shift') && (key.length > 1 || key === 'Space')) return `${name} is needed to move around and type`;
+  if (onlyPrim && !m.has('Alt') && !m.has('Shift') && KB_REFUSE.mod.has(key)) return `${name} is reserved by the browser or the system (copy, find, reload, new window, zoom…)`;
+  if (onlyPrim && !m.has('Alt') && m.has('Shift') && KB_REFUSE.modShift.has(key)) return `${name} is reserved by the browser or the system`;
+  if (KEYALIAS.some(([a]) => canon(a) === c)) return `${name} is also used by “${KEYDEF.get(KEYALIAS.find(([a]) => canon(a) === c)[1]).label}” and can't be changed`;
+  for (const d of KEYDEFS) if (d.id !== id){ const o = chordFor(d.id); if (o && canon(o) === c) return `${name} is already used by “${d.label}”`; }
+  return '';
+}
+const kbSay = t => { const el = $('#kbStatus'); if (el){ el.textContent = ''; setTimeout(() => el.textContent = t, 30); } };
+function kbStore(){ store.set('gs.shortcuts', KB.custom); renderKeyHints(); renderShortcutSettings(); }
+function kbSet(id, chord){
+  if (chord === (KEYDEF.get(id).def || '')) delete KB.custom[id]; else KB.custom[id] = chord;
+  kbStore();
+}
+function stopRecord(){ if (!KB.rec) return; const {btn} = KB.rec; KB.rec = null; btn.setAttribute('aria-pressed', 'false'); btn.textContent = 'Change'; }
+function recordShortcut(id, btn){
+  stopRecord();
+  if (document.querySelector('dialog[open]')) return; // not while a pop-up is open
+  KB.rec = {id, btn}; btn.setAttribute('aria-pressed', 'true'); btn.textContent = 'Press keys…';
+  btn.addEventListener('blur', () => { if (KB.rec?.btn === btn) stopRecord(); }, {once:true});
+  kbSay(`Press the new shortcut for “${KEYDEF.get(id).label}”. Backspace removes it, Escape cancels.`);
+}
+// While recording, every key is the answer, not a command.
+window.addEventListener('keydown', e => {
+  if (!KB.rec) return;
+  const {id, btn} = KB.rec, label = KEYDEF.get(id).label;
+  if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey){ stopRecord(); return; } // leaving the button with Tab cancels, as it moves on
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return; // wait for the key itself
+  if (e.key === 'Escape'){ stopRecord(); btn.focus(); kbSay('Cancelled: the shortcut is unchanged.'); return; }
+  if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey){ stopRecord(); kbSet(id, ''); document.querySelector(`[data-kb=change][data-id="${id}"]`)?.focus(); kbSay(`“${label}” has no shortcut now.`); return; }
+  const chord = chordOf(e), why = chord && shortcutProblem(id, chord);
+  if (!chord) return;
+  if (why){ kbSay(why + '. Press another shortcut, or Escape to cancel.'); return; }
+  stopRecord(); kbSet(id, chord);
+  document.querySelector(`[data-kb=change][data-id="${id}"]`)?.focus();
+  kbSay(`“${label}” is now ${chordShown(chord).join(' plus ')}.` + (hasMod(chord) ? '' : ' It works when you are not typing in a box.'));
+}, true);
+function renderShortcutSettings(){
+  const el = $('#kbList'); if (!el) return;
+  const rows = [];
+  for (const g of [...new Set(KEYDEFS.map(d => d.group))]){
+    rows.push(`<tr><th colspan="3" scope="colgroup">${esc(g)}</th></tr>`);
+    for (const d of KEYDEFS.filter(x => x.group === g)){
+      const c = chordFor(d.id), same = c === (d.def || '');
+      rows.push(`<tr><td>${esc(d.label)}</td><td>${c ? kbds(d.id) : '<span class="hint">none</span>'}${same ? '' : ' <span class="hint">(changed)</span>'}</td>
+        <td><button class="btn" type="button" data-kb="change" data-id="${d.id}" aria-pressed="false" aria-label="Change the shortcut for ${esc(d.label)}">Change</button>
+        <button class="btn ghost" type="button" data-kb="reset" data-id="${d.id}"${same ? ' disabled' : ''} aria-label="Reset the shortcut for ${esc(d.label)}${d.def ? ' to ' + esc(chordShown(d.def).join('+')) : ' (none)'}">Reset</button></td></tr>`);
+    }
+  }
+  el.innerHTML = `<table class="kbtable"><caption class="sr-only">Keyboard shortcuts</caption><tbody>${rows.join('')}</tbody></table>`;
+  $('#kbResetAll').disabled = !Object.keys(KB.custom).length;
+}
+$('#kbList').addEventListener('click', e => {
+  const b = e.target.closest('[data-kb]'); if (!b) return;
+  const id = b.dataset.id;
+  if (b.dataset.kb === 'change') return KB.rec?.id === id ? stopRecord() : recordShortcut(id, b);
+  stopRecord(); delete KB.custom[id]; kbStore();
+  document.querySelector(`[data-kb=change][data-id="${id}"]`)?.focus();
+  kbSay(`“${KEYDEF.get(id).label}” is back to ${chordFor(id) ? chordShown(chordFor(id)).join(' plus ') : 'no shortcut'}.`);
+});
+$('#kbResetAll').onclick = async () => {
+  stopRecord();
+  if (!await ask('Put every shortcut back to its default?', {ok:'Reset all'})) return;
+  KB.custom = {}; kbStore(); kbSay('Every shortcut is back to its default.');
+};
+// The shortcut list (?) and the hints on the page show the shortcuts in use now.
+function renderKeysDlg(){
+  const html = [];
+  const dl = (title, rows) => rows.length && html.push(`<h3 class="keyhead">${esc(title)}</h3><dl class="keylist">${rows.map(([k, t]) => `<dt>${k}</dt><dd>${esc(t)}</dd>`).join('')}</dl>`);
+  const row = d => [kbds(d.id), d.label];
+  const pages = KEYDEFS.filter(d => d.group === 'Pages'), plain = pages.every(d => chordFor(d.id) === d.def);
+  dl('On every page', [
+    ...(plain ? [[`<kbd>1</kbd>–<kbd>6</kbd>`, 'Accounts, Repos, History, Reviews, Rules, Settings']] : pages.filter(d => chordFor(d.id)).map(row)),
+    ...KEYDEFS.filter(d => d.group === 'Everywhere' && chordFor(d.id)).map(d => [kbds(d.id), d.id === 'app.palette' ? 'Command palette: every page and action, by typing a few letters' : d.label]),
+  ]);
+  dl('On History', KEYDEFS.filter(d => d.group === 'On History' && chordFor(d.id)).map(row));
+  dl('Repo tabs', KEYDEFS.filter(d => d.group === 'Repo tabs' && chordFor(d.id)).map(row));
+  dl('Your own', KEYDEFS.filter(d => d.group === 'Actions' && chordFor(d.id)).map(row));
+  $('#keysBody').innerHTML = html.join('');
+}
+function renderKeyHints(){
+  const k = id => chordFor(id) ? kbds(id, ' ') : '';
+  const ks = $('#keysBtn'); ks.innerHTML = 'Shortcuts ' + k('app.keys'); ks.title = 'Keyboard shortcuts' + (keysOf('app.keys') ? ` (${keysOf('app.keys').join('+')})` : '');
+  $('#palBtn').innerHTML = 'Commands ' + k('app.palette'); $('#palBtn').title = 'Command palette' + (keysOf('app.palette') ? ` (${keysOf('app.palette').join('+')})` : '');
+  const bit = (id, text) => chordFor(id) ? `${k(id)} ${text}` : '';
+  $('#histKeys').innerHTML = [bit('h.search', 'search'), chordFor('h.next') || chordFor('h.prev') ? `${k('h.next')} ${k('h.prev')} move` : '', '<kbd>Enter</kbd> select', 'Ctrl/⌘-click select several', '<kbd>Esc</kbd> clear',
+    bit('h.switch', 'branch'), bit('h.side', 'branches panel'), bit('h.reload', 'reload'), bit('app.palette', 'commands'), bit('tab.next', 'next repo tab'),
+    'in the branches: click shows its commits, double-click switches, right-click for more'].filter(Boolean).join(' · ');
+}
+$('#keysBtn').onclick = openKeys;
+$('#keysChange').onclick = () => { $('#keysDlg').close(); show('settings'); setTimeout(() => $('#kbHead').scrollIntoView({block:'start'}), 50); };
+renderKeyHints();
+
+// ---- fetch on an interval, and a note when a long action ends ----
+// The page fetches the open repo on a timer while it is open and showing:
+// one repo at a time, never while a dialog is open or a fetch, push or
+// update is running, and with a longer wait after each failure.
+const FI = {gd:'', min:0, t:0, fails:0, running:false};
+function fiArm(ms){
+  clearTimeout(FI.t); FI.t = 0;
+  if (!FI.min || !FI.gd) return;
+  FI.t = setTimeout(fiTick, ms ?? Math.min(FI.min * 60000 * 2 ** FI.fails, Math.max(FI.min * 60000, 7200000)));
+}
+// fiSync follows the setting and the shown repo: a new repo or interval restarts the wait.
+function fiSync(){
+  const gd = $('#histRepo')?.value || '', min = S?.fetchInterval || 0;
+  if (gd === FI.gd && min === FI.min) return;
+  FI.gd = gd; FI.min = min; FI.fails = 0; fiArm();
+}
+async function fiTick(){
+  FI.t = 0;
+  const gd = $('#histRepo').value;
+  if (gd !== FI.gd || (S?.fetchInterval || 0) !== FI.min) return fiSync();
+  if (document.hidden || document.querySelector('dialog[open]') || document.querySelector('[data-busy="1"]') || FI.running) return fiArm(15000); // not now: look again soon
+  FI.running = true;
+  let r, ok = true;
+  try { r = await api('POST', '/api/repo/fetch', {gitDir:gd}); } catch { ok = false; }
+  FI.running = false;
+  FI.fails = ok ? 0 : Math.min(FI.fails + 1, 3);
+  if (ok && r?.gained && $('#histRepo').value === gd){
+    toast(`${r.gained} new commit${r.gained > 1 ? 's' : ''} on ${r.head.upstream}`, false, null, {label:'Update', run: () => $('#updateBtn').click()});
+    loadHistory();
+  }
+  fiArm();
+}
+// longDone tells you a long action finished while the window was in the
+// background: a desktop notification when the system allows it, else a ● in
+// the window's title until you come back. One call, one note.
+const NOTE = {base:document.title, pending:false, on: () => store.get('gs.notify', false) === true};
+function longDone(what, detail){
+  if (!NOTE.on() || (!document.hidden && document.hasFocus())) return;
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted'){ const n = new Notification('GitSwitch: ' + what, {body:detail || '', tag:'gitswitch-done'}); n.onclick = () => window.focus(); return; }
+  } catch {}
+  if (!NOTE.pending){ NOTE.base = document.title; NOTE.pending = true; }
+  document.title = '● ' + NOTE.base;
+}
+function noteClear(){ if (NOTE.pending){ NOTE.pending = false; document.title = NOTE.base; } }
+window.addEventListener('focus', noteClear);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) noteClear(); });
+function notifyNote(){
+  const el = $('#notifyNote'); if (!el) return;
+  el.textContent = !NOTE.on() ? '(this computer only)' : typeof Notification === 'undefined' ? '(this window can’t show notifications: its title gets a ● instead)'
+    : Notification.permission === 'granted' ? '(a desktop notification)' : Notification.permission === 'denied' ? '(blocked by the system: the window title gets a ● instead)' : '(the system will ask you once)';
+}
+async function setNotify(on){
+  store.set('gs.notify', on);
+  if (on && typeof Notification !== 'undefined' && Notification.permission === 'default'){ try { await Notification.requestPermission(); } catch {} }
+  notifyNote();
+}
 
 // ---- remotes ----
 const noteToast = (msg, undo, lead = 'To undo') => toast(msg + (undo ? `\n${lead}: ${undo}` : ''), false, null, {label:'OK', run: () => {}});
@@ -4400,7 +4754,6 @@ function paintSigRow(hash){
 document.querySelectorAll('.modk').forEach(k => k.textContent = MOD);
 $('#palBtn').title = `Command palette (${MOD}+K)`;
 const P = {mode:null, items:[], shown:[], at:0};
-const kb = (...k) => k;
 // hist runs a History action, showing the page first when needed.
 const hist = fn => { if (!histVisible()) show('history'); fn(); };
 // viaBtn is a command that clicks a button of the page: left out while the
@@ -4419,16 +4772,16 @@ async function wipAct(a){
 }
 function palCommands(){
   const out = [], tab = currentTab();
-  document.querySelectorAll('aside nav button').forEach((b, i) => out.push({id:'page.' + b.dataset.tab, label:'Go to ' + b.textContent.trim(), cat:'Pages', keys:kb(String(i + 1)),
+  document.querySelectorAll('aside nav button').forEach((b, i) => out.push({id:'page.' + b.dataset.tab, label:'Go to ' + b.textContent.trim(), cat:'Pages',
     hint: b.dataset.tab === tab ? 'this page' : '', run: () => show(b.dataset.tab)}));
   const ok = repos.filter(r => !r.missing);
   if (ok.length || S?.config.repos.length || S?.config.scanFolders.length) out.push({id:'repo.open', label:'Open repo…', cat:'Repo tabs', sub:'repo', hint:'in a tab'});
   if (R && H){
     if (TABS.length > 1){
-      out.push({id:'tab.next', label:'Next repo tab', cat:'Repo tabs', keys:kb('Ctrl', 'Tab'), run: () => hist(() => cycleTab(1))});
-      out.push({id:'tab.prev', label:'Previous repo tab', cat:'Repo tabs', keys:kb('Ctrl', 'Shift', 'Tab'), run: () => hist(() => cycleTab(-1))});
+      out.push({id:'tab.next', label:'Next repo tab', cat:'Repo tabs', run: () => hist(() => cycleTab(1))});
+      out.push({id:'tab.prev', label:'Previous repo tab', cat:'Repo tabs', run: () => hist(() => cycleTab(-1))});
     }
-    out.push({id:'tab.close', label:'Close this repo tab', cat:'Repo tabs', keys:kb(MOD, 'W'), disabled: TABS.length < 2 ? 'The last tab stays open' : '', run: () => closeTab($('#histRepo').value)});
+    out.push({id:'tab.close', label:'Close this repo tab', cat:'Repo tabs', disabled: TABS.length < 2 ? 'The last tab stays open' : '', run: () => closeTab($('#histRepo').value)});
     renderBranches(); // brings the branch menu's buttons up to date
     const c = R.head?.changes || {}, unstaged = (c.changed || 0) + (c.new || 0);
     const h = 'History';
@@ -4437,8 +4790,8 @@ function palCommands(){
       viaBtn('h.fetch', '#fetchBtn', 'Fetch', h, null, {hint:'read the remote’s new commits'}),
       viaBtn('h.update', '#updateBtn', 'Update', h, null, {hint:'pull, fast-forward only'}),
       viaBtn('h.push', '#pushBtn', 'Push', h),
-      viaBtn('h.undo', '#undoBtn', R.undo?.label ? `Undo “${R.undo.label}”` : 'Undo', h, kb('Shift', 'U')),
-      viaBtn('h.redo', '#redoBtn', R.redo?.label ? `Redo “${R.redo.label}”` : 'Redo', h, kb('Shift', 'R')),
+      viaBtn('h.undo', '#undoBtn', R.undo?.label ? `Undo “${R.undo.label}”` : 'Undo', h),
+      viaBtn('h.redo', '#redoBtn', R.redo?.label ? `Redo “${R.redo.label}”` : 'Redo', h),
       viaBtn('h.remotes', '#remotesBtn', 'Remotes…', h, null, {hint:'add, rename, change URL, remove'}),
       viaBtn('h.prunefetch', '#pruneFetchBtn', 'Fetch and forget deleted branches', h, null, {hint:'fetch --prune'}),
       viaBtn('h.force', '#forcePushBtn', 'Force push (with lease)…', h, null, {hint:'shows what would be lost'}),
@@ -4449,7 +4802,7 @@ function palCommands(){
       viaBtn('h.bisect', '#bisectBtn', 'Find the commit that broke it (bisect)…', h),
       {id:'h.blame', label:'Blame a file…', cat:h, hint:'who wrote each line', run: () => hist(() => askPath('Blame which file? Its path from the repo’s top folder, e.g. src/app.go', p => openBlame(p, '')))},
       {id:'h.filehist', label:'File history…', cat:h, hint:'every commit that changed a file', run: () => hist(() => askPath('Show the history of which file? Its path from the repo’s top folder.', p => openFileHistory(p)))},
-      {id:'h.switch', label:'Switch branch…', cat:h, keys:kb('b'), sub:'branch', hint: R.head.branch ? 'on ' + R.head.branch : ''},
+      {id:'h.switch', label:'Switch branch…', cat:h, sub:'branch', hint: R.head.branch ? 'on ' + R.head.branch : ''},
       viaBtn('h.newbranch', '#newBranchBtn', 'New branch…', h),
       viaBtn('h.prune', '#pruneBtn', 'Delete merged branches…', h),
       viaBtn('h.move', '#moveBranchBtn', 'Move not-pushed commits to a new branch…', h),
@@ -4457,11 +4810,12 @@ function palCommands(){
       unstaged && {id:'h.stageall', label:'Stage all', cat:h, hint:`${unstaged} file${unstaged > 1 ? 's' : ''}`, run: () => hist(() => wipAct('stage-all'))},
       c.staged && {id:'h.unstageall', label:'Unstage all', cat:h, hint:`${c.staged} file${c.staged > 1 ? 's' : ''}`, run: () => hist(() => wipAct('unstage-all'))},
       unstaged && {id:'h.discardall', label:'Discard all changes…', cat:h, hint:'kept in git stash', run: () => hist(() => wipAct('discard-all'))},
+      viaBtn('h.terminal', '#termBtn', 'Open in terminal', h, null, {hint:'in this repo’s folder'}),
       viaBtn('h.web', '#browseRepo', 'View on the web', h),
-      viaBtn('h.reload', '#histReload', 'Reload', h, kb('r')),
-      {id:'h.side', label: $('#histMain').classList.contains('noside') ? 'Show the branches panel' : 'Hide the branches panel', cat:h, keys:kb('t'), run: () => hist(() => toggleSide())},
-      {id:'h.search', label:'Search commits', cat:h, keys:kb('/'), run: () => hist(() => $('#histSearch').focus())},
-      {id:'h.filters', label:'Filters…', cat:h, keys:kb('f'), run: () => hist(() => toggleFilters(true))},
+      viaBtn('h.reload', '#histReload', 'Reload', h),
+      {id:'h.side', label: $('#histMain').classList.contains('noside') ? 'Show the branches panel' : 'Hide the branches panel', cat:h, run: () => hist(() => toggleSide())},
+      {id:'h.search', label:'Search commits', cat:h, run: () => hist(() => $('#histSearch').focus())},
+      {id:'h.filters', label:'Filters…', cat:h, run: () => hist(() => toggleFilters(true))},
       viaBtn('h.sort', '#optsBtn', 'Sort and options…', h),
       viaBtn('h.view', '#viewBtn', 'View options…', h),
     );
@@ -4473,6 +4827,13 @@ function palCommands(){
     st('pull', 'When Update finds new commits on both sides', '#setForm [name=pull]'),
     st('prefix', 'New branch name prefix', '#setForm [name=branchPrefix]'),
     st('fetch', 'Fetch when a repo’s History opens', '#setForm [name=fetchOnOpen]'),
+    st('interval', 'Fetch the open repo in the background every N minutes', '#setForm [name=fetchInterval]'),
+    st('notify', 'Notify me when a long action finishes in the background', '#setForm [name=notify]'),
+    st('editor', 'Editor command', '#setForm [name=editor]'),
+    st('terminal', 'Terminal command', '#setForm [name=terminal]'),
+    st('difftool', 'External diff tool', '#setForm [name=difftool]'),
+    st('mergetool', 'External merge tool', '#setForm [name=mergetool]'),
+    st('keys', 'Change keyboard shortcuts', '#kbList [data-kb=change]'),
     st('fetchprune', 'Forget remote branches deleted on the server when fetching', '#setForm [name=fetchPrune]'),
     st('popup', 'Ask with a popup when git runs without a terminal', '#setForm [name=guiPrompt]'),
     st('wait', 'Seconds to wait for an answer', '#setForm [name=promptTimeout]'),
@@ -4484,7 +4845,7 @@ function palCommands(){
     {id:'repos.add', label:'Add an existing repo…', cat:'Repos', run: () => { show('repos'); $('#addRepo').click(); }},
     {id:'repos.folder', label:'Add a projects folder…', cat:'Repos', run: () => { show('repos'); $('#browseFolder').click(); }},
     {id:'rv.refresh', label:'Refresh reviews', cat:'Reviews', run: () => { show('reviews'); $('#rvRefresh').click(); }},
-    {id:'app.keys', label:'Keyboard shortcuts', cat:'Help', keys:kb('?'), run: () => $('#keysDlg').showModal()},
+    {id:'app.keys', label:'Keyboard shortcuts', cat:'Help', run: () => openKeys()},
   );
   return out.filter(Boolean);
 }
@@ -4547,7 +4908,7 @@ function palRender(){
       + `<span class="pl">${palMark(it.label, m.at)}</span>`
       + (it.disabled || it.hint ? `<span class="pw">${esc(it.disabled || it.hint)}</span>` : '')
       + (q && !P.mode ? `<span class="pc">${esc(it.cat)}</span>` : '')
-      + (it.keys ? `<span class="pk" aria-label="Shortcut ${esc(it.keys.join('+'))}">${it.keys.map(x => `<kbd>${esc(x)}</kbd>`).join('')}</span>` : '') + '</div>'; };
+      + (keysOf(it.id) ? `<span class="pk" aria-label="Shortcut ${esc(keysOf(it.id).join('+'))}">${keysOf(it.id).map(x => `<kbd>${esc(x)}</kbd>`).join('')}</span>` : '') + '</div>'; };
   $('#palList').innerHTML = !P.shown.length ? `<div class="palnone">${P.loading ? 'Loading…' : 'Nothing matches. Try fewer letters.'}</div>`
     : groups.filter(g => g.rows.length).map((g, i) => g.title ? `<div role="group" aria-labelledby="palg${i}"><div class="palgh" id="palg${i}">${esc(g.title)}</div>${g.rows.map(opt).join('')}</div>` : g.rows.map(opt).join('')).join('');
   palActive(P.at);
@@ -4613,19 +4974,6 @@ $('#palList').addEventListener('click', e => { const o = e.target.closest('[role
 $('#palDlg').addEventListener('click', e => { if (e.target === $('#palDlg')) $('#palDlg').close(); }); // the backdrop
 $('#palDlg').addEventListener('cancel', e => { if (P.mode && !P.direct){ e.preventDefault(); palMode(null); } });
 $('#palBtn').onclick = () => openPalette();
-// Keys for the palette and the repo tabs work everywhere, typing included.
-document.addEventListener('keydown', e => {
-  const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
-  if (mod && !e.altKey && ((key === 'k' && !e.shiftKey) || (key === 'p' && e.shiftKey))){
-    e.preventDefault();
-    $('#palDlg').open ? $('#palDlg').close() : openPalette();
-    return;
-  }
-  if (!histVisible() || document.querySelector('dialog[open]') || e.altKey) return;
-  if (e.ctrlKey && e.key === 'Tab'){ e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); }
-  else if (e.ctrlKey && !e.shiftKey && (e.key === 'PageDown' || e.key === 'PageUp')){ e.preventDefault(); cycleTab(e.key === 'PageDown' ? 1 : -1); }
-  else if (mod && !e.shiftKey && key === 'w'){ e.preventDefault(); closeTab($('#histRepo').value); } // the tab, never the window
-});
 
 // ---- rules ----
 function renderRules(){
@@ -4646,6 +4994,9 @@ $('#rules').addEventListener('click', async e => { const i = e.target.dataset.ru
 // ---- settings ----
 function renderSettings(){
   const f = $('#setForm'); f.guiPrompt.checked = S.config.guiPrompt; f.promptTimeout.value = S.config.promptTimeout; f.switchChanges.value = S.switchChanges; f.branchPrefix.value = S.branchPrefix; f.fetchOnOpen.checked = !!S.fetchOnOpen; f.fetchPrune.checked = S.fetchPrune ? S.fetchPrune.global === 'on' : store.get('gs.fetchPrune', false); f.pull.value = S.pull; f.theme.value = store.get('gs.theme', 'system');
+  f.fetchInterval.value = String(S.fetchInterval || 0); f.notify.checked = NOTE.on(); notifyNote();
+  for (const k of ['editor', 'terminal', 'difftool', 'mergetool']) f[k].value = S.config[{difftool:'diffTool', mergetool:'mergeTool'}[k] || k] || '';
+  renderShortcutSettings();
   $('#afterWait').textContent = !S.config.default ? 'then stop: there is no default account to fall back on' : 'then use the default account';
 }
 // The health checks start several programs, so they run only while Settings is shown.
@@ -4663,16 +5014,23 @@ async function loadChecks(){
     + (good.length ? `<details class="checks-more"${open}><summary>${bad.length ? `Show the ${good.length} passing check${good.length === 1 ? '' : 's'}` : 'Show details'}</summary>${good.map(row).join('')}</details>` : '');
 }
 // Settings save on change: there is no Save button to forget.
-async function saveSettings(){
+// One save at a time: git config files are written under a lock.
+let settingsSaving = Promise.resolve();
+const saveSettings = () => settingsSaving = settingsSaving.then(saveSettingsNow, saveSettingsNow);
+async function saveSettingsNow(){
   const f = $('#setForm'), t = +f.promptTimeout.value;
   if (!f.promptTimeout.checkValidity() || !t){ f.promptTimeout.reportValidity(); return; }
-  await act(() => Promise.all([api('POST','/api/settings',{guiPrompt:f.guiPrompt.checked, promptTimeout:t, branchPrefix:f.branchPrefix.value.trim(), fetchOnOpen:f.fetchOnOpen.checked, pull:f.pull.value}),
+  const body = {guiPrompt:f.guiPrompt.checked, promptTimeout:t, branchPrefix:f.branchPrefix.value.trim(), fetchOnOpen:f.fetchOnOpen.checked, pull:f.pull.value, fetchInterval:+f.fetchInterval.value};
+  for (const k of ['editor', 'terminal', 'difftool', 'mergetool']) if (f[k].value.trim() !== (S.config[{difftool:'diffTool', mergetool:'mergeTool'}[k] || k] || '')) body[k] = f[k].value.trim(); // only what changed
+  await act(() => Promise.all([api('POST','/api/settings',body),
     f.switchChanges.value !== S.switchChanges && api('POST','/api/switch-setting',{mode:f.switchChanges.value})]), 'Settings saved');
-  refresh(); if (R) loadHistory(); // the branch menu says what switching does
+  await refresh(); if (R) loadHistory(); // the branch menu says what switching does
+  fiSync();
 }
 $('#setForm').onsubmit = e => { e.preventDefault(); saveSettings(); };
 $('#setForm').addEventListener('change', async e => {
   if (e.target.name === 'theme') return setTheme(e.target.value);
+  if (e.target.name === 'notify') return setNotify(e.target.checked);
   if (e.target.name === 'fetchPrune'){
     // The server has no way to read this setting back yet, so the page keeps the last value it saved.
     const on = e.target.checked, r = await act(() => api('POST','/api/fetch-prune-setting',{value: on ? 'on' : 'off'}));

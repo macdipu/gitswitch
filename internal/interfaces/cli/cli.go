@@ -234,6 +234,9 @@ History and branches
                                     (--show: only say what it would do)
   gitswitch redo [-y] [--show [--json]]   do again what undo just took back (commit, amend, switch,
                                     branch delete or rename, merge, drop, ...) while nothing has changed since
+  gitswitch terminal [<repo>]       open a terminal in the repo (gitswitch set terminal <command>)
+  gitswitch difftool [--staged] <path>   show a file's change in your diff tool (set difftool, or git's)
+  gitswitch mergetool <path>        open a conflicted file in your merge tool (set mergetool, or git's)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
   gitswitch tag [list] [--json]     the tags, newest first
@@ -247,6 +250,10 @@ Settings
   gitswitch set gui-prompt on|off   native popup when git runs without a terminal
   gitswitch set prompt-timeout <seconds>
   gitswitch set editor <command>    editor for repo open --editor (e.g. code)
+  gitswitch set terminal <command>  terminal to open (the apps too) ({dir} = the folder; "" = the OS default)
+  gitswitch set difftool <command>  diff tool command with {left} {right} {path} ("" = git's diff.tool)
+  gitswitch set mergetool <command> merge tool command with {left} {base} {right} {merged} ("" = git's merge.tool)
+  gitswitch set fetch-interval off|5|10|15|30|60   the desktop app fetches the open repo every N minutes (default: off)
   gitswitch set repo-groups <how>   group the repo list: none, account, owner, folder or group
   gitswitch set repo-sort <how>     sort it: folder, name, recent or account (pinned first)
   gitswitch set pull <how> [--repo] how update works: ff-only (the default) or rebase
@@ -478,6 +485,12 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdUndo(rest)
 	case "redo":
 		return x.cmdRedo(rest)
+	case "terminal":
+		return x.cmdTerminal(rest)
+	case "difftool":
+		return x.cmdDiffTool(rest)
+	case "mergetool":
+		return x.cmdMergeTool(rest)
 	case "init":
 		return x.cmdInit(rest)
 	case "merge":

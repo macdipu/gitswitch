@@ -1545,3 +1545,59 @@ func TestStateHasFetchPrune(t *testing.T) {
 		t.Fatalf("after setting on: %v", d["fetchPrune"])
 	}
 }
+
+// Open in editor / terminal / diff tool / merge tool: paths outside the
+// repo are refused, a missing setting says what to set, and the tool
+// settings and the fetch interval round-trip through /api/settings.
+func TestExternalToolsRoutes(t *testing.T) {
+	dir, _, write := testRepo(t)
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "")
+	write("work\n")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":` + quote(dir)
+
+	for _, p := range []string{"../x", "/etc/passwd", "", "missing.txt"} {
+		if w, m := call(t, h, "POST", "/api/open-editor", `{`+gd+`,"path":`+quote(p)+`}`); w.Code != 400 {
+			t.Errorf("open-editor %q = %d %v", p, w.Code, m)
+		}
+	}
+	if w, m := call(t, h, "POST", "/api/open-editor", `{`+gd+`,"path":"f.txt"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "no editor set") {
+		t.Errorf("no editor = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/open-editor", `{"gitDir":"/nope","path":"f.txt"}`); w.Code != 400 {
+		t.Errorf("not a repo = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/settings", `{"editor":"code","terminal":"myterm {dir}","difftool":"meld {left} {right}","mergetool":"meld {left} {base} {right} --output {merged}","fetchInterval":15}`); w.Code != 200 {
+		t.Fatalf("settings = %d %v", w.Code, m)
+	}
+	_, m := call(t, h, "GET", "/api/state", "")
+	d, _ := m["data"].(map[string]any)
+	cfg, _ := d["config"].(map[string]any)
+	if cfg["editor"] != "code" || cfg["terminal"] != "myterm {dir}" || cfg["diffTool"] != "meld {left} {right}" || !strings.Contains(fmt.Sprint(cfg["mergeTool"]), "{merged}") || d["fetchInterval"] != float64(15) {
+		t.Fatalf("state = %v %v", cfg, d["fetchInterval"])
+	}
+	if w, m := call(t, h, "POST", "/api/settings", `{"fetchInterval":7}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "5, 10") {
+		t.Errorf("7 minutes = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/open-editor", `{`+gd+`,"path":"f.txt"}`); w.Code != 200 {
+		t.Errorf("editor set = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/open-terminal", `{`+gd+`}`); w.Code != 200 {
+		t.Errorf("terminal = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/difftool", `{`+gd+`,"path":"f.txt","staged":false}`); w.Code != 200 {
+		t.Errorf("difftool = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/difftool", `{`+gd+`,"path":"../f.txt"}`); w.Code != 400 {
+		t.Errorf("difftool outside = %d %v", w.Code, m)
+	}
+	call(t, h, "POST", "/api/settings", `{"mergetool":"meld {left}"}`)
+	if w, m := call(t, h, "POST", "/api/mergetool", `{`+gd+`,"path":"f.txt"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "{merged}") {
+		t.Errorf("mergetool = %d %v", w.Code, m)
+	}
+	call(t, h, "POST", "/api/settings", `{"difftool":"","mergetool":""}`)
+	if w, m := call(t, h, "POST", "/api/difftool", `{`+gd+`,"path":"f.txt"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "no diff tool") {
+		t.Errorf("default difftool = %d %v", w.Code, m)
+	}
+}

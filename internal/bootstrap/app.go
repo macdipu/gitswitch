@@ -98,7 +98,7 @@ func New(dryRun bool, out io.Writer) *App {
 	return &App{
 		Accounts: &accountapp.Service{Store: store, RepoAccounts: store, Keys: keys, Repos: reader, Tokens: hostinginfra.Tokens{Secrets: secrets}},
 		Keys:     &sshapp.Keys{Accounts: store, Tool: keys},
-		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git}, Initializer: &repoinfra.Initializer{Git: git},
+		Repos: &repoapp.Service{Lists: store, Reader: reader, Locator: git, Cloner: &repoinfra.Cloner{Git: git}, Initializer: &repoinfra.Initializer{Git: git}, Tools: repoinfra.Tools{},
 			RepoAccounts: store, DryRun: dryRun},
 		History: &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
 		Refs:    &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},

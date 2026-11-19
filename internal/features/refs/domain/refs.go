@@ -482,6 +482,10 @@ type Refs interface {
 	// remote's new commits when a repo is opened, for every repo.
 	FetchOnOpen() bool
 	SaveFetchOnOpen(on bool) error
+	// FetchInterval and SaveFetchInterval keep the minutes between the
+	// desktop app's background fetches (0: off), for every repo.
+	FetchInterval() int
+	SaveFetchInterval(minutes int) error
 	// BranchPrefix and SaveBranchPrefix keep the prefix of new branch
 	// names, for every repo ("" for none).
 	BranchPrefix() string

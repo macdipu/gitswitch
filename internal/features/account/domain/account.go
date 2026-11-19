@@ -20,11 +20,16 @@
 //	gitswitch.repoGroups         none | account | owner | folder | group: how the apps group the repo list
 //	gitswitch.repoSort           folder | name | recent | account: how the apps sort it (pinned first)
 //	gitswitch.editor             command that opens a repo folder in an editor
+//	gitswitch.terminal           command that opens a terminal in a folder ("" = the OS default)
+//	gitswitch.difftool           command template for "open in diff tool" ({path} {left} {right}; "" = git's diff.tool)
+//	gitswitch.mergetool          command template for "open merge tool" ({path} {merged} {base} {left} {right}; "" = git's merge.tool)
 //	gitswitch.renamed            multi-valued: <old id>=<new id>
 //	gitswitch.switchChanges      ask | smart | park: what switching branch does with
 //	                             uncommitted changes (kept by the refs feature)
 //	gitswitch.branchPrefix       optional: put in front of new branch names, e.g. feature/
 //	                             (kept by the refs feature)
+//	gitswitch.fetchInterval      minutes (5, 10, 15, 30, 60) between background fetches while the desktop
+//	                             app is open; absent: off (kept by the refs feature)
 //	gitswitch.fetchOnOpen        true: History reads the remote's new commits when a repo is opened
 //	                             (kept by the refs feature; absent: off)
 //	gitswitch.pull               ff-only | rebase: how update brings a branch up to date
@@ -97,7 +102,10 @@ type Config struct {
 	RepoGroups    string            `json:"repoGroups"` // how the apps group the repo list; "" is none
 	RepoSort      string            `json:"repoSort"`   // how the apps sort the repo list; "" is folder
 	Editor        string            `json:"editor"`
-	Renamed       map[string]string `json:"-"` // old id (lower case) -> new id
+	Terminal      string            `json:"terminal"`  // command that opens a terminal; "" is the OS default
+	DiffTool      string            `json:"diffTool"`  // command template; "" is git's own difftool
+	MergeTool     string            `json:"mergeTool"` // command template; "" is git's own mergetool
+	Renamed       map[string]string `json:"-"`         // old id (lower case) -> new id
 }
 
 // Account finds an account by id, following renames. nil if unknown.

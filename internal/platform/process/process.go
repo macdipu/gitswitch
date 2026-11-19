@@ -77,9 +77,13 @@ func OpenFolder(dir string) error {
 }
 
 // StartProgram starts a command line such as "code --new-window" with arg
-// added, and does not wait for it. Words are split on spaces; no quoting.
+// added, and does not wait for it. Words are split as SplitCommand does:
+// spaces, with quotes to keep a path with spaces together.
 func StartProgram(command, arg string) error {
-	f := strings.Fields(command)
+	f, err := SplitCommand(command)
+	if err != nil {
+		return err
+	}
 	if len(f) == 0 {
 		return errors.New("empty command")
 	}

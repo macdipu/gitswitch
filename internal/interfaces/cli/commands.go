@@ -531,7 +531,10 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.setSignoff(args[1:])
 	}
 	if len(args) != 2 {
-		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | branch-prefix <prefix> | fetch-on-open on|off | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo] | signoff on|off [--repo]")
+		return usageErr("gitswitch set gui-prompt on|off | prompt-timeout <seconds> | ssh-path <path> | editor <command> | terminal <command> | difftool <command> | mergetool <command> | fetch-interval off|5|10|15|30|60 | branch-prefix <prefix> | fetch-on-open on|off | repo-groups none|account|owner|folder|group | repo-sort folder|name|recent|account | switch-changes ask|smart|park [--repo] | pull ff-only|rebase [--repo] | signoff on|off [--repo]")
+	}
+	if args[0] == "fetch-interval" {
+		return x.setFetchInterval(args[1])
 	}
 	if args[0] == "fetch-on-open" {
 		if args[1] != "on" && args[1] != "off" {
@@ -566,8 +569,8 @@ func (x *CLI) cmdSet(args []string) error {
 		return x.app.Accounts.SetSetting("promptTimeout", args[1])
 	case "ssh-path":
 		return x.app.Accounts.SetSetting("sshPath", args[1])
-	case "editor":
-		return x.app.Accounts.SetSetting("editor", args[1])
+	case "editor", "terminal", "difftool", "mergetool":
+		return x.app.Accounts.SetSetting(args[0], args[1])
 	case "repo-groups":
 		return x.app.Repos.SetGroupBy(args[1])
 	case "repo-sort":

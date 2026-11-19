@@ -1013,6 +1013,28 @@ func (s *server) routes() map[string]handler {
 			return a.Merge.Resolve(gd, str(b, "path"), str(b, "action"), text)
 		}),
 
+		// External tools. open-editor opens one file of the repo in the
+		// editor ({gitDir, path}); open-terminal a terminal in the repo;
+		// difftool ({gitDir, path, staged} or {gitDir, path, rev}) and mergetool ({gitDir, path})
+		// the configured tools, or git's own. Each answers {} or an error
+		// that says what to set; a path outside the repo is refused.
+		"POST /api/open-editor": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Repos.OpenFile(gd, str(b, "path"))
+		}),
+		"POST /api/open-terminal": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Repos.OpenTerminal(gd)
+		}),
+		"POST /api/difftool": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			if rev := str(b, "rev"); rev != "" { // what one commit changed in the file
+				return nil, a.Repos.ExternalDiffAt(gd, str(b, "path"), rev)
+			}
+			staged, _ := b["staged"].(bool)
+			return nil, a.Repos.ExternalDiff(gd, str(b, "path"), staged)
+		}),
+		"POST /api/mergetool": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return nil, a.Repos.ExternalMerge(gd, str(b, "path"))
+		}),
+
 		// Remotes, remote branches, force push with lease, detached HEAD.
 		// remotes: [{name, fetchURL, pushURL, host, account, upstream, tracking}].
 		"GET /api/remotes": func(r *http.Request) (any, error) {
@@ -1117,6 +1139,7 @@ func (s *server) state(r *http.Request) (any, error) {
 		"pull":          s.app.Refs.PullSetting("").Global, // how Update works in every repo
 		"branchPrefix":  s.app.Refs.BranchPrefix(),
 		"fetchOnOpen":   s.app.Refs.FetchOnOpen(),    // History reads the remote's new commits when a repo opens
+		"fetchInterval": s.app.Refs.FetchInterval(),  // minutes between background fetches; 0: off
 		"fetchPrune":    s.app.Refs.PruneSetting(""), // fetching also forgets branches deleted on the server
 		"home":          filesystem.HomeDir(),
 		"hosting":       s.app.Hosting.Status(), // signed in to GitHub, from the keychain
@@ -1211,6 +1234,19 @@ func (s *server) settings(r *http.Request) (any, error) {
 	if v, ok := b["fetchOnOpen"].(bool); ok && v != s.app.Refs.FetchOnOpen() {
 		if err := s.app.Refs.SetFetchOnOpen(v); err != nil {
 			return nil, err
+		}
+	}
+	if v, ok := b["fetchInterval"].(float64); ok && int(v) != s.app.Refs.FetchInterval() {
+		if err := s.app.Refs.SetFetchInterval(int(v)); err != nil {
+			return nil, err
+		}
+	}
+	// the command settings: "" puts the default back
+	for _, k := range []string{"editor", "terminal", "difftool", "mergetool"} {
+		if v, ok := b[k].(string); ok {
+			if err := s.app.Accounts.SetSetting(k, strings.TrimSpace(v)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if v, ok := b["branchPrefix"].(string); ok && v != s.app.Refs.BranchPrefix() {

@@ -43,6 +43,7 @@ type fakeRefs struct {
 	merges     int
 	fetchErr   error
 	fetchOpen  bool
+	interval   int
 	fetchNew   int            // commits the next fetch brings
 	unique     map[string]int // Unique: branch -> commits only on it
 	tags       []string       // nil: just v1
@@ -191,6 +192,8 @@ func (f *fakeRefs) MoveBranch(_, b, to, was, _ string) error {
 }
 func (f *fakeRefs) FetchOnOpen() bool               { return f.fetchOpen }
 func (f *fakeRefs) SaveFetchOnOpen(on bool) error   { f.fetchOpen = on; return nil }
+func (f *fakeRefs) FetchInterval() int              { return f.interval }
+func (f *fakeRefs) SaveFetchInterval(m int) error   { f.interval = m; return nil }
 func (f *fakeRefs) BranchPrefix() string            { return f.prefix }
 func (f *fakeRefs) SaveBranchPrefix(p string) error { f.prefix = p; return nil }
 func (f *fakeRefs) SwitchModes(gitDir string) (string, string) {
@@ -840,6 +843,31 @@ func TestFetch(t *testing.T) {
 	r.ran = nil
 	if _, err := s.Fetch("/r/.git", func(string) {}); err == nil || !strings.Contains(err.Error(), "no remote") || len(r.ran) != 0 {
 		t.Errorf("no remote: %v ran %v", err, r.ran)
+	}
+}
+
+func TestFetchIntervalSetting(t *testing.T) {
+	s, r := newService()
+	if s.FetchInterval() != 0 {
+		t.Fatal("off by default")
+	}
+	for _, m := range []int{5, 10, 15, 30, 60, 0} {
+		if err := s.SetFetchInterval(m); err != nil || s.FetchInterval() != m {
+			t.Fatalf("%d: %v %v", m, err, s.FetchInterval())
+		}
+	}
+	if err := s.SetFetchInterval(7); err == nil || !strings.Contains(err.Error(), "5, 10") {
+		t.Errorf("7 must be refused: %v", err)
+	}
+	r.interval = 3 // a hand-edited value is not an interval: off
+	if s.FetchInterval() != 0 {
+		t.Error("unknown value reads as off")
+	}
+	var out bytes.Buffer
+	s.FS = &filesystem.FS{DryRun: true, Out: &out}
+	r.interval = 0
+	if err := s.SetFetchInterval(15); err != nil || r.interval != 0 || !strings.Contains(out.String(), "fetch every 15") {
+		t.Errorf("a dry run only says what it would do: %v %d %q", err, r.interval, out.String())
 	}
 }
 

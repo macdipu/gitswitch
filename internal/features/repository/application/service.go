@@ -26,6 +26,7 @@ type Service struct {
 	Locator      repo.Locator
 	Cloner       repo.Cloner
 	Initializer  repo.Initializer // starts repos (init.go); nil: not available
+	Tools        repo.Tools       // reads versions for the external tools (external.go); nil: not available
 	RepoAccounts account.RepoAccounts
 	DryRun       bool // clones are only printed
 }
@@ -300,6 +301,16 @@ func (s *Service) Open(path string, editor bool) error {
 	if !editor {
 		return s.opened(root, process.OpenFolder(root))
 	}
+	cmd, err := s.editorCommand()
+	if err != nil {
+		return err
+	}
+	return s.opened(root, process.StartProgram(cmd, root))
+}
+
+// editorCommand is the configured editor (gitswitch.editor, then $VISUAL,
+// then $EDITOR).
+func (s *Service) editorCommand() (string, error) {
 	cmd := s.Lists.Load().Editor
 	for _, v := range []string{"VISUAL", "EDITOR"} {
 		if cmd == "" {
@@ -307,9 +318,9 @@ func (s *Service) Open(path string, editor bool) error {
 		}
 	}
 	if cmd == "" {
-		return errors.New("no editor set; choose one with: gitswitch set editor <command> (e.g. code)")
+		return "", errors.New("no editor set; choose one with: gitswitch set editor <command> (e.g. code)")
 	}
-	return s.opened(root, process.StartProgram(cmd, root))
+	return cmd, nil
 }
 
 // opened records a repo the user opened, when opening it worked. The folder
