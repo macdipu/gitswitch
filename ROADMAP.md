@@ -62,11 +62,111 @@ account (see [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client)).
 | 20 | **TUI**: keyboard-driven browsing, cloning, adding, opening, removing | done | Clone, add, pin, remove and open (Repos page: c, a, p, x, o), and `b` to browse GitHub (type to filter; Enter clones a repo or opens a cloned one). |
 | 21 | **CLI**: list, clone, add, open, inspect, pin, remove, with JSON output | done | `gitswitch repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `gitswitch github list\|clone`, `--json`. |
 
-## A full git client
+## A full git client (v2)
 
-Commit graph, staging, diffs, branches, merges, pull requests. See
-[ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client) for where
-each piece goes.
+GitSwitch began as the tool that picks the right account for every repo,
+then grew a History screen and everyday branch work, leaving staging,
+committing details and merging to the IDE. v2 drops that line: everything
+a git GUI does (GitKraken, Fork, Tower, the IDEs' git panels), in the
+desktop app first, with the CLI and terminal app alongside. The account
+core does not change, and every action still runs as the repo's account.
+See [ARCHITECTURE.md](ARCHITECTURE.md#future-scope-a-full-git-client) for
+where each piece goes.
+
+### Design rules
+
+The [History](#history-screen) and [branch work](#everyday-branch-work-v14)
+rules still hold: plain words first, ask once, never half done, plain git
+underneath, the same in every front end. Added for v2:
+
+- **Your work is never lost.** Discarding changes keeps them as a stash
+  (`gitswitch discard: <branch>`), so `git stash list` and any IDE can
+  bring them back; rewriting history keeps what it replaced for Undo.
+- **Stop, don't abort, when you ask for it.** Merges and rebases that clash
+  stop in a state the app explains (continue, skip, abort), instead of
+  being aborted the way one-click actions are.
+- **Never load everything.** Stream from git, page in the use cases,
+  render only what is on screen: big diffs, big histories, big working
+  folders.
+
+### Working copy and commit
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G1 | **Changes list**: every changed, new, deleted, renamed and conflicted file, staged and not | partly | `workspace.Status` (`git status --porcelain=v2 -z`): a `workspace.File` per path with its staged and working-folder state. `gitswitch changes [--json]`, desktop API `GET /api/repo/changes`. Desktop changes panel and terminal app page to come. |
+| G2 | **Diff of uncommitted changes**: staged, not staged, new files | partly | `workspace.Diff`: `git diff [--cached]`, new files against nothing (`--no-index`), cut at `history.MaxDiffBytes`. `gitswitch diff [--staged] [<path>]`, `GET /api/repo/diff`. The page's diff view to come. |
+| G3 | **Stage, unstage and discard** files | partly | `Stage` (`add --all -- <paths>`), `Unstage` (`reset -- <paths>`), `Discard` (`stash push --include-untracked -m "gitswitch discard: <branch>" -- <paths>`: the changes stay in the stash list). Literal paths only. Refused during a merge or rebase and for conflicted files. `gitswitch stage\|unstage <path>...\|--all`, `gitswitch discard <path>...\|--all [-y]`, `POST /api/repo/stage\|unstage\|discard`. Buttons in the desktop changes panel to come. |
+| G4 | **Stage and discard hunks and lines** | planned | `git apply --cached` (and `-R`) of a patch built from the selected lines; the diff view selects them. |
+| G5 | **Commit box**: message with subject and body, recent messages, amend the last commit, sign-off, co-authors | planned | Extends `workspace.Commit`; amend only while not pushed, reported to Undo. |
+| G6 | **Ignore a file**: add a path or pattern to `.gitignore` or `.git/info/exclude` | planned | From the changes list's menu. |
+
+### Merge, rebase and conflicts
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G7 | **Merge a branch** into the current one: fast-forward when possible, a merge commit, or squash | planned | A `merge` feature. Says what will happen first (fast-forward, merge commit, clashes likely); reported to Undo. |
+| G8 | **Operation in progress**: continue, skip or abort a stopped merge, rebase, cherry-pick or revert | planned | `refs.Head.Busy` already names it; a banner with the files still in conflict and the three choices in every front end. |
+| G9 | **Conflict editor**: ours, theirs and the result, per clash or per file | planned | A 3-way model in the `merge` domain (from `git checkout --ours/--theirs` and the index stages); "Open in IDE" stays. |
+| G10 | **Rebase onto a branch** | planned | Stops on a clash (G8) instead of aborting; only not-pushed commits. |
+| G11 | **Interactive rebase**: reorder, squash, fixup, reword, drop | planned | Builds the todo list in the domain, runs it with `GIT_SEQUENCE_EDITOR`; not-pushed commits only; reported to Undo. |
+| G12 | **Reword or amend an older commit** | planned | One-step G11. |
+
+### Branches, tags, remotes and stash
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G13 | **Delete, rename a branch; set its upstream** | planned | `refs`; delete asks when the branch has commits nowhere else; reported to Undo. |
+| G14 | **Tags**: create (light or annotated), delete, push | planned | `refs.Tags` exists for reading. |
+| G15 | **Remotes**: add, remove, rename, change URL | planned | The new URL's account is checked as on clone. |
+| G16 | **Delete a remote branch; fetch with prune** | planned | Both ask first. |
+| G17 | **Force push with lease** | planned | Only `--force-with-lease`, after a question naming the commits that would go. |
+| G18 | **Stash manager**: every stash, not only parked changes; stash with a message or chosen files; apply, pop, drop, branch from a stash | planned | `refs` (parked changes are already stashes). |
+| G19 | **Check out a commit or tag** (detached HEAD), with a way back | planned | Says what detached means and offers New branch here. |
+
+### Inspecting history
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G20 | **Blame**: who changed each line, and in which commit | planned | A `diff` feature: `git blame --porcelain`, streamed and rendered by visible rows. |
+| G21 | **File history**, following renames | planned | `history.Filter` gains Follow (`git log --follow`), one path only. |
+| G22 | **Compare any two commits or branches** | planned | `git diff A...B` and `log A..B`; extends Compare (H16). |
+| G23 | **Better diff view**: side by side, word changes, whitespace options, syntax colours, images | planned | In the page; the API returns the unified diff it already has. |
+| G24 | **Search the code changes** (`-S`/`-G`) | planned | `history.Filter` gains Pickaxe. |
+| G25 | **Reflog**: find lost commits and branches | planned | `git reflog`, read only, with New branch here. |
+| G26 | **Bisect**, guided | planned | Good, bad, skip, and the result in plain words. |
+
+### Bigger repos
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G27 | **Live refresh**: the changes list and status follow the files | planned | File events in `platform` and a `watch` feature; nothing polls git. |
+| G28 | **Commit signing** per account (SSH or GPG), and verified badges in the log | planned | An account gains a signing key; `user.signingkey` set with the account's email. |
+| G29 | **Worktrees**: list, add, remove, open | planned | `refs` (worktrees are already detected). |
+| G30 | **Submodules**: list, init, update | planned | Each submodule already gets its own account. |
+| G31 | **Git LFS**: status, lock, unlock | planned | Only when `git lfs` is installed. |
+
+### Hosting and app
+
+| # | Feature | Status | How |
+| --- | --- | --- | --- |
+| G32 | **Create a pull request** in the app, and **check out a pull request** | planned | `hosting` gains writes; today the PR page opens in the browser. |
+| G33 | **Bitbucket accounts** | planned | `hostinginfra.Bitbucket`, like GitLab (#25). |
+| G34 | **Repo tabs**, a command palette and custom shortcuts | planned | Desktop app. |
+| G35 | **External tools**: open in terminal, diff and merge tool settings | planned | `platform/process`. |
+| G36 | **One workspace screen**: changes and commit box beside the History graph, an "Uncommitted changes" row at the top of the log, branch-tip pills (local or remote) with double-click to check out | planned | Desktop app; the changes panel (G1–G3) is built into History, not a new page. |
+| G37 | **Redo** after Undo | planned | The `undo` feature keeps what Undo replaced. |
+| G38 | **Fetch on an interval** (every N minutes, off by default) and a notification when a long operation ends | planned | Only while the app is open; extends `fetch-on-open` (B12). |
+| G39 | **Stashes in the graph**, and **author avatars** from the signed-in host or Gravatar | planned | Avatars are cached and optional. |
+| G40 | **Themes**: light, dark or the system's, chosen in Settings | planned | The page's colour tokens already exist. |
+| G41 | **Start a repo** (`git init`) and check that git is installed | planned | Repos page and the setup wizard. |
+| G42 | **Built-in terminal** in the desktop app | later | Big (a pty and a terminal emulator in the page); needs its own design note first. |
+
+Compared with [gitcraft](https://github.com/Vancete/gitcraft) (Rust, egui; 2026-11): it already has most of G4–G35 and the items G36–G42 came from it. GitSwitch keeps what gitcraft lacks: accounts with the right key, token and email per repo, Undo that survives restarts, safe defaults (smart switch, park, discard into a stash), the Reviews inbox across hosts, and the CLI and terminal app.
+
+Order: G1–G3 (core, CLI and API, then the desktop changes panel inside
+History, G36, and the terminal app), G5, G4, G27, G34, then G7–G9, G23,
+G13–G18, G10–G12, G20–G22, then the rest. Each is one commit with unit and integration tests (real git), and
+the README.
 
 ## History screen
 

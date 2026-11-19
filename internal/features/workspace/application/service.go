@@ -1,5 +1,6 @@
-// Package application holds the commit use case: commit the staged
-// changes, or every change, as the repo's account. It depends only on
+// Package application holds the working folder's use cases: list and diff
+// the uncommitted changes, stage, unstage and discard them, and commit the
+// staged changes, or every change, as the repo's account. It depends only on
 // domain ports. Import it as workspaceapp.
 package application
 
@@ -16,9 +17,11 @@ import (
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
-// Service runs the commit use case.
+// Service runs the commit use case and the working folder's changes:
+// list, diff, stage, unstage, discard.
 type Service struct {
 	Git      workspace.Git
+	Changes  workspace.Changes
 	Accounts account.Store
 	Repos    repo.Reader
 	Locator  repo.Locator

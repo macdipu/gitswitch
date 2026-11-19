@@ -87,6 +87,13 @@ History and branches
   gitswitch branch pr [--json]      the branch's open pull or merge request: approvals, checks, conflicts
   gitswitch branch prune [-y]       delete the local branches merged into the remote's default
                                     branch (never the current one, main or master); asks first
+  gitswitch changes [--json]        the uncommitted changes: staged, not staged, conflicts
+  gitswitch diff [--staged] [<path>]   a file's uncommitted change (new files in full), or every file's;
+                                    --staged shows what the next commit holds
+  gitswitch stage <path>...|--all   add changes (new and deleted files too) to the next commit
+  gitswitch unstage <path>...|--all   take changes out of the next commit; the files keep them
+  gitswitch discard <path>...|--all [-y]   put files back as in the last commit (new files removed);
+                                    asks first, and keeps the changes in git stash
   gitswitch commit -m <message> [--all]   commit the staged changes as the repo's account;
                                     --all commits every change, new files too
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
@@ -292,6 +299,16 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdBranch(hasFlag(rest, "--json"))
 	case "commit":
 		return x.cmdCommit(rest)
+	case "changes":
+		return x.cmdChanges(rest)
+	case "diff":
+		return x.cmdDiff(rest)
+	case "stage":
+		return x.cmdStage(rest)
+	case "unstage":
+		return x.cmdUnstage(rest)
+	case "discard":
+		return x.cmdDiscard(rest)
 	case "switch":
 		return x.cmdSwitch(rest)
 	case "fetch":

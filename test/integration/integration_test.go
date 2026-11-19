@@ -2766,3 +2766,58 @@ func TestCodebergAccount(t *testing.T) {
 		t.Fatalf("git credential fill: %v\n%s", err, out)
 	}
 }
+
+// The changes commands from a subfolder: paths are relative to it, as
+// git takes them; discard asks for -y without a terminal and keeps the
+// changes in the stash.
+func TestChangesStageUnstageDiscard(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	sub := filepath.Join(api, "src")
+	must(t, os.MkdirAll(sub, 0o755))
+	must(t, os.WriteFile(filepath.Join(sub, "main go.txt"), []byte("hello\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "notes.txt"), []byte("notes\n"), 0o644))
+
+	if out := e.gsIn(api, "changes"); !strings.Contains(out, "Not staged (2)") || !strings.Contains(out, "src/main go.txt") {
+		t.Fatalf("changes:\n%s", out)
+	}
+	if out := e.gsIn(sub, "diff", "main go.txt"); !strings.Contains(out, "+hello") {
+		t.Fatalf("diff from a subfolder:\n%s", out)
+	}
+	if out := e.gsIn(sub, "stage", "main go.txt"); !strings.Contains(out, "Staged src/main go.txt") {
+		t.Fatalf("stage:\n%s", out)
+	}
+	if got := e.gitIn(api, "diff", "--cached", "--name-only"); got != "src/main go.txt" {
+		t.Fatalf("staged %q", got)
+	}
+	if out := e.gsIn(api, "changes", "--json"); !strings.Contains(out, `"staged":"A"`) {
+		t.Fatalf("changes --json:\n%s", out)
+	}
+	if out := e.gsIn(api, "diff", "--staged"); !strings.Contains(out, "+hello") {
+		t.Fatalf("diff --staged:\n%s", out)
+	}
+	e.gsIn(api, "unstage", "--all")
+	if got := e.gitIn(api, "diff", "--cached", "--name-only"); got != "" {
+		t.Fatalf("still staged %q", got)
+	}
+	if out, err := e.run(api, gsBin, "stage", "../outside.txt"); err == nil || !strings.Contains(out, "outside the repo") {
+		t.Fatalf("stage outside the repo: %v\n%s", err, out)
+	}
+	if out, err := e.run(api, gsBin, "discard", "notes.txt"); err == nil || !strings.Contains(out, "-y") {
+		t.Fatalf("discard without -y and no terminal: %v\n%s", err, out)
+	}
+	if out := e.gsIn(api, "discard", "--all", "-y"); !strings.Contains(out, "gitswitch discard: main") {
+		t.Fatalf("discard:\n%s", out)
+	}
+	if got := e.gitIn(api, "status", "--porcelain"); got != "" {
+		t.Fatalf("left after discard: %q", got)
+	}
+	if got := e.gitIn(api, "stash", "list"); !strings.Contains(got, "gitswitch discard: main") {
+		t.Fatalf("stash list %q", got)
+	}
+	if out := e.gsIn(api, "changes"); !strings.Contains(out, "No uncommitted changes") {
+		t.Fatalf("changes after discard:\n%s", out)
+	}
+}

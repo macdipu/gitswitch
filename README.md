@@ -412,6 +412,7 @@ Run `gitswitch help` for details. Add `--dry-run` to any command to see what it 
 | Keys | `key new\|show\|pick\|agent` |
 | Repos | `use <id>\|--ask`, `forget`, `status`, `repo list\|clone\|add\|remove\|show\|open\|pin\|unpin\|recent\|group\|ungroup`, `set repo-groups`, `set repo-sort` |
 | Rules | `rule add\|list`, `rule remove owner:<org>\|folder:<path>\|<n>` |
+| Changes | `changes [--json]`, `diff [--staged] [<path>]`, `stage <path>...\|--all`, `unstage <path>...\|--all`, `discard <path>...\|--all [-y]` |
 | History | `log [-n N] [--author\|--grep\|--since\|--until\|--account]`, `show`, `commit -m <message> [--all]`, `fix-author`, `revert`, `drop`, `rollback`, `cherry-pick`, `undo [--show]`, `browse` |
 | Branches | `branch [--json]`, `branch new <name> [--from <commit>\|--move]`, `branch compare`, `branch pr`, `branch prune`, `switch <branch> [--smart\|--park]`, `fetch [--json]`, `update [--rebase]`, `push [--open] [-y]`, `parked [show\|restore\|drop]`, `resolve [--done\|--abort\|--park]` |
 | Diagnostics | `doctor [--fix]` |

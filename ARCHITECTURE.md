@@ -47,9 +47,9 @@ internal/
       application/            show where a repo is, list branches, switch, smart switch, park and resolve; new branch; move not-pushed commits to a new branch; delete merged branches; compare with the upstream; push; restore, show and drop parked changes; the switch-changes and branch-prefix settings; update (pull --ff-only)
       infrastructure/         Git: symbolic-ref, for-each-ref, status --porcelain=v2, switch, push, stash (parked changes are stash entries named "gitswitch park: <branch>"), pull; check-ref-format; merge-base and update-ref (moving or deleting a branch that is not checked out); for-each-ref --merged; gitswitch.switchChanges (global and per repo) and gitswitch.branchPrefix; an open clash in GITSWITCH_SWITCH
     workspace/
-      domain/                 Committed, commit message and file count; port Git
-      application/            commit the staged files or every change, as the repo's account
-      infrastructure/         Git: add --all, commit (Head through the refs infrastructure)
+      domain/                 Committed, commit message and file count; File and Status (each uncommitted file's staged and working-folder state), CleanPath, Diff; ports Git, Changes
+      application/            list and diff the uncommitted changes; stage, unstage, discard (kept as a stash "gitswitch discard: <branch>"); commit the staged files or every change, as the repo's account
+      infrastructure/         Git: status --porcelain=v2 (file by file), diff (new files with --no-index), add --all, reset, stash push -u, commit (Head through the refs infrastructure); paths after --literal-pathspecs
     hosting/
       domain/                 the kind of a host (GitHub, GitLab or Gitea/Forgejo, guessed from its name) with its words (pull or merge request), the API address for a host, token help per host, token checks, the token's user must be the account's; git's credential helper protocol and the helper section per host; RemoteRepo, merging accounts' lists, filters, which are cloned; PullRequest, Inbox and the status chips of a pull request; ports Secrets, API, Accounts, HelperConfig, Repos, Cache
       application/            sign in with a token, sign out, which accounts are signed in, check a token; keep the credential helper section while an account on the host is signed in; answer git's HTTPS credential requests; Browse (cached, stale lists read again); Reviews (each account's inbox, cached for 5 minutes); BranchPR (the current branch's open pull request, not cached)
@@ -211,7 +211,7 @@ does not change.
 
 | Feature | Where it goes |
 | --- | --- |
-| Staging (files, hunks, lines) | The `workspace` feature (commit exists): porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
+| Staging (files, hunks, lines) | The `workspace` feature (commit, file staging and discard exist; hunks and lines to come): porcelain parsers (`git status --porcelain=v2`, `git diff`) in its infrastructure behind a domain port, use cases in its application. |
 | Diff viewer, blame | A `diff` feature over git parsers. Render only the visible rows. |
 | Branches, checkout, stash, tags | The `refs` feature (branches, switch and update exist; stash and tags go there too). |
 | Merge, rebase, conflict editor | A `merge` feature (3-way conflict model in its domain). New changes report to the `undo` feature's Recorder, as history and refs do. |

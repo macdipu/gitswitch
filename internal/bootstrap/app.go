@@ -69,6 +69,7 @@ func New(dryRun bool, out io.Writer) *App {
 	keys := &sshinfra.Keys{FS: fs}
 	installer := &setup.Installer{Git: git, FS: fs, Store: store, Version: Version}
 	undoGit := &undoinfra.Git{Git: git}
+	wsGit := &workspaceinfra.Git{Git: git}
 	undos := &undoapp.Service{Store: undoGit, Git: undoGit, FS: fs}
 	secrets := hostinginfra.NewSecrets()
 	return &App{
@@ -79,7 +80,7 @@ func New(dryRun bool, out io.Writer) *App {
 		History:   &historyapp.Service{Accounts: store, Repos: reader, Locator: git, Log: &historyinfra.Log{Git: git}, FS: fs, Undo: undos},
 		Refs:      &refsapp.Service{Refs: &refsinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Undo:      undos,
-		Workspace: &workspaceapp.Service{Git: &workspaceinfra.Git{Git: git}, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
+		Workspace: &workspaceapp.Service{Git: wsGit, Changes: wsGit, Accounts: store, Repos: reader, Locator: git, FS: fs, Undo: undos},
 		Hosting: &hostingapp.Service{Accounts: store, Secrets: secrets, API: hostinginfra.NewHosts(Version),
 			Helper: &hostinginfra.HelperConfig{Git: git}, Repos: &hostinginfra.HelperRepos{Git: git, Reader: reader}, Cache: hostinginfra.Cache{}, Inboxes: hostinginfra.Cache{}},
 		Setup:  installer,

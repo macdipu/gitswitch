@@ -394,6 +394,37 @@ func (s *server) routes() map[string]handler {
 		"POST /api/repo/fetch": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Fetch(gd, func(string) {})
 		}),
+		// The working folder's uncommitted changes, file by file.
+		"GET /api/repo/changes": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Workspace.Status(gd)
+		},
+		// One file's uncommitted change ("" path: every file's); staged=1
+		// for what is staged.
+		"GET /api/repo/diff": func(r *http.Request) (any, error) {
+			q := r.URL.Query()
+			gd, err := s.gitDir(q.Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Workspace.Diff(gd, q.Get("path"), q.Get("staged") == "1")
+		},
+		// paths (repo-relative) or all; discard keeps the changes in a stash.
+		"POST /api/repo/stage": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			paths, all := pathList(b)
+			return a.Workspace.Stage(gd, paths, all)
+		}),
+		"POST /api/repo/unstage": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			paths, all := pathList(b)
+			return a.Workspace.Unstage(gd, paths, all)
+		}),
+		"POST /api/repo/discard": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			paths, all := pathList(b)
+			return a.Workspace.Discard(gd, paths, all)
+		}),
 		// all commits every change, new files too; otherwise what is staged.
 		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			all, _ := b["all"].(bool)
@@ -626,6 +657,18 @@ func body(r *http.Request) map[string]any {
 		m = map[string]any{}
 	}
 	return m
+}
+
+// pathList reads "paths": [...] and "all": true from a request body.
+func pathList(b map[string]any) (paths []string, all bool) {
+	all, _ = b["all"].(bool)
+	list, _ := b["paths"].([]any)
+	for _, p := range list {
+		if s, ok := p.(string); ok {
+			paths = append(paths, s)
+		}
+	}
+	return paths, all
 }
 
 func str(m map[string]any, k string) string {

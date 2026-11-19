@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -567,5 +568,42 @@ func TestCompare(t *testing.T) {
 	push, _ := d["toPush"].([]any)
 	if w.Code != 200 || len(push) != 1 || d["upstream"] != "origin/main" || d["toPull"] != nil {
 		t.Fatalf("compare = %d %v", w.Code, m)
+	}
+}
+
+// The changes list from the page: list, diff, stage, unstage, discard.
+func TestChanges(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	q := "gitDir=" + url.QueryEscape(dir)
+	write("changed\n")
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("fresh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w, m := call(t, h, "GET", "/api/repo/changes?"+q, "")
+	d, _ := m["data"].(map[string]any)
+	if files, _ := d["files"].([]any); w.Code != 200 || len(files) != 2 {
+		t.Fatalf("changes = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "GET", "/api/repo/diff?"+q+"&path=new.txt", "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || !strings.Contains(fmt.Sprint(d["text"]), "+fresh") {
+		t.Fatalf("diff = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/stage", `{`+gd+`,"paths":["f.txt"]}`); w.Code != 200 || git("diff", "--cached", "--name-only") != "f.txt" {
+		t.Fatalf("stage = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/unstage", `{`+gd+`,"all":true}`); w.Code != 200 || git("diff", "--cached", "--name-only") != "" {
+		t.Fatalf("unstage = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/stage", `{`+gd+`,"paths":["nope.txt"]}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "no uncommitted changes") {
+		t.Fatalf("stage a clean file = %d %v", w.Code, m)
+	}
+	w, m = call(t, h, "POST", "/api/repo/discard", `{`+gd+`,"all":true}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || git("status", "--porcelain") != "" || !strings.Contains(fmt.Sprint(d["stash"]), "gitswitch discard: main") {
+		t.Fatalf("discard = %d %v status %q", w.Code, m, git("status", "--porcelain"))
+	}
+	if !strings.Contains(git("stash", "list"), "gitswitch discard: main") {
+		t.Fatal("the discarded changes are not in the stash")
 	}
 }
