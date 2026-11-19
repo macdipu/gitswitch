@@ -348,6 +348,33 @@ kbd{font:12px ui-monospace,Menlo,Consolas,monospace;padding:0 4px;border:1px sol
 .diffbox .dd{color:var(--bad);background:rgb(255 107 118 / .12);background:color-mix(in srgb,var(--bad) 14%,transparent)}
 .diffbox .dmeta{color:var(--muted)}
 .details.nodetails .cmsg,.details.nodetails dl{display:none}
+/* uncommitted changes: the log's top row and the panel */
+.hrow.wip .stext strong{font-weight:650}
+.hrow.wip{background:var(--hover)}
+.csec{border-top:1px solid var(--rule);padding:8px 0 4px}
+.csec:first-child{border-top:0;padding-top:2px}
+.csh{display:flex;align-items:center;gap:6px;margin:0 0 4px;font-size:13px}
+.csh .cnt{color:var(--muted);font-size:12px}
+.csh .btn{padding:2px 8px;font-size:12.5px}
+.crow{display:flex;align-items:center;gap:2px;border-radius:4px}
+.crow:hover{background:var(--hover)}
+.crow.on{background:var(--hover);box-shadow:inset 2px 0 0 var(--focus)}
+.crow .frow{flex:1;min-width:0}
+.crow .frow:hover{background:transparent}
+.crow .btn.icon{width:24px;height:24px;padding:0;font-size:15px;line-height:1;opacity:.55;flex:none}
+.crow:hover .btn.icon,.crow .btn.icon:focus-visible{opacity:1}
+.fdir{color:var(--muted);font-family:inherit;font-size:12px;margin-left:4px}
+.cl{flex:none;width:16px;text-align:center;font:600 11.5px/16px ui-monospace,Menlo,Consolas,monospace;border-radius:3px;color:var(--muted)}
+.cl-M,.cl-T{color:var(--a2)} .cl-A,.cl-N,.cl-C{color:var(--ok)} .cl-D{color:var(--bad)} .cl-R{color:var(--a4)} .cl-\!{color:#fff;background:var(--bad)}
+.cbox{border-top:1px solid var(--rule);margin-top:10px;padding-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding-bottom:14px}
+.cbox textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;font:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper);color:var(--ink)}
+.cbox textarea:focus{outline:2px solid var(--focus);outline-offset:-1px}
+.cbox .cboxall{display:flex;flex-direction:row;align-items:center;gap:6px;margin:6px 0 0;font-size:12.5px}
+.cbox .cboxall input{width:auto;margin:0;padding:0;flex:none}
+.hrow.wip .subj{grid-column:2 / -1}
+@media (max-width:900px){.cbox{position:static;padding-bottom:0}}
+.cboxrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+.hint.bad{color:var(--bad)}
 dialog.diffdlg{max-width:min(1100px,calc(100vw - 48px));width:calc(100vw - 48px);padding:0}
 .diffdlg .diffbox{margin:0;border:0}
 .diffdlg pre{max-height:calc(100vh - 140px)}
@@ -1291,7 +1318,7 @@ async function fillRepoSelect(){
   }
   if (gone || !$('#history').dataset.loaded) loadHistory();
 }
-$('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; loadHistory(); };
+$('#histRepo').onchange = () => { picked.clear(); openFolds.clear(); H = null; WIP = false; CH = null; wipDiff = null; wipMsg = ''; loadHistory(); };
 // markOpened records the repo shown as the newest recent one, in the
 // settings and in the menu. It never holds up the history.
 function markOpened(gd){
@@ -1577,19 +1604,8 @@ $('#compareBtn').onclick = async () => {
   if (!await ask(text.trim() || `${c.branch} is up to date with ${c.upstream}.`, ok ? {ok, cancel:'Close'} : {ok:'Close'})) return;
   if (ok === 'Push') $('#pushBtn').click(); else if (ok === 'Update') $('#updateBtn').click();
 };
-$('#commitBtn').onclick = async () => {
-  const gd = $('#histRepo').value, h = R?.head, c = h?.changes || {}, acct = H?.repo.account, as = acct ? ` as ${acct}` : '';
-  const others = (c.changed || 0) + (c.new || 0), n = (x, w) => `${x} ${w}${x > 1 ? 's' : ''}`;
-  const what = c.staged ? `the ${n(c.staged, 'staged file')}` : `every change: ${[c.changed && c.changed + ' changed', c.new && c.new + ' new'].filter(Boolean).join(', ')}`;
-  const msg = await ask(`Commit ${what}${h?.branch ? ' on ' + h.branch : ''}${as}. Message:`,
-    {input: '', ok: 'Commit', check: c.staged && others ? `Also commit the ${n(others, 'other changed file')} (new files too)` : ''});
-  if (!msg?.trim()) return;
-  const all = !c.staged || $('#dlgCheck').checked;
-  const r = await act(() => api('POST','/api/repo/commit',{gitDir:gd, message:msg, all}));
-  if (!r) return;
-  toast(`Committed ${r.short} ${r.subject}${r.account ? ' as ' + r.account : ''}`, false, null, undoable(gd));
-  loadHistory();
-};
+// Commit… opens the changes panel with its commit box.
+$('#commitBtn').onclick = () => openChanges();
 $('#browseRepo').onclick = () => act(() => api('POST','/api/commit/browse',{gitDir:$('#histRepo').value, hash:''}));
 
 // Branch menu: local branches first, then remote ones not checked out yet.
@@ -1830,7 +1846,8 @@ function renderHistory(){
     <span>${filtered ? `<strong>${shown.length}</strong> matching commit${shown.length === 1 ? '' : 's'}` : `${H.commits.length} commit${H.commits.length === 1 ? '' : 's'}`}</span>
     ${H.unpushed ? `<span>${H.unpushed} not pushed</span>` : ''}${H.flagged ? `<span class="status-bad">${H.flagged} wrong-account${fixable && fixable < H.flagged ? ` (${fixable} not pushed, can be fixed)` : fixable ? '' : ' (already pushed)'}</span>` : ''}`;
   if (!shown.length){
-    box.innerHTML = filtered ? '<div class="empty">No commits match these filters. <button class="btn" data-chip="*" id="emptyClear">Clear filters</button></div>' : '<div class="empty">This repo has no commits yet.</div>';
+    const top = wipRow() ? `<div class="history" style="--gw:26px;--cols:var(--gw) minmax(0,1fr);--cols-m:var(--cols);--cols-s:var(--cols)" role="listbox" aria-label="Commits">${wipRow()}</div>` : '';
+    box.innerHTML = top + (filtered ? '<div class="empty">No commits match these filters. <button class="btn" data-chip="*" id="emptyClear">Clear filters</button></div>' : '<div class="empty">This repo has no commits yet.' + (top ? ' Commit your changes above to make the first one.' : '') + '</div>');
     $('#emptyClear')?.addEventListener('click', clearFilters);
     return renderDetails();
   }
@@ -1873,7 +1890,7 @@ function renderHistory(){
       <svg width="${W}" height="${RH}" aria-hidden="true"><g stroke-opacity=".8" stroke-width="1.8" fill="none">${lines}</g></svg>
       <div class="subj"><span class="stext">⋯ ${f.n} more commit${f.n === 1 ? '' : 's'} on this line · show</span></div></div>`;
   };
-  box.innerHTML = `<div class="history ${hi}" style="--gw:${W}px;--cols:${cols('minmax(120px,190px)', '132px')};--cols-m:${cols('140px', '112px')};--cols-s:var(--gw) minmax(0,1fr)${VIEW.colDate ? ' 104px' : ''}" role="listbox" aria-multiselectable="true" aria-label="Commits">` + items.map(it => it.fold ? foldRow(it.fold) : it.c).map(c => {
+  box.innerHTML = `<div class="history ${hi}" style="--gw:${W}px;--cols:${cols('minmax(120px,190px)', '132px')};--cols-m:${cols('140px', '112px')};--cols-s:var(--gw) minmax(0,1fr)${VIEW.colDate ? ' 104px' : ''}" role="listbox" aria-multiselectable="true" aria-label="Commits">` + wipRow() + items.map(it => it.fold ? foldRow(it.fold) : it.c).map(c => {
     if (typeof c === 'string') return c;
     const i = idx.get(c.hash), col = c.account ? colorOf(c.account) : 'var(--muted)';
     // Each lane keeps its own color, as in an IDE's log; the dot is the
@@ -1905,6 +1922,7 @@ function renderHistory(){
 }
 
 function pick(hash, multi){
+  if (WIP){ WIP = false; wipDiff = null; document.querySelector('.hrow.wip')?.classList.remove('sel'); }
   if (multi) picked.has(hash) ? picked.delete(hash) : picked.add(hash);
   else if (picked.size === 1 && picked.has(hash)) picked.clear();
   else { picked.clear(); picked.add(hash); }
@@ -1916,10 +1934,12 @@ const openFolds = new Set();
 $('#history').addEventListener('click', e => {
   const r = e.target.closest('.hrow'); if (!r) return;
   if (r.dataset.fold){ openFolds.add(r.dataset.fold); return renderHistory(); }
+  if (r.dataset.wip){ WIP ? (WIP = false, wipDiff = null, renderHistory()) : openChanges(); return; }
   pick(r.dataset.hash, e.metaKey || e.ctrlKey || e.shiftKey);
 });
 $('#history').addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.fold){ e.preventDefault(); openFolds.add(e.target.dataset.fold); return renderHistory(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.wip){ e.preventDefault(); return openChanges(); }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('hrow')){ e.preventDefault(); pick(e.target.dataset.hash, e.key === ' ' || e.metaKey || e.ctrlKey); }
 });
 
@@ -2109,6 +2129,8 @@ function actionRow(id, label, why, opts = {}){
 function renderDetails(){
   const d = $('#details'), sb = $('#selbar'), cs = H ? H.commits.filter(c => picked.has(c.hash)) : [];
   const branch = R?.head.branch ? esc(R.head.branch) : 'this branch';
+  if (WIP && !cs.length && anyChanges(R?.head?.changes)) return renderChanges();
+  WIP = false;
   sb.hidden = cs.length < 2;
   if (cs.length >= 2) sb.innerHTML = `<strong>${cs.length} commits selected</strong><button class="btn" data-ca="pick">Cherry-pick ${cs.length} onto ${branch}</button><button class="btn ghost" data-ca="clear">Clear</button>`;
   $('#histMain').classList.toggle('open', cs.length === 1);
@@ -2256,15 +2278,148 @@ async function showDiff(gd, hash, path){
   try { d = await api('GET', `/api/commit/diff?gitDir=${encodeURIComponent(gd)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`); }
   catch (e) { box.innerHTML = `<p class="hint" style="padding:8px">${esc(e.message)}</p>`; return; }
   if (inline && $('#diffbox') !== box) return;
-  const lines = d.text.split('\n').filter((l, i, a) => !(l.startsWith('diff --git') || l.startsWith('index ') || l.startsWith('--- ') || l.startsWith('+++ ') || (i === a.length - 1 && l === '')));
-  const cls = l => l.startsWith('@@') ? 'dhunk' : l.startsWith('+') ? 'da' : l.startsWith('-') ? 'dd'
-    : /^(new|deleted) file mode|^(old|new) mode|^similarity|^rename |^Binary files/.test(l) ? 'dmeta' : '';
-  const pre = `<pre>${lines.length ? lines.map(l => `<span class="${cls(l)}">${esc(l) || ' '}</span>`).join('') : '<span class="hint">No text changes (a binary file, or only its mode changed).</span>'}${d.truncated ? '<span class="hint">… cut here: the diff is long. See the rest in your editor.</span>' : ''}</pre>`;
+  const pre = diffPre(d);
   if (!inline){ box.innerHTML = pre; return; }
   box.innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>${pre}</div>`;
   box.querySelector('button').onclick = () => { box.innerHTML = ''; $('.frow.on')?.classList.remove('on'); };
 }
+// diffPre colors a unified diff: added and removed lines, hunk headers.
+function diffPre(d, empty = 'No text changes (a binary file, or only its mode changed).'){
+  const lines = d.text.split('\n').filter((l, i, a) => !(l.startsWith('diff --git') || l.startsWith('index ') || l.startsWith('--- ') || l.startsWith('+++ ') || (i === a.length - 1 && l === '')));
+  const cls = l => l.startsWith('@@') ? 'dhunk' : l.startsWith('+') ? 'da' : l.startsWith('-') ? 'dd'
+    : /^(new|deleted) file mode|^(old|new) mode|^similarity|^rename |^Binary files/.test(l) ? 'dmeta' : '';
+  return `<pre>${lines.length ? lines.map(l => `<span class="${cls(l)}">${esc(l) || ' '}</span>`).join('') : `<span class="hint">${esc(empty)}</span>`}${d.truncated ? '<span class="hint">… cut here: the diff is long. See the rest in your editor.</span>' : ''}</pre>`;
+}
 $('#diffDlgClose').onclick = () => $('#diffDlg').close();
+
+// ---- uncommitted changes: the top row of the log, and its panel ----
+// WIP is the "Uncommitted changes" row selected: the details panel then
+// lists the changed files (stage, unstage, discard, diff) above a commit
+// box, beside the graph rather than on a page of its own.
+let WIP = false, CH = null, wipMsg = '', wipDiff = null;
+const anyChanges = c => !!c && (c.staged || c.changed || c.new || c.conflicts) > 0;
+function wipRow(){
+  const c = R?.head?.changes;
+  if (!anyChanges(c)) return '';
+  const parts = [c.conflicts && `${c.conflicts} conflict${c.conflicts > 1 ? 's' : ''}`, c.staged && `${c.staged} staged`, c.changed && `${c.changed} changed`, c.new && `${c.new} new`].filter(Boolean).join(', ');
+  return `<div class="hrow wip${WIP ? ' sel' : ''}" role="option" aria-selected="${WIP}" tabindex="0" data-wip="1" title="Your uncommitted changes: stage, discard and commit them">
+    <svg width="26" height="28" aria-hidden="true"><circle cx="12" cy="14" r="5" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg>
+    <div class="subj"><span class="stext"><strong>Uncommitted changes</strong> <span class="hint">${esc(parts)}</span></span></div></div>`;
+}
+function openChanges(){
+  WIP = true; picked.clear(); renderHistory();
+  setTimeout(() => $('#wipMsg')?.focus(), 0);
+}
+// A letter and a color for each file's change, as IDEs show them.
+const CHG = {M:['M','modified'], A:['A','added'], D:['D','deleted'], R:['R','renamed'], C:['C','copied'], T:['T','type changed'], U:['!','conflict'], '?':['N','new']};
+function renderChanges(){
+  const d = $('#details'), gd = $('#histRepo').value;
+  $('#selbar').hidden = true;
+  $('#histMain').classList.add('open');
+  d.hidden = false;
+  const h = R?.head, acct = H?.repo.account;
+  d.innerHTML = `<div class="dhead"><strong>Uncommitted changes</strong>${h?.branch ? ` <span class="hint">on ${esc(h.branch)}</span>` : ''}
+      <span class="spacer"></span><button class="btn ghost" data-wa="reload" aria-label="Read the changes again" title="Read again">↻</button><button class="btn ghost" data-wa="close" aria-label="Close" title="Close (Esc)">✕</button></div>
+    <div id="chList">${CH ? changeList(CH) : '<p class="hint">Reading the changes…</p>'}</div>
+    <div id="diffbox"></div>
+    <form class="cbox" id="wipForm">
+      <label class="sr-only" for="wipMsg">Commit message</label>
+      <textarea id="wipMsg" rows="3" placeholder="Commit message: what the change does, e.g. Fix the login form" spellcheck="true">${esc(wipMsg)}</textarea>
+      <label class="hint cboxall" id="wipAllRow" hidden><input type="checkbox" id="wipAll"> Also commit the changes that are not staged (new files too)</label>
+      <div class="cboxrow"><span class="hint" id="wipAs">${acct ? 'Commits as <strong style="color:' + colorOf(acct) + '">' + esc(acct) + '</strong>' : ''}</span><span class="spacer"></span>
+        <button class="btn primary" id="wipCommit" type="submit">Commit</button></div>
+      <p class="hint" style="margin:4px 0 0">Ctrl/⌘ + Enter commits. Undo takes a commit back off the branch and keeps its changes.</p>
+    </form>`;
+  $('#wipMsg').oninput = e => { wipMsg = e.target.value; commitState(); };
+  $('#wipMsg').onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); $('#wipForm').requestSubmit(); } };
+  $('#wipAll').onchange = commitState;
+  $('#wipForm').onsubmit = e => { e.preventDefault(); commitChanges(gd); };
+  commitState();
+  if (wipDiff) showWipDiff(gd, wipDiff.path, wipDiff.staged);
+  loadChanges(gd);
+}
+async function loadChanges(gd){
+  let st; try { st = await api('GET', '/api/repo/changes?gitDir=' + encodeURIComponent(gd)); }
+  catch (e) { if (WIP) $('#chList').innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+  if (!WIP || $('#histRepo').value !== gd) return;
+  CH = st;
+  if (!st.files.length){ WIP = false; CH = null; wipDiff = null; return renderHistory(); }
+  $('#chList').innerHTML = changeList(st);
+  commitState();
+}
+function changeList(st){
+  const fs = st.files, conflicts = fs.filter(f => f.conflict), staged = fs.filter(f => !f.conflict && f.staged !== '?' && f.staged !== '.'),
+    changed = fs.filter(f => !f.conflict && (f.staged === '?' || f.worktree !== '.'));
+  const on = (p, s) => wipDiff && wipDiff.path === p && wipDiff.staged === s;
+  const row = (f, sec) => {
+    const letter = sec === 'staged' ? f.staged : sec === 'conflict' ? 'U' : f.staged === '?' ? '?' : f.worktree, [l, word] = CHG[letter] || ['M', 'modified'];
+    const name = f.path.split('/').pop(), dir = f.path.slice(0, f.path.length - name.length);
+    const btns = sec === 'staged' ? `<button class="btn ghost icon" data-wa="unstage" aria-label="Unstage ${esc(f.path)}" title="Unstage: take it out of the next commit; the file keeps the change">−</button>`
+      : sec === 'changed' ? `<button class="btn ghost icon" data-wa="discard" aria-label="Discard the changes in ${esc(f.path)}" title="Discard: back to the last commit${f.staged === '?' ? ' (removes this new file)' : ''}; kept in git stash">↺</button><button class="btn ghost icon" data-wa="stage" aria-label="Stage ${esc(f.path)}" title="Stage: add it to the next commit">+</button>` : '';
+    return `<div class="crow${on(f.path, sec === 'staged') ? ' on' : ''}" data-path="${esc(f.path)}" data-sec="${sec}">
+      <button class="frow" data-wa="diff" title="${esc(f.path + (f.orig ? ' (from ' + f.orig + ')' : '') + ': ' + word)}"><span class="cl cl-${esc(l)}" aria-label="${esc(word)}">${esc(l)}</span><span class="fn">${esc(name)}${dir ? ` <span class="fdir">${esc(dir.replace(/\/$/, ''))}</span>` : ''}</span></button>${btns}</div>`;
+  };
+  const sec = (title, key, list, actions, hint) => !list.length ? '' : `<div class="csec"><div class="csh"><strong>${title}</strong> <span class="cnt">${list.length}</span><span class="spacer"></span>${actions}</div>
+    ${hint ? `<p class="hint" style="margin:0 0 4px">${hint}</p>` : ''}${list.map(f => row(f, key)).join('')}</div>`;
+  return (st.busy ? `<p class="hint bad">A ${esc(st.busy)} is in progress: finish or abort it in a terminal first.</p>` : '')
+    + sec('Conflicts', 'conflict', conflicts, '', 'Fix them in your editor or IDE, then stage them there.')
+    + sec('Staged', 'staged', staged, `<button class="btn ghost" data-wa="unstage-all" title="Take every change out of the next commit">Unstage all</button>`, '')
+    + sec(staged.length ? 'Not staged' : 'Changes', 'changed', changed, `<button class="btn ghost danger" data-wa="discard-all" title="Put every file back as in the last commit; the changes are kept in git stash">Discard all</button><button class="btn ghost" data-wa="stage-all" title="Add every change to the next commit">Stage all</button>`,
+      staged.length ? '' : 'Stage the files to commit, or commit them all at once.');
+}
+// commitState says what the Commit button will commit.
+function commitState(){
+  const b = $('#wipCommit'); if (!b) return;
+  const fs = CH?.files || [], staged = fs.filter(f => !f.conflict && f.staged !== '?' && f.staged !== '.').length,
+    others = fs.filter(f => !f.conflict && (f.staged === '?' || f.worktree !== '.')).length, conflicts = fs.filter(f => f.conflict).length;
+  $('#wipAllRow').hidden = !(staged && others);
+  const all = !staged || $('#wipAll').checked, n = all ? new Set(fs.filter(f => !f.conflict).map(f => f.path)).size : staged;
+  b.textContent = !CH ? 'Commit' : all && !staged ? `Commit all ${n} file${n === 1 ? '' : 's'}` : `Commit ${n} file${n === 1 ? '' : 's'}`;
+  const why = !CH ? 'Reading the changes…' : CH.busy ? `Finish the ${CH.busy} first` : conflicts ? 'Fix the conflicts first' : !n ? 'Nothing to commit' : !wipMsg.trim() ? 'Write a commit message first' : '';
+  b.disabled = !!why; b.title = why;
+}
+async function commitChanges(gd){
+  const fs = CH?.files || [], staged = fs.some(f => !f.conflict && f.staged !== '?' && f.staged !== '.');
+  const all = !staged || $('#wipAll').checked;
+  const b = $('#wipCommit'); b.disabled = true; b.textContent = 'Committing…';
+  const r = await act(() => api('POST','/api/repo/commit',{gitDir:gd, message:wipMsg, all}));
+  if (!r){ commitState(); return; }
+  wipMsg = ''; wipDiff = null; CH = null;
+  toast(`Committed ${r.short} ${r.subject}${r.account ? ' as ' + r.account : ''}`, false, null, undoable(gd));
+  loadHistory();
+}
+async function showWipDiff(gd, path, staged){
+  const box = $('#diffbox'); if (!box) return;
+  box.innerHTML = '<p class="hint" style="padding:8px">Reading the diff…</p>';
+  let d;
+  try { d = await api('GET', `/api/repo/diff?gitDir=${encodeURIComponent(gd)}&path=${encodeURIComponent(path)}&staged=${staged ? 1 : 0}`); }
+  catch (e) { box.innerHTML = `<p class="hint" style="padding:8px">${esc(e.message)}</p>`; return; }
+  if ($('#diffbox') !== box || !wipDiff || wipDiff.path !== path) return;
+  box.innerHTML = `<div class="diffbox"><div class="dh"><span class="fn" title="${esc(path)}">${esc(path)}</span><span class="hint">${staged ? 'staged' : 'not staged'}</span><button class="btn ghost" aria-label="Close the diff" title="Close">✕</button></div>${diffPre(d, 'No changes here' + (staged ? ' that are staged.' : ' that are not staged.'))}</div>`;
+  box.querySelector('button').onclick = () => { wipDiff = null; box.innerHTML = ''; document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); };
+}
+$('#details').addEventListener('click', async e => {
+  const a = e.target.closest('[data-wa]')?.dataset.wa; if (!a || !WIP) return;
+  const gd = $('#histRepo').value, row = e.target.closest('.crow'), path = row?.dataset.path, sec = row?.dataset.sec;
+  if (a === 'close'){ WIP = false; wipDiff = null; return renderHistory(); }
+  if (a === 'reload') return loadHistory();
+  if (a === 'diff'){
+    document.querySelectorAll('.crow.on').forEach(x => x.classList.remove('on')); row.classList.add('on');
+    wipDiff = {path, staged: sec === 'staged'}; return showWipDiff(gd, path, sec === 'staged');
+  }
+  const all = a.endsWith('-all'), verb = all ? a.slice(0, -4) : a, body = {gitDir:gd, paths: all ? [] : [path], all};
+  if (verb === 'discard'){
+    const f = CH?.files.find(x => x.path === path), n = CH?.files.filter(x => !x.conflict).length || 0;
+    const q = all ? `Discard every uncommitted change (${n} file${n === 1 ? '' : 's'})? The files go back to the last commit and new files are removed.`
+      : `Discard the changes in ${path}? ${f?.staged === '?' ? 'This new file is removed.' : 'It goes back to the last commit.'}`;
+    if (!await ask(q + '\n\nNothing is lost: the changes are kept in git stash (“gitswitch discard: …”), where git stash apply or your IDE can bring them back.', {ok:'Discard', danger:true})) return;
+  }
+  const r = await act(() => api('POST', '/api/repo/' + verb, body));
+  if (!r) return;
+  if (verb === 'discard') toast(`Discarded ${r.files.length === 1 ? r.files[0] : r.files.length + ' files'}; kept in git stash`);
+  if (wipDiff && (all || wipDiff.path === path)) wipDiff = verb === 'discard' ? null : {path: wipDiff.path, staged: verb === 'stage'};
+  loadHistory();
+});
 for (const el of ['#details', '#selbar']) $(el).addEventListener('click', e => { const a = e.target.closest('[data-ca]')?.dataset.ca; if (a) commitAction(a); });
 async function commitAction(a){
   if (!H) return;
@@ -2308,11 +2463,11 @@ document.addEventListener('keydown', e => {
     if (!$('#branchPop').hidden){ toggleBranches(false); $('#branchBtn').focus(); return; }
     if (!$('#filterPanel').hidden){ toggleFilters(false); return; }
     if (typing){ e.target.blur(); return; }
-    if (picked.size){ picked.clear(); renderHistory(); }
+    if (picked.size || WIP){ picked.clear(); WIP = false; wipDiff = null; renderHistory(); }
     return;
   }
   if (typing || e.metaKey || e.ctrlKey) return;
-  const rows = [...document.querySelectorAll('.hrow:not(.fold)')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
+  const rows = [...document.querySelectorAll('.hrow:not(.fold):not(.wip)')], cur = rows.findIndex(r => r === document.activeElement || picked.has(r.dataset.hash) && picked.size === 1);
   if (e.key === '/'){ e.preventDefault(); $('#histSearch').focus(); }
   else if (e.key === 'j' || e.key === 'k'){
     e.preventDefault();
