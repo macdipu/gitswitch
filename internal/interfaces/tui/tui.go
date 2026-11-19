@@ -124,6 +124,12 @@ type tui struct {
 	filter    history.Filter
 	changes   *changesView // the History page's list of uncommitted changes, while open
 	stashes   *stashView   // the History page's stash manager, while open
+	rewriteUI              // the rebase editor, worktrees and submodules, while open (tui_rewrite.go, tui_trees.go)
+	mergeUI                // the operation in progress and the conflict editor (tui_merge.go)
+	hunksUI                // a file's hunks in the changes (tui_hunks.go)
+	insp      inspectState // the History page's Inspect views (blame, compare, ...), while open
+
+	ext extState // remotes, redo, detached HEAD, signing badges, git check (tui_misc.go)
 
 	msg    string
 	msgErr bool
@@ -164,6 +170,7 @@ func Run(a *bootstrap.App) error {
 	t.reload()
 	t.histDir = a.Repos.Current()
 	t.welcome()
+	t.gitBanner()
 	stop := terminal.WatchResize(func() {
 		t.mu.Lock()
 		defer t.mu.Unlock()
@@ -352,6 +359,10 @@ func parseKeys(b []byte, full bool) (keys []string, rest []byte) {
 					keys = append(keys, "left")
 				case "Z":
 					keys = append(keys, "backtab")
+				case "1;2A":
+					keys = append(keys, "shift-up")
+				case "1;2B":
+					keys = append(keys, "shift-down")
 				case "H", "1~":
 					keys = append(keys, "home")
 				case "F", "4~":
@@ -435,8 +446,15 @@ func (t *tui) handle(k string) {
 		t.handlePicker(k)
 	case t.form != nil:
 		t.handleForm(k)
+	case t.hv != nil && t.tab == tabHistory && t.keyHunks(k):
+	case t.conf != nil && t.tab == tabHistory && t.keyConflict(k):
+	case t.opv != nil && t.tab == tabHistory && t.keyOperation(k):
 	case t.stashes != nil && t.tab == tabHistory && t.keyStashes(k):
+	case t.inspecting() && t.tab == tabHistory && t.keyInspect(k):
 	case t.changes != nil && t.tab == tabHistory && t.keyChanges(k):
+	case t.rwEd != nil && t.tab == tabHistory && t.keyRewrite(k):
+	case t.wtView != nil && t.tab == tabHistory && t.keyWorktrees(k):
+	case t.subView != nil && t.tab == tabHistory && t.keySubmodules(k):
 	default:
 		t.handleMain(k)
 	}
@@ -690,8 +708,11 @@ Accounts
   a add   e edit   R rename   t test login   k public key   K use another key   d default (again: no default, always ask)
   p passphrase to agent   x remove (then y keeps the key files, Shift+D deletes them too)
   g sign in to GitHub or GitLab with a token (kept in your keychain)   G sign out
+  s sign commits as this account: off, ssh key or gpg key (then the public key to add on the host)
 Repos
   Enter choose account   h history   c clone by URL   f add folder   a add one repo   r rescan
+  n start a new repo (git init: folder, first branch, account)
+  W worktrees of the repo
   p pin / unpin   o open folder   O open in editor   x remove from list (files untouched)
   b browse the repos your signed-in accounts can see on GitHub or GitLab (type to filter; Enter clones or opens one)
   g group the list by nothing, account, owner, folder or your groups   G put the repo in a group you name
@@ -703,14 +724,21 @@ History
   t tag the selected commit (with a message: annotated)   T tags: push or delete (asks)
   F fetch (read new commits from the remote)   u update (pull)   p push (never forced; -u the first time; commits made as another account: fix first)
   i make new commits with the repo account's name and email (when the History header says they aren't)   w view in browser   K the branch's pull request   / filter by author, message, date or account
-  U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix
+  U undo the last commit, switch, move, prune, revert, drop, roll back, cherry-pick or fix   Y redo what U took back (asks first)
+  O remotes and more: list, add, rename, change URL, remove remotes; delete a branch on the server; fetch and forget deleted branches;
+    force push with lease (shows the commits it overwrites, then you type yes; never a plain force); check out a commit or tag (detached); Back
+  E back to the branch from a detached HEAD (warns about commits made there that are on no branch)
+  a check mark before a commit means it is signed, when the repo's account signs: green good, red bad or revoked, amber expired, dim cannot be checked here
   R after a smart switch with clashing files: I've fixed them, go back, or park them instead
   P parked changes (git stash): restore, look first or delete
   h stashes: every git stash (see Stashes below)
+  L rewrite history: rebase onto a branch, interactive rebase, reword, fold staged changes into an older commit (not-pushed commits only)
+  l reword the selected commit   W worktrees (see below)   V submodules (see below)
   n new branch here   N new branch at the selected commit (uncommitted changes come along)
   M committed on the wrong branch: move the commits not pushed to a new branch
   D delete the branches merged into the remote's default branch
   S compare with the remote branch: the commits you would push and pull
+  I inspect: blame a file, a file's history, compare two refs, reflog, bisect, search code changes (see Inspect below)
   C commit the staged files as the repo's account (nothing staged: every change, new files too)
     in its form, ↑ then ←→ amends the last commit instead (its message filled in; says why when it can't)
   s uncommitted changes: the files changed, staged or not, and in conflict (see Changes below)
@@ -720,10 +748,39 @@ Changes (s on History)
   s stage   u unstage   x discard: back to the last commit (asks first; the changes are kept in git stash)
   a stage all   A unstage all   X discard all (asks first)   C commit (the staged files, or every change when none is staged) or amend
   i ignore the file, its extension or its folder, in .gitignore or only for me (offers to untrack a tracked file)
+Merge, operation in progress, conflicts, hunks
+  e on History: merge a branch into the current one (pick it, read the plan: commits coming in and likely clashes; f fast-forward, m merge commit, s squash)
+    also m in the branch list (B). When git is stopped in a merge, rebase, cherry-pick or revert, History says so and e opens the Operation page
+  Operation: ↑↓ move   Enter fix the selected file   c continue   s skip (not for a merge)   a abort (asks first)   r read again   Esc back
+  Conflict: ↑↓ PgUp PgDn move   v the file with markers, ours, theirs, the base   n / p next / previous clash
+    o ours   t theirs   b both, for the clash under the cursor   u forget the choice   w save the file with your choices (marks it resolved)
+    O / T keep ours / theirs for the whole file (asks)   d mark resolved as it is (refused while markers remain)
+    e open in $VISUAL or $EDITOR, then read again   r read again   Esc back
+  Hunks (H in Changes): ↑↓ move   n / p next / previous hunk   Space pick a changed line (on a hunk header: the whole hunk)   c clear picks
+    s stage   u unstage   x discard (asks; kept in git stash, with the command to bring it back): the picked lines, else the hunk under the cursor
+    "the file changed since you looked": r reads it again
 Stashes (h on History)
   ↑↓ or j/k move   Enter the stash's files, then a file's diff (new files too)   Esc or q back (one level)
   a apply (keeps the stash)   p pop (apply, then remove it)   both need no uncommitted changes; a clash changes nothing
   d delete (asks; U brings it back)   n new branch from the stash   s stash the uncommitted changes (message form)   r read again
+Inspect (I on History)
+  Blame: ↑↓ move   Enter the line's commit   b blame before that commit   Backspace back   w ignore whitespace   m moved lines   Esc close
+  File history (follows renames): Enter the file's diff in that commit   b blame at it   n older page   p newer page
+  Compare: e change A and B (B may be :working)   m since they went apart / direct   Enter a file's diff   r read again
+  Reflog: l lost commits only   b make a branch at the entry (asks a name; nothing else moves)   m older entries   Enter the commit
+  Bisect: g good   b bad   s skip   x stop and go back (asks)   Esc leaves it running; History shows "Bisecting…"
+  Search code changes: filters History to the commits that added or removed a text (or match a regex); empty clears (also / shows it)
+Interactive rebase (L on History, then Interactive rebase)
+  ↑↓ move   p pick   r reword   s squash   f fixup   d drop   J / K or Shift+↓/↑ move the commit down / up
+  Enter on a reword row edits its message, on another row shows the commit   v show the commit
+  The After list shows what the commits become; x checks, asks for the messages still missing, shows before and after, then runs   Esc cancels
+  Stopped on clashes? Press e for the operation view: fix the files, then continue, skip or abort
+Worktrees (W on History, or on Repos)
+  ↑↓ move   Enter its history   a add (new branch, existing branch or detached; can join the repo list)   x remove (asks; work inside asks again: F)
+  p prune the ones whose folder is gone (asks)   l lock   u unlock   r read again   Esc back
+Submodules (V on History)
+  ↑↓ move   Enter details   i init   u update to the recorded commit (asks)   m update to the tracked branch's tip (asks; you then commit the change)
+  I U M the same for every submodule   s sync URLs   a add (url, folder, branch)   x remove (planned first; work inside asks again: F)   r read again   Esc back
 Rules
   a add rule   x remove rule
 Settings
@@ -867,6 +924,8 @@ func (t *tui) keyAccounts(k string) {
 		}
 	case "k":
 		t.showKey(a)
+	case "s":
+		t.signingForm(a)
 	case "R":
 		if a == nil {
 			return
@@ -1349,8 +1408,16 @@ func (t *tui) keyRepos(k string) {
 			t.openHistory(r.GitDir)
 			t.tab = tabHistory
 		}
+	case "W": // the repo's worktrees
+		if r != nil && !r.Missing {
+			t.openHistory(r.GitDir)
+			t.tab = tabHistory
+			t.openWorktrees()
+		}
 	case "c":
 		t.cloneForm("", "", "automatic")
+	case "n":
+		t.initForm()
 	case "b":
 		t.browseGitHub()
 	case "a":
@@ -1506,11 +1573,14 @@ func (t *tui) readHistory() {
 	}
 	t.histRows, t.histLines, t.hist = rows, history.Texts(rows), h
 	t.marked = map[string]bool{}
+	t.refreshExt()
 }
 
 // showCommit opens the selected commit's full message and changed files.
-func (t *tui) showCommit() {
-	hash := t.selectedCommit()
+func (t *tui) showCommit() { t.showCommitOf(t.selectedCommit()) }
+
+// showCommitOf opens one commit's full message and changed files.
+func (t *tui) showCommitOf(hash string) {
 	if hash == "" {
 		return
 	}
@@ -1620,12 +1690,30 @@ func (t *tui) keyHistory(k string) {
 		t.loadHistory()
 	case "U":
 		t.undoLast()
+	case "Y":
+		t.redoLast()
+	case "O":
+		t.remotesMenu()
+	case "E":
+		if t.histDir != "" {
+			t.backToBranch(t.histDir)
+		}
 	case "R":
 		t.resolve()
 	case "P":
 		t.pickParked()
 	case "h":
 		t.openStashes()
+	case "L":
+		t.rewriteMenu()
+	case "l":
+		t.keyRewordSelected()
+	case "W":
+		t.openWorktrees()
+	case "V":
+		t.openSubmodules()
+	case "e":
+		t.mergeKey()
 	case "n":
 		t.newBranch("")
 	case "N":
@@ -1644,6 +1732,8 @@ func (t *tui) keyHistory(k string) {
 		t.openChanges()
 	case "S":
 		t.compare()
+	case "I":
+		t.inspectMenu()
 	case "K":
 		t.branchPR()
 	case "v", "d", "z":
@@ -1842,7 +1932,8 @@ func (t *tui) manageBranches() {
 		q := "r = rename · u = set the remote branch it pulls from · d = delete · n or Esc = cancel"
 		if !b.Current {
 			acts["s"] = func() error { return t.switchTo(gd, b) }
-			q = "s = switch to it · " + q
+			acts["m"] = func() error { return t.mergePlan(gd, b.Name) }
+			q = "s = switch to it · m = merge it into the current branch · " + q
 		}
 		t.confirm = &confirmBox{fmt.Sprintf("Branch %s (%s).  %s", b.Name, pulls, q), acts}
 		return nil
@@ -2357,6 +2448,8 @@ func (t *tui) keyChanges(k string) bool {
 		}
 	case "C":
 		t.commit()
+	case "H":
+		t.openHunks()
 	}
 	return true
 }
@@ -2535,7 +2628,7 @@ func (t *tui) drawChanges() ([]string, int) {
 		"\x00 " + cBold + "Uncommitted changes" + cReset + "  " + path + "  account: " + acct + "  branch: " + cBold + history.CleanText(branch) + cReset,
 	}
 	if c.st.Busy != "" {
-		l = append(l, "\x00 "+cRed+"git is in the middle of a "+c.st.Busy+": finish or abort it in a terminal first."+cReset)
+		l = append(l, "\x00 "+cRed+"git is in the middle of a "+c.st.Busy+": Esc, then e to continue or abort it."+cReset)
 	}
 	l = append(l, "\x00")
 	if len(c.rows) == 0 {
@@ -3137,7 +3230,7 @@ func (t *tui) draw() {
 			head += cDim + label + cReset
 		}
 	}
-	out = append(out, head, "")
+	out = append(out, head, t.banner())
 	body := t.h - 4
 	var lines []string
 	sel := -1
@@ -3147,7 +3240,21 @@ func (t *tui) draw() {
 	case tabRepos:
 		lines, sel = t.drawRepos()
 	case tabHistory:
-		if t.stashes != nil {
+		if t.inspecting() {
+			lines, sel = t.drawInspect()
+		} else if t.hv != nil {
+			lines, sel = t.drawHunks()
+		} else if t.conf != nil {
+			lines, sel = t.drawConflict()
+		} else if t.opv != nil {
+			lines, sel = t.drawOperation()
+		} else if t.rwEd != nil {
+			lines, sel = t.drawRewrite()
+		} else if t.wtView != nil {
+			lines, sel = t.drawWorktrees()
+		} else if t.subView != nil {
+			lines, sel = t.drawSubmodules()
+		} else if t.stashes != nil {
 			lines, sel = t.drawStashes()
 		} else if t.changes != nil {
 			lines, sel = t.drawChanges()
@@ -3240,17 +3347,38 @@ func (t *tui) footer() string {
 	}
 	switch t.tab {
 	case tabAccounts:
-		return "a add · e edit · R rename · t test · k public key · K pick key · d default · g sign in to GitHub/GitLab · x remove · ? help · q quit"
+		return "a add · e edit · R rename · t test · k public key · s signing · K pick key · d default · g sign in to GitHub/GitLab · x remove · ? help · q quit"
 	case tabRepos:
-		return "Enter account · h history · c clone · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
+		return "Enter account · h history · c clone · n new repo · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
+		if t.inspecting() {
+			return t.inspectFooter()
+		}
+		if t.hv != nil {
+			return "↑↓ move · Space pick a line · s stage · u unstage · x discard · n/p hunk · c clear picks · r reload · Esc back · ? help"
+		}
+		if t.conf != nil {
+			return "o ours · t theirs · b both (this clash) · n/p clash · w save · O/T whole side · d resolved · e editor · v version · Esc back"
+		}
+		if t.opv != nil {
+			return "↑↓ move · Enter fix the file · c continue · s skip · a abort · r reload · Esc back · ? help"
+		}
+		if t.rwEd != nil {
+			return "↑↓ move · p pick · r reword · s squash · f fixup · d drop · J/K move the commit · Enter edit message / see commit · x run · Esc cancel · ? help"
+		}
+		if t.wtView != nil {
+			return "↑↓ move · Enter open its history · a add · x remove · p prune · l lock · u unlock · r reload · Esc back · ? help"
+		}
+		if t.subView != nil {
+			return "↑↓ move · Enter details · i init · u update · m update to branch tip · I U M all · s sync · a add · x remove · r reload · Esc back · ? help"
+		}
 		if t.stashes != nil {
 			return "↑↓ move · Enter files, then a file's diff · a apply · p pop · d drop · n new branch · s stash changes · U undo · r reload · Esc back · ? help"
 		}
 		if t.changes != nil {
-			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · a stage all · A unstage all · X discard all · i ignore · C commit · r reload · Esc back · ? help"
+			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · H hunks · a stage all · A unstage all · X discard all · i ignore · C commit · r reload · Esc back · ? help"
 		}
-		return "Enter details · / filter · b branch · B branches · C commit · t tag · T tags · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
+		return "Enter details · / filter · b branch · B branches · e merge · C commit · t tag · T tags · u update · v revert · d drop · z roll back · c cherry-pick · U undo" + t.redoFooter() + " · O remotes and more · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
 	case tabReviews:
@@ -3307,6 +3435,7 @@ func (t *tui) drawAccounts() ([]string, int) {
 		case st.Supported:
 			user += cDim + "  · not signed in to " + st.Provider + " (g)" + cReset
 		}
+		user += signNote(a)
 		on := i == t.sel[tabAccounts]
 		l = append(l, fmt.Sprintf("%s%s█%s %s%-*s%s%s  %-*s %-*s %s%s", mark(on), t.color(a.ID), cReset, boldIf(on), wID, a.ID, cReset, def, wEmail, a.Email, wHost, a.Host, key, user))
 	}
@@ -3402,7 +3531,12 @@ func (t *tui) drawHistory() ([]string, int) {
 				more = cDim + "  · s to see the changes" + cReset
 			}
 			l = append(l, "\x00 branch: "+cBold+history.CleanText(t.head.Describe())+cReset+more)
+			l = append(l, t.opBanner()...)
 		}
+		if b := t.bisectBanner(); b != "" {
+			l = append(l, b)
+		}
+		l = append(append(l, t.detachedLines()...), t.sigLegend()...)
 		if h.Repo.EmailBad {
 			l = append(l, "\x00 "+cRed+"new commits here are made as "+history.CleanText(h.Repo.Email)+", not as "+h.Repo.Account+cReset+cDim+"  · i to use "+h.Repo.Account+"'s name and email"+cReset)
 		}
@@ -3412,11 +3546,13 @@ func (t *tui) drawHistory() ([]string, int) {
 		l = append(l, "\x00")
 	}
 	sel := t.sel[tabHistory]
+	t.loadSigs()
 	for i, x := range t.histLines {
 		lead := " "
 		if i < len(t.histRows) && t.marked[t.histRows[i].Hash] {
 			lead = cGreen + "+" + cReset
 		}
+		lead += t.sigBadge(i)
 		if i == sel {
 			l = append(l, cRev+lead+cReset+x)
 		} else {
@@ -3503,7 +3639,11 @@ func (t *tui) overlay() []string {
 		page = append(page, cDim+fmt.Sprintf("lines %d-%d of %d · ↑↓ PgUp PgDn to scroll", v.off+1, v.off+rows, len(body))+cReset)
 		return box(v.title, page)
 	case t.confirm != nil:
-		return box("Confirm", wrapPlain(t.confirm.text, min(t.w-8, 96)))
+		var body []string
+		for _, l := range strings.Split(t.confirm.text, "\n") { // a question may list lines
+			body = append(body, wrapPlain(l, min(t.w-8, 96))...)
+		}
+		return box("Confirm", body)
 	case t.picker != nil:
 		p := t.picker
 		shown := p.shown()

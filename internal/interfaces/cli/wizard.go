@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
+	repoapp "github.com/macdipu/gitswitch/internal/features/repository/application"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 )
 
@@ -39,6 +41,9 @@ func (x *CLI) wizard() error {
 		return strings.HasPrefix(s, "y")
 	}
 
+	if g := x.app.Repos.GitInfo(); !g.OK {
+		return errors.New(g.Why)
+	}
 	x.say("GitSwitch setup. Press Enter to accept the value in [brackets].")
 	if !x.app.Setup.Installed() {
 		x.say("\nStep 1: connect gitswitch to git (one time).")
@@ -156,7 +161,40 @@ func (x *CLI) wizard() error {
 			break
 		}
 	}
+	if !ended && yes("\nStart a new repo now?", false) {
+		x.wizardInit(ask)
+	}
 	x.say("\nDone. Clone with normal URLs (git@github.com:owner/repo.git); gitswitch picks the account.")
 	x.say("Check anytime with `gitswitch status`, or open the app with `gitswitch ui`.")
 	return nil
+}
+
+// wizardInit is the optional last step: git init in a folder, with the
+// account the rules decide or the one chosen. A mistake is reported and
+// does not stop the setup.
+func (x *CLI) wizardInit(ask func(q, def string) string) {
+	folder := ask("Folder for the new repo (made when it does not exist)", ".")
+	branch := ask("First branch name, or Enter for git's default", "")
+	info, err := x.app.Repos.Init(folder, "", branch)
+	if errors.Is(err, repoapp.ErrChooseAccount) {
+		accs := x.app.Accounts.Config().Accounts
+		x.say("Which account does this repo use?")
+		for i, a := range accs {
+			x.sayf("  %d  %-14s %s\n", i+1, a.ID, a.Email)
+		}
+		n, _ := strconv.Atoi(ask("Number", ""))
+		if n < 1 || n > len(accs) {
+			x.say("No account chosen, so no repo was started. Later: gitswitch init <folder> --account <id>")
+			return
+		}
+		info, err = x.app.Repos.Init(folder, accs[n-1].ID, branch)
+	}
+	if err != nil {
+		x.say("Error:", err)
+		return
+	}
+	x.say("Started a repo in", info.Path)
+	if info.Account != "" {
+		x.sayf("It uses %s (%s): commits are made as %s <%s>.\n", info.Account, info.Reason, info.UserName, info.Email)
+	}
 }

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,5 +43,30 @@ func TestWriteHint(t *testing.T) {
 	writeHint(&b, "something new", "work")
 	if b.Len() != 0 {
 		t.Errorf("an unknown error gets no hint: %q", b.String())
+	}
+}
+
+// The last step starts a repo in a folder with the account the only
+// account decides; a missing git would have stopped the wizard first.
+func TestWizardStartsARepo(t *testing.T) {
+	home := t.TempDir()
+	for k, v := range map[string]string{"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": home,
+		"GIT_CONFIG_GLOBAL": home + "/.gitconfig", "GITSWITCH_TEST_NO_SYSTEM": "1"} {
+		t.Setenv(k, v)
+	}
+	var out bytes.Buffer
+	x := &CLI{app: bootstrap.New(false, nil), in: strings.NewReader(""), out: &out}
+	dir := filepath.Join(home, "fresh")
+	x.wizardInit(func(q, def string) string {
+		if strings.HasPrefix(q, "Folder") {
+			return dir
+		}
+		return def
+	})
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		t.Fatalf("no repo started: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Started a repo in") {
+		t.Errorf("output:\n%s", out.String())
 	}
 }
