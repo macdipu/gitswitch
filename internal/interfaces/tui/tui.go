@@ -26,6 +26,7 @@ import (
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
+	workspace "github.com/macdipu/gitswitch/internal/features/workspace/domain"
 	"github.com/macdipu/gitswitch/internal/platform/process"
 	"github.com/macdipu/gitswitch/internal/platform/terminal"
 )
@@ -118,6 +119,7 @@ type tui struct {
 	marked    map[string]bool // commits marked for cherry-pick
 	flagged   bool
 	filter    history.Filter
+	changes   *changesView // the History page's list of uncommitted changes, while open
 
 	msg    string
 	msgErr bool
@@ -428,6 +430,7 @@ func (t *tui) handle(k string) {
 		t.handlePicker(k)
 	case t.form != nil:
 		t.handleForm(k)
+	case t.changes != nil && t.tab == tabHistory && t.keyChanges(k):
 	default:
 		t.handleMain(k)
 	}
@@ -697,7 +700,12 @@ History
   D delete the branches merged into the remote's default branch
   S compare with the remote branch: the commits you would push and pull
   C commit the staged files as the repo's account (nothing staged: every change, new files too)
+  s uncommitted changes: the files changed, staged or not, and in conflict (see Changes below)
   on a commit: v revert   d drop   z roll back (reset) to here   c cherry-pick   Space mark several to cherry-pick
+Changes (s on History)
+  ↑↓ or j/k move   Enter or d the file's diff (staged or not, as the section says)   r read again   Esc or q back
+  s stage   u unstage   x discard: back to the last commit (asks first; the changes are kept in git stash)
+  a stage all   A unstage all   X discard all (asks first)   C commit (the staged files, or every change when none is staged)
 Rules
   a add rule   x remove rule
 Settings
@@ -1161,6 +1169,7 @@ func (t *tui) browseGitHub() {
 // openHistory shows a repo's history and records it as recently opened.
 func (t *tui) openHistory(gitDir string) {
 	t.histDir = gitDir
+	t.changes = nil
 	// The fetch-on-open setting: once per repo while the app runs. A failed
 	// fetch (offline) is not an error here; F says why when asked.
 	if t.app.Refs.FetchOnOpen() && !t.fetched[gitDir] {
@@ -1605,6 +1614,8 @@ func (t *tui) keyHistory(k string) {
 		t.pruneBranches()
 	case "C":
 		t.commit()
+	case "s":
+		t.openChanges()
 	case "S":
 		t.compare()
 	case "K":
@@ -1855,6 +1866,9 @@ func (t *tui) commit() {
 	if t.histDir == "" || t.head == nil {
 		return
 	}
+	if h, err := t.app.Refs.Head(t.histDir); err == nil { // staged since History was read
+		t.head = &h
+	}
 	gd, c := t.histDir, t.head.Changes
 	all := c.Staged == 0
 	title := fmt.Sprintf("Commit the %d staged file(s)", c.Staged)
@@ -1868,6 +1882,11 @@ func (t *tui) commit() {
 				return err
 			}
 			t.loadHistory()
+			if t.changes != nil { // back to History when nothing is left
+				if t.loadChanges(); t.changes != nil && len(t.changes.st.Files) == 0 {
+					t.changes = nil
+				}
+			}
 			as := ""
 			if r.Account != "" {
 				as = " as " + r.Account
@@ -1875,6 +1894,323 @@ func (t *tui) commit() {
 			t.say(nil, "Committed "+r.Short+" "+history.CleanText(r.Subject)+as+"."+undoHint)
 			return nil
 		}}
+}
+
+// ---------------- uncommitted changes ----------------
+
+// changesView is the History page's list of uncommitted changes: the
+// files in conflict, staged and not staged, one row per file and section
+// (a file changed again after staging is in both).
+type changesView struct {
+	gd   string
+	st   workspace.Status
+	rows []changeRow
+	sel  int
+}
+
+// changeRow is a file in one section: "conflict", "staged" or "changed".
+type changeRow struct {
+	f   workspace.File
+	sec string
+}
+
+// openChanges shows the selected repo's uncommitted changes.
+func (t *tui) openChanges() {
+	if t.histDir == "" {
+		t.say(fmt.Errorf("choose a repo first (o)"), "")
+		return
+	}
+	t.changes = &changesView{gd: t.histDir}
+	t.msg = ""
+	t.loadChanges()
+}
+
+// loadChanges reads the changes again, keeping the selection on the same
+// file and section when it is still there, and the branch line up to date.
+func (t *tui) loadChanges() {
+	c := t.changes
+	if c == nil {
+		return
+	}
+	var was changeRow
+	if c.sel < len(c.rows) {
+		was = c.rows[c.sel]
+	}
+	st, err := t.app.Workspace.Status(c.gd)
+	if err != nil {
+		t.changes = nil
+		t.say(err, "")
+		return
+	}
+	if h, err := t.app.Refs.Head(c.gd); err == nil {
+		t.head = &h
+	}
+	c.st, c.rows = st, nil
+	for _, s := range []struct {
+		sec   string
+		files []workspace.File
+	}{{"conflict", st.Conflicts()}, {"staged", st.Staged()}, {"changed", st.Changed()}} {
+		for _, f := range s.files {
+			c.rows = append(c.rows, changeRow{f, s.sec})
+		}
+	}
+	for i, r := range c.rows {
+		if r.f.Path == was.f.Path && r.sec == was.sec {
+			c.sel = i
+			return
+		}
+	}
+	c.sel = max(0, min(c.sel, len(c.rows)-1))
+}
+
+// closeChanges goes back to the commits, read again (a commit or a
+// discard may have changed them).
+func (t *tui) closeChanges() {
+	t.changes = nil
+	sel := t.sel[tabHistory]
+	t.readHistory()
+	t.sel[tabHistory] = max(0, min(sel, len(t.histLines)-1))
+}
+
+// changeLetter is the one-letter mark of a row's change, as on the
+// desktop: M A D R C T, N new, ! conflict; and its colour.
+func changeLetter(r changeRow) (string, string) {
+	l := r.f.Worktree
+	switch {
+	case r.sec == "conflict":
+		return "!", cRed
+	case r.f.New():
+		return "N", cGreen
+	case r.sec == "staged":
+		l = r.f.Staged
+	}
+	switch l {
+	case "A":
+		return "A", cGreen
+	case "D":
+		return "D", cRed
+	case "R", "C", "T":
+		return l, cYellow
+	}
+	return "M", cYellow
+}
+
+// keyChanges handles a key while the changes are shown. Keys it does not
+// use (switching page, help, quit with Ctrl+C) go to the main handler.
+func (t *tui) keyChanges(k string) bool {
+	c := t.changes
+	n := len(c.rows)
+	var sel *changeRow
+	if c.sel < n {
+		sel = &c.rows[c.sel]
+	}
+	switch k {
+	case "tab", "backtab", "left", "right", "1", "2", "3", "4", "5", "6", "?":
+		return false
+	case "esc", "q":
+		t.closeChanges()
+	case "up", "k":
+		c.sel = max(0, c.sel-1)
+	case "down", "j":
+		c.sel = max(0, min(n-1, c.sel+1))
+	case "pgup":
+		c.sel = max(0, c.sel-max(1, t.h-6))
+	case "pgdn":
+		c.sel = max(0, min(n-1, c.sel+max(1, t.h-6)))
+	case "home", "g":
+		c.sel = 0
+	case "end", "G":
+		c.sel = max(0, n-1)
+	case "r":
+		t.loadChanges()
+	case "enter", "d":
+		if sel != nil {
+			t.showChangeDiff(*sel)
+		}
+	case "s":
+		if sel != nil {
+			t.changeAction("Staged", func() ([]string, error) { return t.app.Workspace.Stage(c.gd, []string{sel.f.Path}, false) })
+		}
+	case "u":
+		if sel != nil {
+			t.changeAction("Unstaged", func() ([]string, error) { return t.app.Workspace.Unstage(c.gd, []string{sel.f.Path}, false) })
+		}
+	case "a":
+		t.changeAction("Staged", func() ([]string, error) { return t.app.Workspace.Stage(c.gd, nil, true) })
+	case "A":
+		t.changeAction("Unstaged", func() ([]string, error) { return t.app.Workspace.Unstage(c.gd, nil, true) })
+	case "x":
+		if sel != nil {
+			t.discard(sel.f, false)
+		}
+	case "X":
+		t.discard(workspace.File{}, true)
+	case "C":
+		t.commit()
+	}
+	return true
+}
+
+// changeAction reports a stage or unstage and reads the changes again.
+func (t *tui) changeAction(done string, run func() ([]string, error)) {
+	if paths, err := run(); err == nil {
+		t.say(nil, done+" "+changedFiles(paths)+".")
+	} else {
+		t.say(err, "")
+	}
+	t.loadChanges()
+}
+
+// changedFiles names one file, or counts several.
+func changedFiles(paths []string) string {
+	if len(paths) == 1 {
+		return history.CleanText(paths[0])
+	}
+	return fmt.Sprintf("%d files", len(paths))
+}
+
+// discard asks, then puts a file (or with all every file) back as in the
+// last commit. The changes are kept in git stash.
+func (t *tui) discard(f workspace.File, all bool) {
+	c := t.changes
+	if !all && f.Conflict {
+		t.say(fmt.Errorf("%s has a conflict: fix it in your editor first", f.Path), "")
+		return
+	}
+	what := "the changes in " + history.CleanText(f.Path)
+	switch {
+	case all:
+		what = fmt.Sprintf("every uncommitted change (%d file(s), staged or not; new files are removed)", len(c.st.Files))
+	case f.New():
+		what = "the new file " + history.CleanText(f.Path) + " (it is removed)"
+	case f.IsStaged():
+		what += " (staged and not staged)"
+	}
+	stash := workspace.DiscardMessage(c.st.Branch)
+	t.confirm = &confirmBox{fmt.Sprintf("Discard %s? The file goes back to the last commit. Nothing is lost: the changes are kept in git stash as \"%s\". (y/n)", what, stash),
+		map[string]func() error{"y": func() error {
+			var paths []string
+			if !all {
+				paths = []string{f.Path}
+			}
+			r, err := t.app.Workspace.Discard(c.gd, paths, all)
+			t.loadChanges()
+			if err != nil {
+				return err
+			}
+			t.say(nil, fmt.Sprintf("Discarded %s; kept in git stash as \"%s\".", changedFiles(r.Files), r.Stash))
+			return nil
+		}}}
+}
+
+// showChangeDiff opens a row's diff: the staged change under Staged, the
+// one in the working folder otherwise (a new file in full).
+func (t *tui) showChangeDiff(r changeRow) {
+	staged := r.sec == "staged"
+	d, err := t.app.Workspace.Diff(t.changes.gd, r.f.Path, staged)
+	if err != nil {
+		t.say(err, "")
+		return
+	}
+	which := "not staged"
+	if staged {
+		which = "staged"
+	}
+	if r.sec == "conflict" {
+		which = "conflict"
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimRight(d.Text, "\n"), "\n") {
+		l = history.CleanText(l)
+		switch {
+		case strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+			l = cBold + l + cReset
+		case strings.HasPrefix(l, "+"):
+			l = cGreen + l + cReset
+		case strings.HasPrefix(l, "-"):
+			l = cRed + l + cReset
+		case strings.HasPrefix(l, "@@"):
+			l = cYellow + l + cReset
+		case strings.HasPrefix(l, "diff "), strings.HasPrefix(l, "index "):
+			l = cDim + l + cReset
+		}
+		lines = append(lines, l)
+	}
+	if d.Text == "" {
+		lines = []string{"No " + which + " change in this file."}
+	}
+	if d.Truncated {
+		lines = append(lines, "", cDim+fmt.Sprintf("… cut at %d KB; git diff shows all of it", workspace.MaxDiffBytes>>10)+cReset)
+	}
+	t.view = &viewer{title: history.CleanText(r.f.Path) + " · " + which, lines: lines}
+}
+
+// drawChanges lists the uncommitted changes in sections, under the repo,
+// its account and branch.
+func (t *tui) drawChanges() ([]string, int) {
+	c := t.changes
+	acct := cDim + "not set" + cReset
+	path := c.gd
+	if t.hist != nil {
+		path = t.hist.Repo.Path
+		if a := t.hist.Repo.Account; a != "" {
+			acct = t.color(a) + a + cReset
+		}
+	}
+	branch := c.st.Branch
+	if branch == "" {
+		branch = "(detached)"
+	}
+	l := []string{
+		"\x00 " + cBold + "Uncommitted changes" + cReset + "  " + path + "  account: " + acct + "  branch: " + cBold + history.CleanText(branch) + cReset,
+	}
+	if c.st.Busy != "" {
+		l = append(l, "\x00 "+cRed+"git is in the middle of a "+c.st.Busy+": finish or abort it in a terminal first."+cReset)
+	}
+	l = append(l, "\x00")
+	if len(c.rows) == 0 {
+		return append(l, " No uncommitted changes. Esc goes back to the commits."), -1
+	}
+	nStaged := len(c.st.Staged())
+	hdr, selLine, last := len(l), -1, ""
+	for i, r := range c.rows {
+		if r.sec != last {
+			last = r.sec
+			if i > 0 {
+				l = append(l, "")
+			}
+			title, hint := "", ""
+			switch r.sec {
+			case "conflict":
+				title, hint = "Conflicts", "fix them in your editor, then stage them (s)"
+			case "staged":
+				title, hint = "Staged", "in the next commit: C commits them · u takes one out"
+			default:
+				title, hint = "Unstaged", "s stages one · a stages all · x discards"
+				if nStaged == 0 {
+					title, hint = "Changes", "stage the files to commit (s, a), or press C to commit them all"
+				}
+			}
+			n := 0
+			for _, x := range c.rows {
+				if x.sec == r.sec {
+					n++
+				}
+			}
+			l = append(l, " "+cBold+title+cReset+cDim+fmt.Sprintf(" (%d)  %s", n, hint)+cReset)
+		}
+		on := i == c.sel
+		if on {
+			selLine = len(l) - hdr
+		}
+		letter, col := changeLetter(r)
+		desc := r.f.Describe()
+		if r.f.Orig != "" && !strings.Contains(desc, r.f.Orig) {
+			desc += " (from " + r.f.Orig + ")"
+		}
+		l = append(l, fmt.Sprintf("%s%s%s%s %s%s%s  %s", mark(on), col, letter, cReset, boldIf(on), history.CleanText(r.f.Path), cReset, cDim+history.CleanText(desc)+cReset))
+	}
+	return l, selLine
 }
 
 // pruneBranches lists the branches merged into the default branch and
@@ -2441,7 +2777,11 @@ func (t *tui) draw() {
 	case tabRepos:
 		lines, sel = t.drawRepos()
 	case tabHistory:
-		lines, sel = t.drawHistory()
+		if t.changes != nil {
+			lines, sel = t.drawChanges()
+		} else {
+			lines, sel = t.drawHistory()
+		}
 	case tabRules:
 		lines, sel = t.drawRules()
 	case tabSettings:
@@ -2532,6 +2872,9 @@ func (t *tui) footer() string {
 	case tabRepos:
 		return "Enter account · h history · c clone · b hosted repos · a add repo · f add folder · p pin · s sort · g group by · G group · o open · x remove · r rescan · ? help · q quit"
 	case tabHistory:
+		if t.changes != nil {
+			return "↑↓ move · Enter or d diff · s stage · u unstage · x discard · a stage all · A unstage all · X discard all · C commit · r reload · Esc back · ? help"
+		}
 		return "Enter details · / filter · b branch · C commit · u update · v revert · d drop · z roll back · c cherry-pick · U undo · m more · ? all keys · q quit"
 	case tabRules:
 		return "a add · x remove · ? help · q quit"
@@ -2679,7 +3022,11 @@ func (t *tui) drawHistory() ([]string, int) {
 		}
 		l = append(l, "\x00 "+cBold+h.Repo.Path+cReset+"  account: "+acct+"  "+flag+cDim+fmt.Sprintf("  %d not pushed", h.Unpushed)+cReset+filter)
 		if t.head != nil {
-			l = append(l, "\x00 branch: "+cBold+history.CleanText(t.head.Describe())+cReset)
+			more := ""
+			if t.head.Changes.Any() {
+				more = cDim + "  · s to see the changes" + cReset
+			}
+			l = append(l, "\x00 branch: "+cBold+history.CleanText(t.head.Describe())+cReset+more)
 		}
 		if h.Repo.EmailBad {
 			l = append(l, "\x00 "+cRed+"new commits here are made as "+history.CleanText(h.Repo.Email)+", not as "+h.Repo.Account+cReset+cDim+"  · i to use "+h.Repo.Account+"'s name and email"+cReset)

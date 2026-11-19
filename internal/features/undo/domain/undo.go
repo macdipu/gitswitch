@@ -26,9 +26,15 @@ const (
 	Move Action = "move"
 	// Commit: a commit GitSwitch made.
 	Commit Action = "commit"
+	// Amend: the last commit was amended (Record.Before is the commit as
+	// it was, After the amended one).
+	Amend Action = "amend"
 	// Prune: merged branches were deleted (Record.Deleted).
 	Prune  Action = "prune"
 	Update Action = "update" // pulled with rebase: the branch is rewritten
+	// Rename: a branch was renamed from Record.Branch to Record.To (Before
+	// and After are the commit it points at).
+	Rename Action = "rename"
 )
 
 // Deleted is a branch an action deleted: enough to bring it back.
@@ -91,6 +97,8 @@ func (r Record) Effect() string {
 	switch r.Action {
 	case Switch:
 		return "Switches back to " + r.Branch + "."
+	case Rename:
+		return "Renames " + r.To + " back to " + r.Branch + "."
 	case Prune:
 		names := make([]string, len(r.Deleted))
 		for i, d := range r.Deleted {
@@ -103,6 +111,8 @@ func (r Record) Effect() string {
 		return "Puts the rolled-back commits back on " + r.Branch + ". Your files are not changed."
 	case Commit:
 		return "Takes the commit off " + r.Branch + ". Its changes stay in your files, uncommitted."
+	case Amend:
+		return "Puts the commit on " + r.Branch + " back as it was before the amend. What the amend added stays in your files, uncommitted."
 	case Update:
 		return "Puts " + r.Branch + " back as it was before the update: your commits as they were, without the new ones from the remote (they stay there)."
 	case Revert, CherryPick:
@@ -113,8 +123,10 @@ func (r Record) Effect() string {
 }
 
 // Rewinds reports whether undoing moves the branch back to Before, taking
-// commits off it (every action but a switch, a move or a prune).
-func (r Record) Rewinds() bool { return r.Action != Switch && r.Action != Move && r.Action != Prune }
+// commits off it (every action but a switch, a move, a prune or a rename).
+func (r Record) Rewinds() bool {
+	return r.Action != Switch && r.Action != Move && r.Action != Prune && r.Action != Rename
+}
 
 // ErrNothing means there is no action to undo in the repo.
 var ErrNothing = errors.New("nothing to undo in this repo")
@@ -128,8 +140,8 @@ func (r Record) Check(now Mark) error {
 	if now.Worktree != r.Worktree {
 		return fmt.Errorf("the last action (%s) was made in another working folder, %s; undo it there", r.Label, r.Worktree)
 	}
-	if r.Action == Prune {
-		return nil // any branch may be checked out: the deleted ones only come back
+	if r.Action == Prune || r.Action == Rename {
+		return nil // any branch may be checked out: the branches only come back or get their name back
 	}
 	if r.Action == Switch {
 		if now.Branch != r.To {
@@ -194,6 +206,9 @@ type Git interface {
 	// Recreate brings back deleted branches, with the remote branch each
 	// pulled from; refused, and nothing made, when one exists again.
 	Recreate(gitDir string, branches []Deleted) error
+	// Rename renames a local branch, keeping its upstream; refused when to
+	// exists.
+	Rename(gitDir, from, to string) error
 }
 
 // Recorder remembers actions so they can be undone. Use cases call Before
@@ -205,4 +220,6 @@ type Recorder interface {
 	Pruned(gitDir string, before Mark, branches []Deleted, label string)
 	// Updated remembers a pull with rebase onto base.
 	Updated(gitDir string, before Mark, base, label string)
+	// Renamed remembers a branch renamed from from to to, pointing at hash.
+	Renamed(gitDir string, before Mark, from, to, hash, label string)
 }

@@ -16,6 +16,7 @@ type Info struct {
 	Account  string `json:"account"` // effective account
 	Reason   string `json:"reason"`
 	Email    string `json:"email"`
+	UserName string `json:"userName"` // the repo's user.name, which new commits show
 	EmailBad bool   `json:"emailBad"`
 	// SSHOverride is a repo-local core.sshCommand that bypasses gitswitch.
 	SSHOverride string   `json:"sshOverride"`

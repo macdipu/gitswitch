@@ -23,6 +23,7 @@ import (
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	ssh "github.com/macdipu/gitswitch/internal/features/ssh/domain"
+	workspace "github.com/macdipu/gitswitch/internal/features/workspace/domain"
 	"github.com/macdipu/gitswitch/internal/interfaces/desktop/assets"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 	"github.com/macdipu/gitswitch/internal/platform/process"
@@ -347,6 +348,41 @@ func (s *server) routes() map[string]handler {
 		"POST /api/branch/prune": s.withRepo(func(gd string, _ map[string]any) (any, error) {
 			return a.Refs.Prune(gd)
 		}),
+		// Branch and tag management. Delete refuses a branch whose commits
+		// are on no other branch or remote unless force; rename and delete
+		// can be undone. upstream "" unsets; from/branch "" is the current
+		// branch. rev "" tags the current commit; a message makes the tag
+		// annotated.
+		"POST /api/branch/delete": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			force, _ := b["force"].(bool)
+			return a.Refs.DeleteBranch(gd, str(b, "name"), force)
+		}),
+		"POST /api/branch/rename": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.RenameBranch(gd, str(b, "from"), str(b, "to"))
+		}),
+		"POST /api/branch/upstream": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.SetUpstream(gd, str(b, "branch"), str(b, "upstream"))
+		}),
+		"GET /api/tags": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			tags, err := a.Refs.Tags(gd)
+			if tags == nil {
+				tags = []string{}
+			}
+			return tags, err
+		},
+		"POST /api/tag/new": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.NewTag(gd, str(b, "name"), str(b, "rev"), str(b, "message"))
+		}),
+		"POST /api/tag/delete": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return map[string]string{"tag": str(b, "name")}, a.Refs.DeleteTag(gd, str(b, "name"))
+		}),
+		"POST /api/tag/push": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			return a.Refs.PushTag(gd, str(b, "name"), func(string) {})
+		}),
 		// action "done" finishes a smart switch that clashed, "abort" goes
 		// back, "park" goes back and parks the changes instead.
 		"POST /api/resolve": s.withRepo(func(gd string, b map[string]any) (any, error) {
@@ -425,11 +461,35 @@ func (s *server) routes() map[string]handler {
 			paths, all := pathList(b)
 			return a.Workspace.Discard(gd, paths, all)
 		}),
+		// Ignore a file (kind file), its extension (ext) or its folder
+		// (folder) in .gitignore, or with local in .git/info/exclude; untrack
+		// also takes tracked files out of git (git rm --cached), keeping them.
+		"POST /api/repo/ignore": s.withRepo(func(gd string, b map[string]any) (any, error) {
+			kind, err := workspace.ParseIgnoreKind(str(b, "kind"))
+			if err != nil {
+				return nil, err
+			}
+			local, _ := b["local"].(bool)
+			untrack, _ := b["untrack"].(bool)
+			return a.Workspace.Ignore(gd, str(b, "path"), kind, local, untrack)
+		}),
 		// all commits every change, new files too; otherwise what is staged.
+		// amend amends the last commit instead ("" message keeps its own).
 		"POST /api/repo/commit": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			all, _ := b["all"].(bool)
+			if amend, _ := b["amend"].(bool); amend {
+				return a.Workspace.Amend(gd, str(b, "message"), all)
+			}
 			return a.Workspace.Commit(gd, str(b, "message"), all)
 		}),
+		// Whether the last commit may be amended (why not), with its message.
+		"GET /api/repo/amendable": func(r *http.Request) (any, error) {
+			gd, err := s.gitDir(r.URL.Query().Get("gitDir"))
+			if err != nil {
+				return nil, err
+			}
+			return a.Workspace.Amendable(gd), nil
+		},
 		"POST /api/repo/push": s.withRepo(func(gd string, b map[string]any) (any, error) {
 			return a.Refs.Push(gd, func(string) {})
 		}),

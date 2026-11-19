@@ -1827,6 +1827,54 @@ func TestCommit(t *testing.T) {
 	}
 }
 
+// Amend the last commit with real git: a new message, every change with
+// --all, undo puts the commit back as it was, and a pushed commit is
+// refused.
+func TestCommitAmend(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	status := func() string { return e.gitIn(api, "status", "--porcelain") }
+	subject := func() string { return e.gitIn(api, "log", "-1", "--format=%s") }
+	first := e.commitFile(api, "a.txt", "a\n", "frist")
+	parent := e.gitIn(api, "rev-parse", "HEAD~1")
+
+	e.gsErr(api, "nothing to amend", "commit", "--amend")
+	e.gsErr(api, "nothing to amend", "commit", "--amend", "-m", "frist")
+	out := e.gsIn(api, "commit", "--amend", "-m", "First")
+	if !strings.Contains(out, "Amended "+first[:7]+": now ") || !strings.Contains(out, "First on main as client (1 file(s))") ||
+		subject() != "First" || e.gitIn(api, "rev-parse", "HEAD~1") != parent {
+		t.Fatalf("amend message: %q\n%s", subject(), out)
+	}
+	renamed := e.gitIn(api, "rev-parse", "HEAD")
+
+	must(t, os.WriteFile(filepath.Join(api, "a.txt"), []byte("b\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(api, "new.txt"), []byte("n\n"), 0o644))
+	e.gsErr(api, "nothing is staged", "commit", "--amend")
+	e.gsIn(api, "commit", "--amend", "--all")
+	if status() != "" || subject() != "First" || e.gitIn(api, "show", "--name-only", "--format=", "HEAD") != "a.txt\nnew.txt" {
+		t.Fatalf("amend --all: %q, %q, %q", status(), subject(), e.gitIn(api, "show", "--name-only", "--format=", "HEAD"))
+	}
+
+	// Undo: the commit is back as it was, what the amend added is in the
+	// files, uncommitted.
+	if out := e.gsIn(api, "undo", "--show"); !strings.Contains(out, "before the amend") {
+		t.Fatalf("undo --show:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if e.gitIn(api, "rev-parse", "HEAD") != renamed || status() != "M a.txt\n?? new.txt" {
+		t.Fatalf("undo: HEAD %s, %q", e.gitIn(api, "rev-parse", "HEAD"), status())
+	}
+
+	// Pushed: refused, nothing changed.
+	e.gitIn(api, "push", "-q", "origin", "main")
+	e.gsErr(api, "already pushed", "commit", "--amend", "-a", "-m", "x")
+	if e.gitIn(api, "rev-parse", "HEAD") != renamed {
+		t.Fatal("amended a pushed commit")
+	}
+}
+
 // Branches merged into the remote's default branch are deleted, with real
 // git; unmerged ones, main, the current one and one checked out in another
 // working folder stay. Undo brings them back, tracking their remote branch.
@@ -2819,5 +2867,155 @@ func TestChangesStageUnstageDiscard(t *testing.T) {
 	}
 	if out := e.gsIn(api, "changes"); !strings.Contains(out, "No uncommitted changes") {
 		t.Fatalf("changes after discard:\n%s", out)
+	}
+}
+
+// Ignore from a subfolder: the path is relative to it; a pattern is
+// written once; a tracked file is reported and only untracked with
+// --untrack, the file kept; --local writes .git/info/exclude.
+func TestIgnore(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	sub := filepath.Join(api, "src")
+	must(t, os.MkdirAll(sub, 0o755))
+	must(t, os.WriteFile(filepath.Join(api, "secret.env"), []byte("k=v\n"), 0o644))
+	e.gsIn(api, "commit", "-m", "Add secret", "--all")
+	must(t, os.WriteFile(filepath.Join(sub, "debug.log"), []byte("x\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(sub, "*.tmp"), []byte("x\n"), 0o644))
+
+	if out := e.gsIn(sub, "ignore", "debug.log"); !strings.Contains(out, "Added /src/debug.log to .gitignore") || !strings.Contains(out, "Git now ignores src/debug.log") {
+		t.Fatalf("ignore:\n%s", out)
+	}
+	if out := e.gsIn(sub, "ignore", "debug.log"); !strings.Contains(out, ".gitignore already has /src/debug.log") {
+		t.Fatalf("ignore again:\n%s", out)
+	}
+	if out := e.gsIn(sub, "ignore", "*.tmp", "--ext", "--local"); !strings.Contains(out, "Added *.tmp to .git/info/exclude") {
+		t.Fatalf("ignore --ext --local:\n%s", out)
+	}
+	b, err := os.ReadFile(filepath.Join(api, ".gitignore"))
+	must(t, err)
+	if string(b) != "/src/debug.log\n" {
+		t.Fatalf(".gitignore = %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(api, ".git", "info", "exclude")); !strings.HasSuffix(string(b), "\n*.tmp\n") {
+		t.Fatalf("info/exclude = %q", b)
+	}
+	if out := e.gsIn(api, "ignore", "secret.env"); !strings.Contains(out, "Git still tracks secret.env") || !strings.Contains(out, "gitswitch ignore secret.env --untrack") {
+		t.Fatalf("ignore a tracked file:\n%s", out)
+	}
+	if got := e.gitIn(api, "ls-files", "secret.env"); got != "secret.env" {
+		t.Fatalf("untracked without --untrack: %q", got)
+	}
+	if out := e.gsIn(api, "ignore", "secret.env", "--untrack", "--json"); !strings.Contains(out, `"untracked":["secret.env"]`) || !strings.Contains(out, `"ignored":true`) {
+		t.Fatalf("ignore --untrack --json:\n%s", out)
+	}
+	if got := e.gitIn(api, "ls-files", "secret.env"); got != "" {
+		t.Fatalf("still tracked: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(api, "secret.env")); err != nil {
+		t.Fatalf("--untrack removed the file: %v", err)
+	}
+	if out, err := e.run(api, gsBin, "ignore", "../outside.txt"); err == nil || !strings.Contains(out, "outside the repo") {
+		t.Fatalf("ignore outside the repo: %v\n%s", err, out)
+	}
+	if out, err := e.run(api, gsBin, "ignore", "secret.env", "--ext", "--folder"); err == nil || !strings.Contains(out, "usage") {
+		t.Fatalf("two kinds: %v\n%s", err, out)
+	}
+}
+
+// Delete, rename and set the upstream of a branch, and make, push and
+// delete tags, with real git through the real program. Delete needs
+// --force for commits that are nowhere else; delete and rename are undone.
+func TestBranchAndTagManagement(t *testing.T) {
+	e := newEnv(t)
+	e.gs("rule", "add", "owner:acme-corp", "client")
+	e.clone("git@github.com:acme-corp/api.git", "api")
+	api := filepath.Join(e.root, "api")
+	e.commitFile(api, "a.txt", "a\n", "base")
+	e.gitIn(api, "push", "-q", "origin", "main")
+
+	// done: merged into main. wip: one commit of its own, never pushed.
+	e.gitIn(api, "branch", "done")
+	e.gitIn(api, "switch", "-q", "-c", "wip")
+	wip := e.commitFile(api, "w.txt", "w\n", "wip")
+	e.gitIn(api, "switch", "-q", "main")
+
+	e.gsErr(api, "current branch", "branch", "delete", "main", "-y")
+	e.gsErr(api, "add -y", "branch", "delete", "done") // no terminal to ask in
+	e.gsErr(api, "wip has 1 commit that is on no other branch or remote: once the branch is deleted, only Undo can bring it back. Delete it anyway only with force: gitswitch branch delete wip --force", "branch", "delete", "wip", "-y")
+	if out := e.gsIn(api, "branch", "delete", "done", "-y"); !strings.Contains(out, "Deleted the branch done") {
+		t.Fatalf("delete done:\n%s", out)
+	}
+	out := e.gsIn(api, "branch", "delete", "wip", "--force", "-y")
+	if !strings.Contains(out, "1 commit(s) were only on it") || e.gitIn(api, "branch", "--list", "wip") != "" {
+		t.Fatalf("delete wip:\n%s", out)
+	}
+	if out := e.gsIn(api, "undo", "--show"); !strings.Contains(out, "Brings back the deleted branches: wip") {
+		t.Fatalf("undo --show:\n%s", out)
+	}
+	e.gsIn(api, "undo", "-y")
+	if e.gitIn(api, "rev-parse", "wip") != wip {
+		t.Fatal("undo did not bring wip back")
+	}
+
+	// main pulls from origin/main; renamed, it still does; undo renames it back.
+	e.gsErr(api, "no remote branch \"origin/nope\"", "branch", "upstream", "origin/nope")
+	if out := e.gsIn(api, "branch", "upstream", "origin/main"); !strings.Contains(out, "main now pulls from origin/main") {
+		t.Fatalf("upstream:\n%s", out)
+	}
+	e.gsErr(api, "can't be a branch name", "branch", "rename", "bad..name")
+	e.gsErr(api, "already a branch wip", "branch", "rename", "wip")
+	if out := e.gsIn(api, "branch", "rename", "trunk"); !strings.Contains(out, "Renamed the branch main to trunk") || !strings.Contains(out, "still pulls from origin/main") {
+		t.Fatalf("rename:\n%s", out)
+	}
+	if e.gitIn(api, "branch", "--show-current") != "trunk" || e.gitIn(api, "rev-parse", "--abbrev-ref", "trunk@{upstream}") != "origin/main" {
+		t.Fatal("trunk is not current or lost its upstream")
+	}
+	e.gsIn(api, "branch", "rename", "wip", "later")
+	e.gsIn(api, "undo", "-y") // later back to wip
+	if e.gitIn(api, "rev-parse", "wip") != wip || e.gitIn(api, "branch", "--show-current") != "trunk" {
+		t.Fatal("undo did not rename later back to wip")
+	}
+	if out := e.gsIn(api, "branch", "upstream", "--unset"); !strings.Contains(out, "trunk no longer pulls from origin/main") {
+		t.Fatalf("unset:\n%s", out)
+	}
+
+	// Tags: annotated and lightweight, listed, pushed with the client key.
+	if out := e.gsIn(api, "tag"); !strings.Contains(out, "No tags yet") {
+		t.Fatalf("no tags:\n%s", out)
+	}
+	if out := e.gsIn(api, "tag", "new", "v1", "-m", "Release 1"); !strings.Contains(out, "as v1 (annotated)") || e.gitIn(api, "cat-file", "-t", "v1") != "tag" {
+		t.Fatalf("tag new v1:\n%s", out)
+	}
+	if out := e.gsIn(api, "tag", "new", "wip-mark", "wip"); !strings.Contains(out, "(lightweight)") || e.gitIn(api, "rev-parse", "wip-mark") != wip {
+		t.Fatalf("tag new wip-mark:\n%s", out)
+	}
+	e.gsErr(api, "already a tag v1", "tag", "new", "v1")
+	if out := e.gsIn(api, "tag", "list", "--json"); !strings.Contains(out, `"v1"`) || !strings.Contains(out, `"wip-mark"`) {
+		t.Fatalf("tag list --json:\n%s", out)
+	}
+	e.resetLog()
+	if out := e.gsIn(api, "tag", "push", "v1"); !strings.Contains(out, "Pushed the tag v1 to origin as client") {
+		t.Fatalf("tag push:\n%s", out)
+	}
+	if k := e.keysUsed(); len(k) == 0 || k[len(k)-1] != "client" {
+		t.Fatalf("keys used: %v", k)
+	}
+	bare := filepath.Join(e.server, "acme-corp", "api.git")
+	if e.gitIn(e.root, "--git-dir", bare, "cat-file", "-t", "v1") != "tag" {
+		t.Fatal("the server has no v1")
+	}
+	e.gsErr(api, "add -y", "tag", "delete", "v1")
+	e.gsIn(api, "tag", "delete", "v1", "-y")
+	if e.gitIn(api, "tag", "--list", "v1") != "" {
+		t.Fatal("v1 is still here")
+	}
+	// A v1 at another commit: refused, the server's v1 stays.
+	e.gsIn(api, "tag", "new", "v1", "wip")
+	e.gsErr(api, "never forces", "tag", "push", "v1")
+	if e.gitIn(e.root, "--git-dir", bare, "rev-parse", "v1^{commit}") == wip {
+		t.Fatal("the server's v1 was overwritten")
 	}
 }

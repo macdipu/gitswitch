@@ -71,6 +71,19 @@ func (s *Service) Pruned(gitDir string, before undo.Mark, branches []undo.Delete
 	}
 }
 
+// Renamed remembers a renamed branch, so undo can rename it back.
+func (s *Service) Renamed(gitDir string, before undo.Mark, from, to, hash, label string) {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	r := undo.Record{Action: undo.Rename, Label: label, Worktree: before.Worktree, Branch: from, To: to,
+		Before: hash, After: hash, Time: now().Unix()}
+	if from == "" || to == "" || hash == "" || s.Store.Save(gitDir, r) != nil {
+		_ = s.Store.Clear(gitDir)
+	}
+}
+
 // Status is the last action and whether it can be undone now.
 type Status struct {
 	undo.Record
@@ -100,6 +113,14 @@ func (s *Service) check(gitDir string, r undo.Record) error {
 			if tip := s.Git.Tip(gitDir, d.Name); tip != "" && tip != d.Hash {
 				return fmt.Errorf("there is a branch %s again, at another commit, so it can't come back; rename or delete it, then undo again", d.Name)
 			}
+		}
+	}
+	if r.Action == undo.Rename {
+		if s.Git.Tip(gitDir, r.To) == "" {
+			return fmt.Errorf("there is no branch %s any more (renamed or deleted since), so there is nothing to rename back", r.To)
+		}
+		if s.Git.Tip(gitDir, r.Branch) != "" {
+			return fmt.Errorf("there is a branch %s again, so %s can't get that name back; rename or delete it, then undo again", r.Branch, r.To)
 		}
 	}
 	if r.Action == undo.Move && s.Git.Tip(gitDir, r.Branch) != r.After {
@@ -149,6 +170,8 @@ func (s *Service) Undo(gitDir string) (undo.Record, error) {
 		err = s.Git.Switch(r.Worktree, r.Branch)
 	case undo.Move:
 		return r, s.unmove(gitDir, r)
+	case undo.Rename:
+		err = s.Git.Rename(gitDir, r.To, r.Branch)
 	case undo.Prune:
 		var gone []undo.Deleted // those made again at the same commit stay
 		for _, d := range r.Deleted {
@@ -157,9 +180,9 @@ func (s *Service) Undo(gitDir string) (undo.Record, error) {
 			}
 		}
 		err = s.Git.Recreate(gitDir, gone)
-	case undo.Rollback, undo.Commit:
+	case undo.Rollback, undo.Commit, undo.Amend:
 		// The files already hold the commits' changes; only the branch
-		// moves.
+		// moves. After an amend, what it added shows as uncommitted.
 		err = s.Git.Reset(r.Worktree, r.Before, false)
 	default:
 		err = s.Git.Reset(r.Worktree, r.Before, true)

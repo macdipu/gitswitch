@@ -8,12 +8,25 @@ import (
 	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
+	workspace "github.com/macdipu/gitswitch/internal/features/workspace/domain"
 	"github.com/macdipu/gitswitch/internal/platform/filesystem"
 )
 
 type fakeGit struct {
 	head refs.Head
+	last workspace.Last
 	ran  []string
+}
+
+func (f *fakeGit) Last(string) (workspace.Last, error) { return f.last, nil }
+func (f *fakeGit) Amend(_, msg string, all bool) error {
+	f.ran = append(f.ran, map[bool]string{true: "amend --all ", false: "amend "}[all]+msg)
+	f.head.Hash, f.head.Changes = "new", refs.Changes{}
+	f.last.Hash, f.last.Short, f.last.Files = "new", "new", 2
+	if msg != "" {
+		f.last.Subject, f.last.Message = msg, msg
+	}
+	return nil
 }
 
 func (f *fakeGit) Head(string) (refs.Head, error) { return f.head, nil }
@@ -49,8 +62,11 @@ func (f *fakeRecorder) Done(_ string, m undo.Mark, a undo.Action, label string) 
 func (f *fakeRecorder) Pruned(string, undo.Mark, []undo.Deleted, string) {}
 func (f *fakeRecorder) Updated(string, undo.Mark, string, string)        {}
 
+func (f *fakeRecorder) Renamed(string, undo.Mark, string, string, string, string) {}
+
 func newService() (*Service, *fakeGit, *fakeRepos, *fakeRecorder) {
-	g := &fakeGit{head: refs.Head{Branch: "main", Hash: "abc", Changes: refs.Changes{Staged: 1, Changed: 2, New: 1}}}
+	g := &fakeGit{head: refs.Head{Branch: "main", Hash: "abc", Changes: refs.Changes{Staged: 1, Changed: 2, New: 1}},
+		last: workspace.Last{Hash: "abc", Short: "abc", Subject: "Old", Message: "Old\n\nbody", Parents: 1, Files: 1}}
 	r := &fakeRepos{acc: &account.Account{ID: "work", Email: "me@work.example"}, email: "Me@Work.example"}
 	rec := &fakeRecorder{}
 	return &Service{Git: g, Accounts: fakeStore{}, Repos: r, Locator: r, FS: &filesystem.FS{}, Undo: rec}, g, r, rec
@@ -95,5 +111,65 @@ func TestCommitRefused(t *testing.T) {
 	r.acc = nil
 	if got, err := s.Commit("/r/.git", "m", false); err != nil || got.Account != "" || len(g.ran) != 1 {
 		t.Errorf("no account: %+v %v", got, err)
+	}
+}
+
+func TestAmend(t *testing.T) {
+	s, g, _, rec := newService()
+	got, err := s.Amend("/r/.git", "", false)
+	if err != nil || got.Short != "new" || got.Amended != "abc" || got.Subject != "Old" || got.Files != 2 || got.Account != "work" ||
+		strings.Join(g.ran, ",") != "amend " || strings.Join(rec.done, "|") != "amend abc: Amended abc into new Old" {
+		t.Fatalf("staged, same message: %+v %v %v %v", got, err, g.ran, rec.done)
+	}
+
+	// Only the message: nothing staged.
+	s, g, _, _ = newService()
+	g.head.Changes = refs.Changes{Changed: 1}
+	if got, err := s.Amend("/r/.git", " New words\n", false); err != nil || got.Subject != "New words" || strings.Join(g.ran, ",") != "amend New words" {
+		t.Fatalf("message: %+v %v %v", got, err, g.ran)
+	}
+
+	s, g, _, _ = newService()
+	g.head.Changes = refs.Changes{New: 1}
+	if got, err := s.Amend("/r/.git", "", true); err != nil || !got.All || strings.Join(g.ran, ",") != "amend --all " {
+		t.Fatalf("all: %+v %v %v", got, err, g.ran)
+	}
+
+	s, _, _, _ = newService()
+	if a := s.Amendable("/r/.git"); !a.Can || a.Why != "" || a.Short != "abc" || a.Message != "Old\n\nbody" {
+		t.Errorf("Amendable = %+v", a)
+	}
+}
+
+func TestAmendRefused(t *testing.T) {
+	for name, c := range map[string]struct {
+		edit func(*fakeGit, *fakeRepos)
+		msg  string
+		all  bool
+		want string
+	}{
+		"no commit":   {func(g *fakeGit, _ *fakeRepos) { g.head.Hash = "" }, "m", false, "no commit to amend yet"},
+		"mid-merge":   {func(g *fakeGit, _ *fakeRepos) { g.head.Busy = "merge" }, "m", false, "middle of a merge"},
+		"conflicts":   {func(g *fakeGit, _ *fakeRepos) { g.head.Changes.Conflicts = 1 }, "m", true, "still have conflicts"},
+		"merge":       {func(g *fakeGit, _ *fakeRepos) { g.last.Parents = 2 }, "m", false, "is a merge commit"},
+		"pushed":      {func(g *fakeGit, _ *fakeRepos) { g.last.Pushed = true }, "m", false, "already pushed"},
+		"gone":        {func(g *fakeGit, _ *fakeRepos) { g.head.Gone = "origin/main" }, "m", false, "can't tell whether"},
+		"wrong email": {func(_ *fakeGit, r *fakeRepos) { r.email = "me@home.example" }, "m", false, "gitswitch use work --once"},
+		"nothing staged, same message": {func(g *fakeGit, _ *fakeRepos) { g.head.Changes = refs.Changes{Changed: 1} },
+			"Old\n\nbody", false, "nothing to amend: nothing is staged"},
+		"nothing staged, no message": {func(g *fakeGit, _ *fakeRepos) { g.head.Changes = refs.Changes{Changed: 1} },
+			"", false, "nothing to amend"},
+		"no change at all": {func(g *fakeGit, _ *fakeRepos) { g.head.Changes = refs.Changes{} }, "", true, "no file has changed"},
+	} {
+		s, g, r, rec := newService()
+		c.edit(g, r)
+		if _, err := s.Amend("/r/.git", c.msg, c.all); err == nil || !strings.Contains(err.Error(), c.want) || len(g.ran) != 0 || len(rec.done) != 0 {
+			t.Errorf("%s: %v %v, want %q", name, err, g.ran, c.want)
+		}
+		if name != "nothing staged, same message" && name != "nothing staged, no message" && name != "no change at all" {
+			if a := s.Amendable("/r/.git"); a.Can || !strings.Contains(a.Why, c.want) {
+				t.Errorf("%s: Amendable = %+v", name, a)
+			}
+		}
 	}
 }

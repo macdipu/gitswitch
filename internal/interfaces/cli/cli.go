@@ -87,6 +87,11 @@ History and branches
   gitswitch branch pr [--json]      the branch's open pull or merge request: approvals, checks, conflicts
   gitswitch branch prune [-y]       delete the local branches merged into the remote's default
                                     branch (never the current one, main or master); asks first
+  gitswitch branch delete <name> [--force] [-y]   delete a local branch (not the current one); asks
+                                    first, and needs --force when its commits are on no other branch
+  gitswitch branch rename [<old>] <new>   rename a branch (the current one without <old>); it keeps
+                                    its remote branch
+  gitswitch branch upstream <remote>/<branch>|--unset   the remote branch the current branch pulls from
   gitswitch changes [--json]        the uncommitted changes: staged, not staged, conflicts
   gitswitch diff [--staged] [<path>]   a file's uncommitted change (new files in full), or every file's;
                                     --staged shows what the next commit holds
@@ -94,8 +99,14 @@ History and branches
   gitswitch unstage <path>...|--all   take changes out of the next commit; the files keep them
   gitswitch discard <path>...|--all [-y]   put files back as in the last commit (new files removed);
                                     asks first, and keeps the changes in git stash
+  gitswitch ignore <path> [--ext|--folder] [--local] [--untrack]   add the file, its extension (*.ext)
+                                    or its folder to .gitignore (--local: .git/info/exclude, this clone
+                                    only); --untrack takes a tracked file out of git, keeping it
   gitswitch commit -m <message> [--all]   commit the staged changes as the repo's account;
                                     --all commits every change, new files too
+  gitswitch commit --amend [-m <message>] [--all]   add the staged changes (--all: every change)
+                                    to the last commit, or give it a new message; only while it
+                                    is not pushed, and undo puts it back
   gitswitch switch <branch> [--smart|--park]   check out a branch (origin/x creates a local x);
                                     with uncommitted changes, --smart takes them along and --park
                                     leaves them on this branch until you come back; without either,
@@ -116,10 +127,16 @@ History and branches
   gitswitch drop <commit> [-y]      remove a not-pushed commit from the branch
   gitswitch rollback <commit> [-y]  undo the not-pushed commits after one, keeping their changes
   gitswitch cherry-pick <commit>... copy commits from other branches onto this one, oldest first
-  gitswitch undo [-y] [--show [--json]]   undo the last commit, switch, new branch, move, prune,
-                                    revert, drop, rollback, cherry-pick or fix-author (--show: only say what it would do)
+  gitswitch undo [-y] [--show [--json]]   undo the last commit, amend, switch, new branch, move, prune,
+                                    branch delete or rename, revert, drop, rollback, cherry-pick or fix-author
+                                    (--show: only say what it would do)
   gitswitch show <commit> [--json]  a commit's full message and the files it changed
   gitswitch browse [<commit>]       open the commit (or the repo) on GitHub, GitLab, ...
+  gitswitch tag [list] [--json]     the tags, newest first
+  gitswitch tag new <name> [<commit>] [-m <message>]   tag the current commit (or another);
+                                    annotated with -m, else lightweight
+  gitswitch tag delete <name> [-y]  delete a tag in this clone (asks first)
+  gitswitch tag push <name>         push one tag with the repo's account, never forced
 
 Settings
   gitswitch doctor [--fix]
@@ -293,10 +310,21 @@ func (x *CLI) dispatch(args []string) error {
 		if len(rest) > 0 && rest[0] == "pr" {
 			return x.cmdBranchPR(rest[1:])
 		}
+		if len(rest) > 0 && rest[0] == "delete" {
+			return x.cmdBranchDelete(rest[1:])
+		}
+		if len(rest) > 0 && rest[0] == "rename" {
+			return x.cmdBranchRename(rest[1:])
+		}
+		if len(rest) > 0 && rest[0] == "upstream" {
+			return x.cmdBranchUpstream(rest[1:])
+		}
 		if len(rest) > 0 && rest[0] == "compare" {
 			return x.cmdBranchCompare(rest[1:])
 		}
 		return x.cmdBranch(hasFlag(rest, "--json"))
+	case "tag", "tags":
+		return x.cmdTag(rest)
 	case "commit":
 		return x.cmdCommit(rest)
 	case "changes":
@@ -309,6 +337,8 @@ func (x *CLI) dispatch(args []string) error {
 		return x.cmdUnstage(rest)
 	case "discard":
 		return x.cmdDiscard(rest)
+	case "ignore":
+		return x.cmdIgnore(rest)
 	case "switch":
 		return x.cmdSwitch(rest)
 	case "fetch":

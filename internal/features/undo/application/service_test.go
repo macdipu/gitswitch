@@ -71,6 +71,13 @@ func (f *fakeGit) Recreate(_ string, ds []undo.Deleted) error {
 	return nil
 }
 
+func (f *fakeGit) Rename(_, from, to string) error {
+	f.ran = append(f.ran, "rename "+from+" "+to)
+	f.tips[to] = f.tips[from]
+	delete(f.tips, from)
+	return nil
+}
+
 func newService() (*Service, *fakeStore, *fakeGit) {
 	st, g := &fakeStore{}, &fakeGit{mark: undo.Mark{Worktree: "/r", Branch: "main", Head: "a"}}
 	return &Service{Store: st, Git: g, FS: &filesystem.FS{}, Now: func() time.Time { return time.Unix(100, 0) }}, st, g
@@ -96,6 +103,7 @@ func TestUndoEachAction(t *testing.T) {
 		{undo.FixAuthor, "b", "main", "keep a"},
 		{undo.Rollback, "b", "main", "mixed a"},
 		{undo.Commit, "b", "main", "mixed a"},
+		{undo.Amend, "b", "main", "mixed a"},
 		{undo.Switch, "c", "feat", "switch main"},
 	} {
 		s, st, g := newService()
@@ -240,5 +248,41 @@ func TestUndoPrune(t *testing.T) {
 	s.Pruned("/r/.git", m, nil, "nothing")
 	if st.rec != nil {
 		t.Errorf("recorded a prune that deleted nothing: %+v", st.rec)
+	}
+}
+
+// A renamed branch: undo gives it its old name back, wherever HEAD is and
+// whatever was committed on it since.
+func TestUndoRename(t *testing.T) {
+	s, st, g := newService()
+	g.tips = map[string]string{"main": "a", "login": "b"}
+	m := s.Before("/r/.git")
+	s.Renamed("/r/.git", m, "feat", "login", "b", "Renamed the branch feat to login")
+	if st.rec == nil || st.rec.Action != undo.Rename || st.rec.Branch != "feat" || st.rec.To != "login" || st.rec.Before != "b" || st.rec.After != "b" {
+		t.Fatalf("recorded %+v", st.rec)
+	}
+	g.mark.Branch, g.mark.Head, g.tips["login"] = "login", "c", "c" // switched to it and committed since
+	last, err := s.Last("/r/.git")
+	if err != nil || last.Blocked != "" || last.Effect != "Renames login back to feat." {
+		t.Fatalf("last = %+v %v", last, err)
+	}
+
+	g.tips["feat"] = "x" // a new feat since
+	if _, err := s.Undo("/r/.git"); err == nil || !strings.Contains(err.Error(), "branch feat again") || len(g.ran) != 0 {
+		t.Fatalf("name taken: %v %v", err, g.ran)
+	}
+	delete(g.tips, "feat")
+	delete(g.tips, "login") // login is gone too
+	if _, err := s.Undo("/r/.git"); err == nil || !strings.Contains(err.Error(), "no branch login any more") {
+		t.Fatalf("gone: %v", err)
+	}
+	g.tips["login"] = "c"
+	if _, err := s.Undo("/r/.git"); err != nil || strings.Join(g.ran, ",") != "rename login feat" || g.tips["feat"] != "c" || st.rec != nil {
+		t.Fatalf("undo: %v %v %+v", err, g.ran, st.rec)
+	}
+
+	s.Renamed("/r/.git", m, "feat", "login", "", "no commit")
+	if st.rec != nil {
+		t.Errorf("recorded a rename without a commit: %+v", st.rec)
 	}
 }

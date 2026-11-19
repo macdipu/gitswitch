@@ -18,9 +18,30 @@ type Committed struct {
 	Hash    string `json:"hash"`
 	Short   string `json:"short"`
 	Subject string `json:"subject"`
-	All     bool   `json:"all"`     // every change was committed, new files too; otherwise what was staged
-	Files   int    `json:"files"`   // how many files the commit holds
-	Account string `json:"account"` // the gitswitch account the commit is made as; "" when the repo has none
+	All     bool   `json:"all"`               // every change was committed, new files too; otherwise what was staged
+	Files   int    `json:"files"`             // how many files the commit holds
+	Account string `json:"account"`           // the gitswitch account the commit is made as; "" when the repo has none
+	Amended string `json:"amended,omitempty"` // for an amend: the short hash of the commit it replaced
+}
+
+// Last is the latest commit, as amending it needs it.
+type Last struct {
+	Hash    string `json:"hash"`
+	Short   string `json:"short"`
+	Subject string `json:"subject"`
+	Message string `json:"message"` // the whole message, subject and body
+	Parents int    `json:"parents"` // more than one: a merge commit
+	Files   int    `json:"files"`   // how many files it changes
+	Pushed  bool   `json:"pushed"`  // on a remote branch
+}
+
+// Amendable says whether the last commit may be amended, and why not.
+type Amendable struct {
+	Can     bool   `json:"can"`
+	Why     string `json:"why"`   // why not, in plain words; "" when it can
+	Short   string `json:"short"` // the last commit; "" when there is none
+	Subject string `json:"subject"`
+	Message string `json:"message"` // its whole message, to start the new one from
 }
 
 // Message tidies a commit message: surrounding blank space goes, and a
@@ -46,6 +67,11 @@ type Git interface {
 	// Commit commits what is staged; with all, every change first, new
 	// files included (git add --all).
 	Commit(worktree, message string, all bool) error
+	// Last reads the latest commit (HEAD).
+	Last(gitDir string) (Last, error)
+	// Amend replaces the latest commit with one holding what is staged
+	// too; with all, every change first. Message "" keeps its message.
+	Amend(worktree, message string, all bool) error
 }
 
 // File is one path with uncommitted changes. Staged and Worktree are git's

@@ -50,6 +50,7 @@ func (r *Reader) InfoFor(c *account.Config, gitDir string) repo.Info {
 	ri.Remote = r.Git.RepoGet(gitDir, "remote.origin.url")
 	ri.Saved = r.Git.RepoGet(gitDir, "gitswitch.account")
 	ri.Email = r.Git.RepoGet(gitDir, "user.email")
+	ri.UserName = r.Git.RepoGet(gitDir, "user.name")
 	if v := r.Git.RepoGet(gitDir, "core.sshCommand"); v != "" && !account.IsHook(v) {
 		ri.SSHOverride = v
 	}

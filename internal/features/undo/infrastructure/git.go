@@ -182,3 +182,8 @@ func (g *Git) Recreate(gitDir string, branches []undo.Deleted) error {
 	}
 	return nil
 }
+
+func (g *Git) Rename(gitDir, from, to string) error {
+	_, err := g.Git.Run("--git-dir="+gitDir, "branch", "-m", "--", from, to)
+	return err
+}

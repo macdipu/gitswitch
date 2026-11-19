@@ -43,7 +43,9 @@ type fakeRefs struct {
 	merges     int
 	fetchErr   error
 	fetchOpen  bool
-	fetchNew   int // commits the next fetch brings
+	fetchNew   int            // commits the next fetch brings
+	unique     map[string]int // Unique: branch -> commits only on it
+	tags       []string       // nil: just v1
 }
 
 func (f *fakeRefs) Fetch(_ string, progress func(string)) error {
@@ -75,7 +77,12 @@ func (f *fakeRefs) SavePullMode(gitDir, v string) error {
 	return nil
 }
 func (f *fakeRefs) Merges(string, string, string) int { return f.merges }
-func (f *fakeRefs) Tags(string) ([]string, error)     { return []string{"v1"}, nil }
+func (f *fakeRefs) Tags(string) ([]string, error) {
+	if f.tags == nil {
+		return []string{"v1"}, nil
+	}
+	return f.tags, nil
+}
 func (f *fakeRefs) Resolve(_, rev string) string {
 	if rev == "@{upstream}" {
 		return "upstream-tip"

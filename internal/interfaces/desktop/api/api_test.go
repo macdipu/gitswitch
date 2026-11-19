@@ -554,6 +554,45 @@ func TestCommit(t *testing.T) {
 	}
 }
 
+// Amend from the page: what the page shows first, a new message, every
+// change, undo, and the refusal once the commit is pushed.
+func TestAmend(t *testing.T) {
+	dir, git, write := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	q := "gitDir=" + url.QueryEscape(dir)
+	w, m := call(t, h, "GET", "/api/repo/amendable?"+q, "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["can"] != true || d["why"] != "" || d["subject"] != "base" || d["message"] != "base" {
+		t.Fatalf("amendable = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"amend":true}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "nothing to amend") {
+		t.Fatalf("nothing to amend = %d %v", w.Code, m)
+	}
+	base := git("rev-parse", "HEAD")
+	w, m = call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"amend":true,"message":"Base, better"}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["subject"] != "Base, better" || d["amended"] != base[:7] || git("log", "-1", "--format=%s") != "Base, better" {
+		t.Fatalf("amend message = %d %v", w.Code, m)
+	}
+	write("more\n")
+	w, m = call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"amend":true,"all":true}`)
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["subject"] != "Base, better" || git("status", "--porcelain") != "" {
+		t.Fatalf("amend all = %d %v", w.Code, m)
+	}
+	// Undo puts the commit back as it was before that amend; what the
+	// amend added stays in the file, uncommitted.
+	if w, m := call(t, h, "POST", "/api/undo", `{`+gd+`}`); w.Code != 200 || git("status", "--porcelain") != "M f.txt" || git("log", "-1", "--format=%s") != "Base, better" {
+		t.Fatalf("undo = %d %v, status %q", w.Code, m, git("status", "--porcelain"))
+	}
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	w, m = call(t, h, "GET", "/api/repo/amendable?"+q, "")
+	if d, _ := m["data"].(map[string]any); w.Code != 200 || d["can"] != false || !strings.Contains(fmt.Sprint(d["why"]), "already pushed") {
+		t.Fatalf("amendable after push = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/commit", `{`+gd+`,"amend":true,"all":true}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "already pushed") {
+		t.Fatalf("amend pushed = %d %v", w.Code, m)
+	}
+}
+
 // Compare lists the commits to push to the upstream.
 func TestCompare(t *testing.T) {
 	dir, git, write := testRepo(t)
@@ -605,5 +644,131 @@ func TestChanges(t *testing.T) {
 	}
 	if !strings.Contains(git("stash", "list"), "gitswitch discard: main") {
 		t.Fatal("the discarded changes are not in the stash")
+	}
+}
+
+// Ignore: a new file goes into .gitignore and is ignored; a tracked one is
+// reported, and untracked only when asked; a bad kind and a path outside
+// the repo are refused.
+func TestRepoIgnore(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	if err := os.WriteFile(filepath.Join(dir, "build.log"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w, m := call(t, h, "POST", "/api/repo/ignore", `{`+gd+`,"path":"build.log","kind":"ext"}`)
+	d, _ := m["data"].(map[string]any)
+	if w.Code != 200 || d["pattern"] != "*.log" || d["where"] != ".gitignore" || d["added"] != true || d["ignored"] != true {
+		t.Fatalf("ignore = %d %v", w.Code, m)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); string(b) != "*.log\n" {
+		t.Fatalf(".gitignore = %q", b)
+	}
+	w, m = call(t, h, "POST", "/api/repo/ignore", `{`+gd+`,"path":"f.txt","local":true}`)
+	d, _ = m["data"].(map[string]any)
+	if tr, _ := d["tracked"].([]any); w.Code != 200 || d["where"] != ".git/info/exclude" || d["ignored"] != false || len(tr) != 1 || !strings.Contains(fmt.Sprint(d["note"]), "tracked by git") {
+		t.Fatalf("ignore a tracked file = %d %v", w.Code, m)
+	}
+	if git("ls-files", "f.txt") != "f.txt" {
+		t.Fatal("untracked without untrack")
+	}
+	w, m = call(t, h, "POST", "/api/repo/ignore", `{`+gd+`,"path":"f.txt","local":true,"untrack":true}`)
+	d, _ = m["data"].(map[string]any)
+	if un, _ := d["untracked"].([]any); w.Code != 200 || d["added"] != false || d["ignored"] != true || len(un) != 1 || git("ls-files", "f.txt") != "" {
+		t.Fatalf("untrack = %d %v", w.Code, m)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "f.txt")); err != nil {
+		t.Fatalf("untrack removed the file: %v", err)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/ignore", `{`+gd+`,"path":"../x"}`); w.Code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "outside the repo") {
+		t.Fatalf("outside = %d %v", w.Code, m)
+	}
+	if w, m := call(t, h, "POST", "/api/repo/ignore", `{`+gd+`,"path":"build.log","kind":"glob"}`); w.Code != 400 {
+		t.Fatalf("bad kind = %d %v", w.Code, m)
+	}
+}
+
+// Branches are deleted (side only with force: its commit is nowhere
+// else), renamed and given an upstream; delete and rename are undone.
+// Tags are made, listed, pushed and deleted.
+func TestBranchAndTagManagement(t *testing.T) {
+	dir, git, _ := testRepo(t)
+	server := filepath.Join(filepath.Dir(dir), "server.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", server).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	git("remote", "add", "origin", server)
+	git("push", "-q", "origin", "main")
+	h := Handler(bootstrap.New(false, nil), nil)
+	gd := `"gitDir":"` + filepath.ToSlash(dir) + `"`
+	post := func(path, b string) (int, map[string]any, string) {
+		w, m := call(t, h, "POST", path, `{`+gd+b+`}`)
+		d, _ := m["data"].(map[string]any)
+		return w.Code, d, fmt.Sprint(m["error"])
+	}
+
+	if c, _, e := post("/api/branch/delete", `,"name":"main"`); c != 400 || !strings.Contains(e, "current branch") {
+		t.Fatalf("delete current = %d %s", c, e)
+	}
+	if c, _, e := post("/api/branch/delete", `,"name":"side"`); c != 400 || !strings.Contains(e, "side has 1 commit that is on no other branch or remote") {
+		t.Fatalf("delete side = %d %s", c, e)
+	}
+	side := git("rev-parse", "side")
+	if c, d, e := post("/api/branch/delete", `,"name":"side","force":true`); c != 200 || d["branch"] != "side" || d["hash"] != side || fmt.Sprint(d["only"]) != "1" {
+		t.Fatalf("force delete = %d %v %s", c, d, e)
+	}
+	if git("branch", "--list", "side") != "" {
+		t.Fatal("side is still there")
+	}
+	if c, _, e := post("/api/undo", ``); c != 200 || git("rev-parse", "side") != side {
+		t.Fatalf("undo delete = %d %s", c, e)
+	}
+
+	if c, d, e := post("/api/branch/upstream", `,"branch":"","upstream":"origin/main"`); c != 200 || d["branch"] != "main" || d["upstream"] != "origin/main" ||
+		git("rev-parse", "--abbrev-ref", "main@{upstream}") != "origin/main" {
+		t.Fatalf("upstream = %d %v %s", c, d, e)
+	}
+	if c, d, e := post("/api/branch/rename", `,"from":"main","to":"trunk"`); c != 200 || d["from"] != "main" || d["to"] != "trunk" || d["upstream"] != "origin/main" ||
+		git("branch", "--show-current") != "trunk" || git("rev-parse", "--abbrev-ref", "trunk@{upstream}") != "origin/main" {
+		t.Fatalf("rename = %d %v %s", c, d, e)
+	}
+	if c, _, e := post("/api/branch/rename", `,"from":"side","to":"trunk"`); c != 400 || !strings.Contains(e, "already a branch trunk") {
+		t.Fatalf("rename onto trunk = %d %s", c, e)
+	}
+	if c, _, e := post("/api/undo", ``); c != 200 || git("branch", "--show-current") != "main" {
+		t.Fatalf("undo rename = %d %s, on %s", c, e, git("branch", "--show-current"))
+	}
+	if c, d, e := post("/api/branch/upstream", `,"branch":"main","upstream":""`); c != 200 || d["upstream"] != "" || d["was"] != "origin/main" {
+		t.Fatalf("unset upstream = %d %v %s", c, d, e)
+	}
+
+	if c, d, e := post("/api/tag/new", `,"name":"v1","rev":"side","message":"Release 1"`); c != 200 || d["tag"] != "v1" || d["annotated"] != true || d["hash"] != side ||
+		git("cat-file", "-t", "v1") != "tag" {
+		t.Fatalf("annotated tag = %d %v %s", c, d, e)
+	}
+	if c, d, e := post("/api/tag/new", `,"name":"v0"`); c != 200 || d["annotated"] != false || git("cat-file", "-t", "v0") != "commit" {
+		t.Fatalf("light tag = %d %v %s", c, d, e)
+	}
+	if c, _, e := post("/api/tag/new", `,"name":"v0"`); c != 400 || !strings.Contains(e, "already a tag v0") {
+		t.Fatalf("tag again = %d %s", c, e)
+	}
+	_, m := call(t, h, "GET", "/api/tags?gitDir="+url.QueryEscape(dir), "")
+	if tags := fmt.Sprint(m["data"]); tags != "[v0 v1]" && tags != "[v1 v0]" {
+		t.Fatalf("tags = %v", m)
+	}
+	if c, d, e := post("/api/tag/push", `,"name":"v1"`); c != 200 || d["tag"] != "v1" || d["remote"] != "origin" {
+		t.Fatalf("push tag = %d %v %s", c, d, e)
+	}
+	if out, err := exec.Command("git", "--git-dir", server, "rev-parse", "v1^{commit}").Output(); err != nil || strings.TrimSpace(string(out)) != side {
+		t.Fatalf("the server has no v1: %v %s", err, out)
+	}
+	if c, d, e := post("/api/tag/delete", `,"name":"v1"`); c != 200 || d["tag"] != "v1" || git("tag", "--list", "v1") != "" {
+		t.Fatalf("delete tag = %d %v %s", c, d, e)
+	}
+	// Another v1 at another commit: the push is refused, not forced.
+	post("/api/tag/new", `,"name":"v1"`)
+	if c, _, e := post("/api/tag/push", `,"name":"v1"`); c != 400 || !strings.Contains(e, "never forces") {
+		t.Fatalf("push a different v1 = %d %s", c, e)
 	}
 }

@@ -512,6 +512,22 @@ type Refs interface {
 	// repo's account, never forcing; setUpstream makes the branch track
 	// it. Each progress line goes to progress.
 	Push(worktree, remote, src, dst string, setUpstream bool, progress func(string)) error
+	// Unique counts a local branch's commits that are on no other local
+	// branch and no remote branch.
+	Unique(gitDir, branch string) (int, error)
+	// RenameBranch renames a local branch, keeping the remote branch it
+	// pulls from and its reflog (git branch -m); refused when to exists.
+	RenameBranch(gitDir, from, to string) error
+	// SetUpstream makes a local branch pull from a remote branch (e.g.
+	// origin/main); "" makes it pull from none.
+	SetUpstream(gitDir, branch, upstream string) error
+	// CheckTagName refuses what git does not accept as a tag name.
+	CheckTagName(name string) error
+	// CreateTag tags a commit: annotated when message is not "", else
+	// lightweight. Refused when the tag exists.
+	CreateTag(gitDir, name, commit, message string) error
+	// DeleteTag deletes a local tag.
+	DeleteTag(gitDir, name string) error
 
 	// Stash saves every uncommitted change, new files included, as a
 	// stash entry and returns its commit.
@@ -545,4 +561,59 @@ type Refs interface {
 	SaveClash(gitDir string, c Clash) error
 	LoadClash(gitDir string) (*Clash, error)
 	ClearClash(gitDir string) error
+}
+
+// DeletedBranch is the result of deleting a branch.
+type DeletedBranch struct {
+	Branch string `json:"branch"`
+	Hash   string `json:"hash"` // the commit it pointed at
+	// Only counts its commits that were on no other branch or remote: now
+	// only Undo can bring them back.
+	Only int `json:"only"`
+}
+
+// Unmerged refuses to delete a branch whose commits are on no other branch
+// or remote, unless forced.
+type Unmerged struct {
+	Branch  string
+	Commits int
+}
+
+func (u *Unmerged) Error() string {
+	verb, them := "are", "them"
+	if u.Commits == 1 {
+		verb, them = "is", "it"
+	}
+	return fmt.Sprintf("%s has %s that %s on no other branch or remote: once the branch is deleted, only Undo can bring %s back. Delete it anyway only with force",
+		u.Branch, plural(u.Commits, "commit"), verb, them)
+}
+
+// Renamed is the result of renaming a branch.
+type Renamed struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Upstream string `json:"upstream"` // the branch it still pulls from; "" for none
+}
+
+// Upstreamed is the result of setting or unsetting a branch's upstream.
+type Upstreamed struct {
+	Branch   string `json:"branch"`
+	Upstream string `json:"upstream"` // "" when it now pulls from none
+	Was      string `json:"was"`      // the one before; "" for none
+}
+
+// TagMade is the result of creating a tag.
+type TagMade struct {
+	Tag       string `json:"tag"`
+	Hash      string `json:"hash"` // the commit it points at
+	Annotated bool   `json:"annotated"`
+}
+
+// TagPushed is the result of pushing a tag.
+type TagPushed struct {
+	Tag    string `json:"tag"`
+	Remote string `json:"remote"` // e.g. origin
+	// Account is the gitswitch account that pushed; "" when git asked for
+	// one.
+	Account string `json:"account"`
 }

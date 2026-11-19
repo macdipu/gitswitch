@@ -196,7 +196,7 @@ func (g *Git) MergedInto(gitDir, rev string) ([]string, error) {
 }
 
 func (g *Git) DeleteBranch(gitDir, branch, was string) error {
-	if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: delete merged branch", "-d", "refs/heads/"+branch, was); err != nil {
+	if _, err := g.Git.Run("--git-dir="+gitDir, "update-ref", "-m", "gitswitch: delete branch", "-d", "refs/heads/"+branch, was); err != nil {
 		return err
 	}
 	// git branch -d does this too: a new branch of the same name must not
@@ -274,7 +274,7 @@ func (g *Git) PullRebase(wt string, progress func(string)) error {
 }
 
 func (g *Git) Tags(gitDir string) ([]string, error) {
-	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)", "refs/tags")
+	out, err := g.Git.Run("--git-dir="+gitDir, "for-each-ref", "--sort=-creatordate", "--format=%(refname:lstrip=2)", "refs/tags")
 	if err != nil {
 		return nil, err
 	}
@@ -549,5 +549,48 @@ func (g *Git) ClearClash(gitDir string) error {
 	if os.IsNotExist(err) {
 		return nil
 	}
+	return err
+}
+
+func (g *Git) Unique(gitDir, branch string) (int, error) {
+	// --exclude applies to the --branches after it, without refs/heads/.
+	out, err := g.Git.Run("--git-dir="+gitDir, "rev-list", "--count", "refs/heads/"+branch,
+		"--not", "--exclude="+branch, "--branches", "--remotes", "--")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(out)
+}
+
+func (g *Git) RenameBranch(gitDir, from, to string) error {
+	_, err := g.Git.Run("--git-dir="+gitDir, "branch", "-m", "--", from, to)
+	return err
+}
+
+func (g *Git) SetUpstream(gitDir, branch, upstream string) error {
+	if upstream == "" {
+		_, err := g.Git.Run("--git-dir="+gitDir, "branch", "--unset-upstream", "--", branch)
+		return err
+	}
+	_, err := g.Git.Run("--git-dir="+gitDir, "branch", "--set-upstream-to=refs/remotes/"+upstream, "--", branch)
+	return err
+}
+
+func (g *Git) CheckTagName(name string) error {
+	_, err := g.Git.Run("check-ref-format", "refs/tags/"+name)
+	return err
+}
+
+func (g *Git) CreateTag(gitDir, name, commit, message string) error {
+	args := []string{"--git-dir=" + gitDir, "tag"}
+	if message != "" {
+		args = append(args, "-a", "-m", message)
+	}
+	_, err := g.Git.Run(append(args, "--", name, commit)...)
+	return err
+}
+
+func (g *Git) DeleteTag(gitDir, name string) error {
+	_, err := g.Git.Run("--git-dir="+gitDir, "tag", "-d", "--", name)
 	return err
 }

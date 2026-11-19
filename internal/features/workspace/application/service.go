@@ -11,6 +11,7 @@ import (
 
 	account "github.com/macdipu/gitswitch/internal/features/account/domain"
 	remote "github.com/macdipu/gitswitch/internal/features/git/domain"
+	refs "github.com/macdipu/gitswitch/internal/features/refs/domain"
 	repo "github.com/macdipu/gitswitch/internal/features/repository/domain"
 	undo "github.com/macdipu/gitswitch/internal/features/undo/domain"
 	workspace "github.com/macdipu/gitswitch/internal/features/workspace/domain"
@@ -22,6 +23,7 @@ import (
 type Service struct {
 	Git      workspace.Git
 	Changes  workspace.Changes
+	Ignorer  workspace.Ignorer // edits .gitignore and info/exclude; may be nil
 	Accounts account.Store
 	Repos    repo.Reader
 	Locator  repo.Locator
@@ -57,12 +59,8 @@ func (s *Service) Commit(gitDir, message string, all bool) (workspace.Committed,
 		return r, errors.New("nothing is staged: stage the files to commit in your editor, or commit every change (new files too) with --all")
 	}
 	r.Files = workspace.Files(c, all)
-	cfg := s.Accounts.Load()
-	if a, _ := s.Repos.AccountFor(cfg, gitDir); a != nil {
-		r.Account = a.ID
-		if email := s.Repos.InfoFor(cfg, gitDir).Email; a.Email != "" && email != "" && !strings.EqualFold(email, a.Email) {
-			return r, fmt.Errorf("this repo makes commits as %s, not as %s (%s), so the commit would show someone else. Use %s's name and email first: gitswitch use %s --once", email, a.ID, a.Email, a.ID, a.ID)
-		}
+	if r.Account, err = s.account(gitDir); err != nil {
+		return r, err
 	}
 	wt := s.Locator.WorktreeOf(gitDir)
 	what := "the staged changes"
@@ -84,6 +82,111 @@ func (s *Service) Commit(gitDir, message string, all bool) (workspace.Committed,
 	}
 	if s.Undo != nil {
 		s.Undo.Done(gitDir, m, undo.Commit, "Committed "+r.Short+" "+r.Subject)
+	}
+	return r, nil
+}
+
+// account is the repo's gitswitch account ("" for none), refused when the
+// repo's email is not the account's: a commit would show someone else.
+func (s *Service) account(gitDir string) (string, error) {
+	cfg := s.Accounts.Load()
+	a, _ := s.Repos.AccountFor(cfg, gitDir)
+	if a == nil {
+		return "", nil
+	}
+	if email := s.Repos.InfoFor(cfg, gitDir).Email; a.Email != "" && email != "" && !strings.EqualFold(email, a.Email) {
+		return a.ID, fmt.Errorf("this repo makes commits as %s, not as %s (%s), so the commit would show someone else. Use %s's name and email first: gitswitch use %s --once", email, a.ID, a.Email, a.ID, a.ID)
+	}
+	return a.ID, nil
+}
+
+// Amendable says whether the last commit may be amended now, with its
+// message to start a new one from. Whether there is anything to amend
+// depends on the new message, so Amend checks that.
+func (s *Service) Amendable(gitDir string) workspace.Amendable {
+	_, l, err := s.amendable(gitDir)
+	r := workspace.Amendable{Can: err == nil, Short: l.Short, Subject: l.Subject, Message: l.Message}
+	if err != nil {
+		r.Why = err.Error()
+	}
+	return r
+}
+
+func (s *Service) amendable(gitDir string) (refs.Head, workspace.Last, error) {
+	h, err := s.Git.Head(gitDir)
+	if err != nil {
+		return h, workspace.Last{}, err
+	}
+	if h.Hash == "" {
+		return h, workspace.Last{}, errors.New("there is no commit to amend yet; make the first commit instead")
+	}
+	l, err := s.Git.Last(gitDir)
+	if err != nil {
+		return h, l, err
+	}
+	switch {
+	case h.Busy != "":
+		return h, l, remote.Busy(h.Busy)
+	case h.Changes.Conflicts > 0:
+		return h, l, fmt.Errorf("%d file(s) still have conflicts; fix them first", h.Changes.Conflicts)
+	case l.Parents > 1:
+		return h, l, fmt.Errorf("the last commit (%s) is a merge commit; GitSwitch does not amend merges, make a new commit instead", l.Short)
+	case l.Pushed:
+		return h, l, fmt.Errorf("the last commit (%s) is already pushed, so amending it would rewrite pushed history; make a new commit instead", l.Short)
+	case h.Gone != "":
+		return h, l, fmt.Errorf("%s pushes to %s, which this clone has no copy of, so GitSwitch can't tell whether the last commit is pushed; fetch and try again, or make a new commit instead", h.Branch, h.Gone)
+	}
+	_, err = s.account(gitDir)
+	return h, l, err
+}
+
+// Amend replaces the last commit with one that also holds the staged
+// changes, or with all every change, new files included. Message ""
+// keeps its message. It refuses when there is no commit yet, while git is
+// in the middle of another operation, with conflicts, for a merge commit,
+// for a commit that is already pushed, when the repo's email is not its
+// account's, and when nothing would change: nothing to add and the same
+// message. The amend can be undone, which puts the commit back as it was.
+func (s *Service) Amend(gitDir, message string, all bool) (workspace.Committed, error) {
+	r := workspace.Committed{All: all}
+	message = workspace.Message(message)
+	h, l, err := s.amendable(gitDir)
+	r.Branch, r.Amended = h.Branch, l.Short
+	if err != nil {
+		return r, err
+	}
+	c := h.Changes
+	adds := c.Staged > 0 || (all && c.Any())
+	if !adds && (message == "" || message == l.Message) {
+		if all {
+			return r, errors.New("there is nothing to amend: no file has changed, and the message is the same")
+		}
+		return r, errors.New("there is nothing to amend: nothing is staged, and the message is the same. Stage changes, amend with every change (--all), or write a new message")
+	}
+	r.Account, _ = s.account(gitDir)
+	wt := s.Locator.WorktreeOf(gitDir)
+	what := "the message"
+	switch {
+	case all && adds:
+		what = "every change"
+	case adds:
+		what = "the staged changes"
+	}
+	if s.FS.Dry(fmt.Sprintf("amend %s %s with %s in %s", l.Short, l.Subject, what, wt)) {
+		return r, nil
+	}
+	var m undo.Mark
+	if s.Undo != nil {
+		m = s.Undo.Before(gitDir)
+	}
+	if err := s.Git.Amend(wt, message, all); err != nil {
+		return r, err
+	}
+	if after, err := s.Git.Last(gitDir); err == nil {
+		r.Hash, r.Short, r.Subject, r.Files = after.Hash, after.Short, after.Subject, after.Files
+	}
+	if s.Undo != nil {
+		s.Undo.Done(gitDir, m, undo.Amend, "Amended "+l.Short+" into "+r.Short+" "+r.Subject)
 	}
 	return r, nil
 }

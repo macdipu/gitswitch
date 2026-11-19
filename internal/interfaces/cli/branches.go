@@ -442,16 +442,19 @@ func (x *CLI) cmdBranchNew(args []string) error {
 }
 
 // cmdCommit commits the staged changes, or with --all every change, as
-// the repo's account.
+// the repo's account. With --amend it amends the last commit instead; the
+// message is optional then (none keeps the old one).
 func (x *CLI) cmdCommit(args []string) error {
-	const usage = "gitswitch commit -m <message> [--all]"
+	const usage = "gitswitch commit -m <message> [--all], or gitswitch commit --amend [-m <message>] [--all]"
 	var msg string
-	all, hasMsg := false, false
+	all, hasMsg, amend := false, false, false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--all" || a == "-a":
 			all = true
+		case a == "--amend":
+			amend = true
 		case (a == "-m" || a == "--message") && i+1 < len(args) && !hasMsg:
 			i++
 			msg, hasMsg = args[i], true
@@ -461,14 +464,18 @@ func (x *CLI) cmdCommit(args []string) error {
 			return usageErr(usage)
 		}
 	}
-	if !hasMsg {
+	if !hasMsg && !amend {
 		return usageErr(usage)
 	}
 	gd, err := x.requireRepo()
 	if err != nil {
 		return err
 	}
-	r, err := x.app.Workspace.Commit(gd, msg, all)
+	commit := x.app.Workspace.Commit
+	if amend {
+		commit = x.app.Workspace.Amend
+	}
+	r, err := commit(gd, msg, all)
 	if err != nil || x.app.DryRun() {
 		return err
 	}
@@ -479,7 +486,11 @@ func (x *CLI) cmdCommit(args []string) error {
 	if r.Branch != "" {
 		on = " on " + r.Branch
 	}
-	x.sayf("Committed %s %s%s%s (%d file(s)).\n", r.Short, history.CleanText(r.Subject), on, as, r.Files)
+	if amend {
+		x.sayf("Amended %s: now %s %s%s%s (%d file(s)).\n", r.Amended, r.Short, history.CleanText(r.Subject), on, as, r.Files)
+	} else {
+		x.sayf("Committed %s %s%s%s (%d file(s)).\n", r.Short, history.CleanText(r.Subject), on, as, r.Files)
+	}
 	x.say(undoHint)
 	return nil
 }
